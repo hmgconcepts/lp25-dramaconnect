@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <!-- Personal greeting card -->
+        <div class="glass-card p-6 md:p-8 mb-6 animate-fade-in rccg-blue text-white">
+            <h2 class="text-2xl font-extrabold" id="greeting">Welcome</h2>
+            <p class="opacity-90 text-sm mt-1" id="role-line"></p>
+        </div>
+
+        <!-- Quick stats -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <a href="inbox.html" class="glass-card p-5 border-l-4 border-blue-600"><p class="text-xs font-bold text-slate-400 uppercase">Unread Messages</p><h2 id="s-msgs" class="text-2xl font-black text-slate-800">—</h2></a>
+            <a href="tasks.html" class="glass-card p-5 border-l-4 border-green-600"><p class="text-xs font-bold text-slate-400 uppercase">Open Tasks</p><h2 id="s-tasks" class="text-2xl font-black text-slate-800">—</h2></a>
+            <a href="rehearsals.html" class="glass-card p-5 border-l-4 border-yellow-500"><p class="text-xs font-bold text-slate-400 uppercase">Next Rehearsal</p><h2 id="s-reh" class="text-lg font-black text-slate-800">—</h2></a>
+            <a href="events.html" class="glass-card p-5 border-l-4 border-red-600"><p class="text-xs font-bold text-slate-400 uppercase">Next Event</p><h2 id="s-event" class="text-lg font-black text-slate-800">—</h2></a>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- My tasks -->
+            <div class="glass-card p-6 md:p-8">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-list-check text-green-600"></i> My Tasks</h3>
+                <div id="my-tasks" class="space-y-2"><p class="text-slate-400 text-sm">Loading…</p></div>
+            </div>
+            <!-- My cast roles + recent messages -->
+            <div class="glass-card p-6 md:p-8">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-envelope text-blue-600"></i> Recent Messages</h3>
+                <div id="my-msgs" class="space-y-2"><p class="text-slate-400 text-sm">Loading…</p></div>
+            </div>
+        </div>
+
+        <!-- Announcements + quick actions -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            <div class="lg:col-span-2 glass-card p-6 md:p-8">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-bullhorn text-red-600"></i> Latest Announcements</h3>
+                <div id="anns" class="space-y-2"><p class="text-slate-400 text-sm">Loading…</p></div>
+            </div>
+            <div class="glass-card p-6 md:p-8">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-bolt text-yellow-500"></i> Quick Actions</h3>
+                <div class="space-y-2">
+                    <a href="inbox.html" class="dc-btn dc-btn-primary w-full block text-center"><i class="fas fa-paper-plane mr-1"></i> Message Admin / Members</a>
+                    <a href="attendance.html" class="dc-btn bg-slate-100 text-slate-700 w-full block text-center"><i class="fas fa-user-check mr-1"></i> Attendance</a>
+                    <a href="resources.html" class="dc-btn bg-slate-100 text-slate-700 w-full block text-center"><i class="fas fa-folder-open mr-1"></i> Resources</a>
+                    <a href="polls.html" class="dc-btn bg-slate-100 text-slate-700 w-full block text-center"><i class="fas fa-square-poll-vertical mr-1"></i> Polls</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('home', me);
+            Layout.registerPWA();
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('My Dashboard', 'Your personal overview');
+            Layout.setDate();
+            Layout.loadNotifications(me);
+
+            const hour = new Date().getHours();
+            const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+            document.getElementById('greeting').innerText = `${part}, ${me.full_name || 'Member'}!`;
+            document.getElementById('role-line').innerText = (me.role === 'admin' ? '👮 Administrator' : '🎭 Member') + ' • RCCG ' + (CONFIG.PROVINCE || 'LP 25') + ' Drama';
+
+            loadAll();
+        }
+
+        async function loadAll() {
+            try {
+                const [tasks, inboxAll, anns, rehearsals, events] = await Promise.all([
+                    DB.getMyTasks(me.id).catch(() => []),
+                    DB.getMyInbox(me).catch(() => []),
+                    DB.getAnnouncements().catch(() => []),
+                    DB.getRehearsals().catch(() => []),
+                    DB.getEvents().catch(() => [])
+                ]);
+
+                const openTasks = tasks.filter(t => t.status !== 'done');
+                const unread = inboxAll.filter(m => !m.read_at && m.sender_id !== me.id);
+                document.getElementById('s-msgs').innerText = unread.length;
+                document.getElementById('s-tasks').innerText = openTasks.length;
+
+                const nextReh = rehearsals.filter(r => Utils.daysUntil(r.rehearsal_date) >= 0).sort((a,b)=>new Date(a.rehearsal_date)-new Date(b.rehearsal_date))[0];
+                document.getElementById('s-reh').innerText = nextReh ? Utils.formatDate(nextReh.rehearsal_date) : 'None';
+                const nextEv = events.filter(e => Utils.daysUntil(e.event_date) >= 0)[0];
+                document.getElementById('s-event').innerText = nextEv ? Utils.formatDate(nextEv.event_date) : 'None';
+
+                // My tasks list
+                const tl = document.getElementById('my-tasks');
+                tl.innerHTML = openTasks.length ? openTasks.slice(0,6).map(t => `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                        <div><p class="text-sm font-bold text-slate-800">${UI.esc(t.title)}</p>
+                        <p class="text-xs text-slate-400">${t.due_date ? 'Due ' + Utils.formatDate(t.due_date) : 'No due date'} • ${t.status.replace('_',' ')}</p></div>
+                        <span class="badge ${t.priority==='high'?'badge-red':t.priority==='low'?'badge-member':'badge-yellow'}">${t.priority}</span>
+                    </div>`).join('') : '<p class="text-slate-400 text-sm">No open tasks. 🎉</p>';
+
+                // Recent messages
+                const received = inboxAll.filter(m => m.sender_id !== me.id).slice(0,5);
+                const ml = document.getElementById('my-msgs');
+                ml.innerHTML = received.length ? received.map(m => `
+                    <a href="inbox.html" class="block p-3 bg-slate-50 rounded-xl">
+                        <p class="text-sm font-bold text-slate-800">${!m.read_at ? '<span class="badge badge-admin mr-1">NEW</span>' : ''}${UI.esc(m.subject || '(no subject)')}</p>
+                        <p class="text-xs text-slate-400">From ${UI.esc(m.sender_name || 'Member')} • ${Utils.relativeTime(m.created_at)}</p>
+                    </a>`).join('') : '<p class="text-slate-400 text-sm">No messages.</p>';
+
+                // Announcements
+                const al = document.getElementById('anns');
+                al.innerHTML = anns.length ? anns.slice(0,4).map(a => `
+                    <div class="p-3 bg-blue-50 rounded-xl border border-blue-100">
+                        <p class="text-sm font-bold text-slate-800">${UI.esc(a.title)}</p>
+                        <p class="text-xs text-slate-500 mt-0.5">${UI.esc((a.body||'').slice(0,120))}</p>
+                        <p class="text-[10px] text-slate-400 mt-1">${Utils.formatDate(a.created_at)}</p>
+                    </div>`).join('') : '<p class="text-slate-400 text-sm">No announcements.</p>';
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        init();
+    </script>
+</body>
+</html>

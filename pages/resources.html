@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resources | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-folder-plus text-blue-600 mr-2"></i> Add Resource</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input id="r-title" placeholder="Title" class="dc-input md:col-span-2">
+                <select id="r-cat" class="dc-input">
+                    <option value="script">Script</option>
+                    <option value="document">Document</option>
+                    <option value="audio">Audio</option>
+                    <option value="video">Video</option>
+                    <option value="image">Image</option>
+                    <option value="link">Link</option>
+                </select>
+                <input id="r-url" placeholder="URL (Drive / YouTube / Docs…)" class="dc-input">
+            </div>
+            <input id="r-desc" placeholder="Description (optional)" class="dc-input mt-3">
+            <button id="r-add" class="dc-btn dc-btn-primary mt-4">Add Resource</button>
+            <p class="text-xs text-slate-400 mt-2">Store files free on Google Drive / YouTube / Dropbox and paste the share link here.</p>
+        </div>
+
+        <div class="flex flex-wrap gap-2 mb-4" id="filters"></div>
+        <div id="res-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><p class="text-slate-400 text-sm">Loading…</p></div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, all = [], filter = 'all';
+        const ICONS = { script:'fa-scroll', document:'fa-file-lines', audio:'fa-headphones', video:'fa-video', image:'fa-image', link:'fa-link' };
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('resources', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Resource Library', 'Scripts, documents, audio & video');
+            Layout.setDate();
+            Layout.loadNotifications(me);
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('r-add').onclick = add;
+            }
+            renderFilters();
+            load();
+        }
+        function renderFilters() {
+            const cats = ['all','script','document','audio','video','image','link'];
+            document.getElementById('filters').innerHTML = cats.map(c =>
+                `<button class="text-xs px-3 py-1 rounded-full font-bold ${c===filter?'rccg-blue text-white':'bg-slate-100 text-slate-600'}" onclick="setFilter('${c}')">${c}</button>`).join('');
+        }
+        function setFilter(c) { filter = c; renderFilters(); render(); }
+        async function load() {
+            try { all = await DB.getResources(); render(); }
+            catch (e) { document.getElementById('res-grid').innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        function render() {
+            const list = all.filter(r => filter === 'all' || r.category === filter);
+            const grid = document.getElementById('res-grid');
+            if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No resources.</p>'; return; }
+            const isAdmin = Auth.isAdmin(me);
+            grid.innerHTML = list.map(r => `
+                <div class="glass-card p-5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="p-2 bg-blue-50 text-blue-600 rounded-xl"><i class="fas ${ICONS[r.category]||'fa-file'}"></i></span>
+                        <span class="badge badge-member">${UI.esc(r.category)}</span>
+                    </div>
+                    <h4 class="font-bold text-slate-800">${UI.esc(r.title)}</h4>
+                    ${r.description ? `<p class="text-xs text-slate-500 mt-1">${UI.esc(r.description)}</p>` : ''}
+                    <div class="flex gap-3 mt-3">
+                        <a href="${UI.esc(r.url)}" target="_blank" rel="noopener" class="text-sm text-blue-600 font-bold hover:underline"><i class="fas fa-arrow-up-right-from-square mr-1"></i> Open</a>
+                        ${isAdmin ? `<button class="text-sm text-red-600 font-bold hover:underline" onclick="del('${r.id}')">Delete</button>` : ''}
+                    </div>
+                </div>`).join('');
+        }
+        async function add() {
+            const title = document.getElementById('r-title').value.trim();
+            const url = document.getElementById('r-url').value.trim();
+            if (!title || !url) { UI.toast('Title and URL are required.', 'warning'); return; }
+            try {
+                await DB.addResource({ title, url, category: document.getElementById('r-cat').value, description: document.getElementById('r-desc').value.trim() || null, added_by: me.full_name || me.email });
+                await DB.logActivity('resource_add', title);
+                ['r-title','r-url','r-desc'].forEach(id => document.getElementById(id).value = '');
+                UI.toast('Resource added.', 'success'); load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function del(id) { if (!await UI.confirm('Delete this resource?')) return; try { await DB.deleteResource(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.setFilter = setFilter; window.del = del;
+        init();
+    </script>
+</body>
+</html>

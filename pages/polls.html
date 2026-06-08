@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polls | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-square-poll-vertical text-blue-600 mr-2"></i> Create Poll</h3>
+            <input id="p-q" placeholder="Question (e.g. Which Sunday for the next play?)" class="dc-input mb-3">
+            <div id="opt-wrap" class="space-y-2">
+                <input class="dc-input opt" placeholder="Option 1">
+                <input class="dc-input opt" placeholder="Option 2">
+            </div>
+            <button id="add-opt" class="text-sm text-blue-600 font-bold mt-2"><i class="fas fa-plus mr-1"></i> Add option</button>
+            <div><button id="p-add" class="dc-btn dc-btn-primary mt-4">Create Poll</button></div>
+        </div>
+
+        <div id="poll-list" class="space-y-6"><p class="text-slate-400 text-sm">Loading…</p></div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('polls', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Polls & Voting', 'Gather member opinions quickly');
+            Layout.setDate();
+            Layout.loadNotifications(me);
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('p-add').onclick = addPoll;
+                document.getElementById('add-opt').onclick = () => {
+                    const i = document.createElement('input');
+                    i.className = 'dc-input opt'; i.placeholder = 'Option ' + (document.querySelectorAll('.opt').length + 1);
+                    document.getElementById('opt-wrap').appendChild(i);
+                };
+            }
+            load();
+        }
+        async function addPoll() {
+            const q = document.getElementById('p-q').value.trim();
+            const options = [...document.querySelectorAll('.opt')].map(i => i.value.trim()).filter(Boolean);
+            if (!q || options.length < 2) { UI.toast('Enter a question and at least 2 options.', 'warning'); return; }
+            try {
+                await DB.addPoll({ question: q, options, is_open: true, created_by: me.full_name || me.email });
+                await DB.logActivity('poll_create', q);
+                document.getElementById('p-q').value = '';
+                document.querySelectorAll('.opt').forEach((i, idx) => { if (idx < 2) i.value = ''; else i.remove(); });
+                UI.toast('Poll created.', 'success'); load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function load() {
+            const host = document.getElementById('poll-list');
+            try {
+                const polls = await DB.getPolls();
+                if (!polls.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No polls yet.</p>'; return; }
+                const isAdmin = Auth.isAdmin(me);
+                host.innerHTML = polls.map(p => {
+                    const votes = p.poll_votes || [];
+                    const total = votes.length;
+                    const myVote = votes.find(v => v.voter_id === me.id);
+                    const opts = Array.isArray(p.options) ? p.options : [];
+                    return `
+                    <div class="glass-card p-6">
+                        <div class="flex justify-between items-start gap-3 mb-3">
+                            <h4 class="font-bold text-slate-800">${UI.esc(p.question)}</h4>
+                            <span class="badge ${p.is_open?'badge-green':'badge-red'}">${p.is_open?'open':'closed'}</span>
+                        </div>
+                        <div class="space-y-2">
+                            ${opts.map((o, idx) => {
+                                const c = votes.filter(v => v.option_index === idx).length;
+                                const pct = total ? Math.round(c/total*100) : 0;
+                                const mine = myVote && myVote.option_index === idx;
+                                return `
+                                <div>
+                                    <div class="flex justify-between text-sm mb-1">
+                                        <span class="font-semibold text-slate-700">${mine?'✅ ':''}${UI.esc(o)}</span>
+                                        <span class="text-slate-400">${pct}% (${c})</span>
+                                    </div>
+                                    <div style="background:#e2e8f0;border-radius:9999px;height:10px;overflow:hidden;cursor:${p.is_open?'pointer':'default'};" ${p.is_open?`onclick="vote('${p.id}',${idx})"`:''}>
+                                        <div class="rccg-blue" style="height:100%;width:${pct}%;"></div>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                        <p class="text-xs text-slate-400 mt-3">${total} vote(s) • ${p.is_open ? (myVote?'You voted. Tap a bar to change.':'Tap a bar to vote.') : 'Voting closed.'}</p>
+                        ${isAdmin ? `<div class="flex gap-3 mt-3">
+                            <button class="text-blue-600 text-xs font-bold hover:underline" onclick="toggleOpen('${p.id}', ${p.is_open})">${p.is_open?'Close':'Reopen'}</button>
+                            <button class="text-red-600 text-xs font-bold hover:underline" onclick="delPoll('${p.id}')">Delete</button>
+                        </div>` : ''}
+                    </div>`;
+                }).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        async function vote(id, idx) {
+            try { await DB.castVote(id, idx, me.id); UI.toast('Vote recorded.', 'success', 1500); load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function toggleOpen(id, open) { try { await DB.closePoll(id, !open); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        async function delPoll(id) { if (!await UI.confirm('Delete this poll?')) return; try { await DB.deletePoll(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.vote = vote; window.toggleOpen = toggleOpen; window.delPoll = delPoll;
+        init();
+    </script>
+</body>
+</html>

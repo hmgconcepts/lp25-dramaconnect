@@ -9,10 +9,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
 </head>
-<body class="bg-slate-50 min-h-screen flex">
+<body class="bg-slate-50 min-h-screen app-shell">
     <div id="app-sidebar"></div>
-    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+    <main class="app-main">
         <div id="page-header"></div>
 
         <div class="glass-card p-6 mb-6">
@@ -51,6 +53,7 @@
             Layout.renderSidebar('casting', me);
             document.getElementById('page-header').innerHTML = Layout.renderHeader('Casting', 'Assign characters & roles to members');
             Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
             if (Auth.isAdmin(me)) {
                 document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
                 document.getElementById('c-add-btn').onclick = assign;

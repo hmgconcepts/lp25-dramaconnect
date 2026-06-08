@@ -9,32 +9,68 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
 </head>
-<body class="bg-slate-50 min-h-screen flex">
+<body class="bg-slate-50 min-h-screen app-shell">
     <div id="app-sidebar"></div>
-    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+    <main class="app-main">
         <div id="page-header"></div>
 
-        <div class="glass-card p-8 md:p-10 max-w-3xl mx-auto animate-fade-in text-center">
+        <!-- Founder -->
+        <div class="glass-card p-8 md:p-10 max-w-4xl mx-auto animate-fade-in text-center mb-6">
             <img src="../assets/img/developer.jpg" alt="Adewale Samson Adeagbo" class="h-32 w-32 mx-auto rounded-full object-cover border-4 border-blue-100 shadow-lg mb-4">
             <h2 class="text-2xl font-extrabold text-slate-800">Adewale Samson Adeagbo</h2>
-            <p class="text-slate-500 mb-1">Software Engineer · DataTech · EdTech · FaithTech</p>
-            <p class="text-blue-600 font-bold mb-6">HMG Concepts</p>
-            <p class="text-slate-600 leading-relaxed mb-8">
-                DramaConnect Enterprise was architected and built to demonstrate how modern,
-                cost-free tooling — Supabase, vanilla JavaScript, and a clean, mobile-first
-                interface — can deliver professional, institution-grade software with zero
-                recurring infrastructure cost.
+            <p class="text-slate-500 mb-1">AI‑Augmented Solutions Developer · Data Scientist · STEM Educator</p>
+            <p class="text-blue-600 font-bold mb-4">Founder, HMG Concepts — <em>His Marvellous Grace</em></p>
+            <p class="text-slate-600 leading-relaxed max-w-2xl mx-auto mb-6">
+                "Real problems. Real solutions. Built with AI, grounded in data, taught from the
+                classroom." Founded in 2015, HMG Concepts is a Nigerian education & technology
+                brand with one conviction: every learner deserves quality, deliberate,
+                forward‑looking solutions. DramaConnect was built in that same spirit — a robust,
+                institution‑grade platform running entirely on free tools, at ₦0/month.
             </p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 text-left">
-                <div class="p-4 bg-slate-50 rounded-2xl"><i class="fas fa-database text-blue-600 mb-2"></i><p class="font-bold text-slate-800 text-sm">DataTech</p><p class="text-xs text-slate-500">Dashboards & data systems</p></div>
-                <div class="p-4 bg-slate-50 rounded-2xl"><i class="fas fa-graduation-cap text-blue-600 mb-2"></i><p class="font-bold text-slate-800 text-sm">EdTech</p><p class="text-xs text-slate-500">Learning platforms</p></div>
-                <div class="p-4 bg-slate-50 rounded-2xl"><i class="fas fa-church text-blue-600 mb-2"></i><p class="font-bold text-slate-800 text-sm">FaithTech</p><p class="text-xs text-slate-500">Church management tools</p></div>
+            <div class="flex flex-wrap justify-center gap-3">
+                <a href="https://cssadewale.pages.dev" target="_blank" rel="noopener" class="dc-btn dc-btn-primary"><i class="fas fa-id-badge mr-1"></i> Portfolio</a>
+                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="dc-btn bg-white text-blue-600 border border-blue-200">HMG Concepts <i class="fas fa-arrow-right ml-1"></i></a>
+                <a href="https://wa.me/2348100866322" target="_blank" rel="noopener" class="dc-btn text-white" style="background:#25D366"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</a>
             </div>
-            <div class="flex flex-wrap justify-center gap-4">
-                <a href="https://cssadewale.pages.dev" target="_blank" rel="noopener" class="dc-btn dc-btn-primary"><i class="fas fa-id-badge mr-1"></i> View Portfolio</a>
-                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="dc-btn bg-white text-blue-600 border border-blue-200">Explore HMG Concepts <i class="fas fa-arrow-right ml-1"></i></a>
+        </div>
+
+        <!-- Builder modes -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto mb-6">
+            <div class="glass-card p-5 text-center"><div class="text-3xl mb-2">🏫</div><p class="font-bold text-slate-800 text-sm">EdTech Builder</p><p class="text-xs text-slate-500">Educator skills + AI‑augmented dev = tools for the classroom (CBT Pro, LMS).</p></div>
+            <div class="glass-card p-5 text-center"><div class="text-3xl mb-2">📊</div><p class="font-bold text-slate-800 text-sm">DataTech Builder</p><p class="text-xs text-slate-500">Data science + AI‑augmented dev = ML models, dashboards & simulators.</p></div>
+            <div class="glass-card p-5 text-center"><div class="text-3xl mb-2">✝️</div><p class="font-bold text-slate-800 text-sm">FaithTech Builder</p><p class="text-xs text-slate-500">Gospel conviction + AI‑augmented dev = every platform a pulpit.</p></div>
+        </div>
+
+        <!-- HMG ecosystem -->
+        <div class="glass-card p-8 md:p-10 max-w-4xl mx-auto animate-fade-in">
+            <h3 class="text-xl font-bold text-slate-800 mb-2 text-center">One Brand. Four Missions.</h3>
+            <p class="text-sm text-slate-500 text-center mb-6">The HMG Concepts ecosystem — Education · Technology · Media · Gospel.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="https://hmgacademy.pages.dev" target="_blank" rel="noopener" class="p-5 bg-slate-50 rounded-2xl hover:shadow-md transition block">
+                    <p class="font-bold text-slate-800">🎓 HMG Academy</p>
+                    <p class="text-xs text-slate-500 mt-1">Strictly virtual school — all subjects & levels. WAEC, NECO, GCE, UTME, IGCSE, IELTS, JUPEB, SAT. Free CBT Pro & lesson notes.</p>
+                    <span class="text-blue-600 text-xs font-bold">Visit hmgacademy.pages.dev →</span>
+                </a>
+                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="p-5 bg-slate-50 rounded-2xl hover:shadow-md transition block">
+                    <p class="font-bold text-slate-800">💻 HMG Technologies</p>
+                    <p class="text-xs text-slate-500 mt-1">AI‑augmented tools, CBT systems, data dashboards, ML models & simulators for schools, businesses, NGOs & churches.</p>
+                    <span class="text-blue-600 text-xs font-bold">Explore the ecosystem →</span>
+                </a>
+                <a href="https://hmgmedia.pages.dev" target="_blank" rel="noopener" class="p-5 bg-slate-50 rounded-2xl hover:shadow-md transition block">
+                    <p class="font-bold text-slate-800">📢 HMG Media</p>
+                    <p class="text-xs text-slate-500 mt-1">Purpose‑led audio, visual & audiovisual content — brand storytelling and visibility for the whole ecosystem.</p>
+                    <span class="text-blue-600 text-xs font-bold">Visit hmgmedia.pages.dev →</span>
+                </a>
+                <a href="https://hmggospel.pages.dev" target="_blank" rel="noopener" class="p-5 bg-slate-50 rounded-2xl hover:shadow-md transition block">
+                    <p class="font-bold text-slate-800">✝️ HMG Gospel</p>
+                    <p class="text-xs text-slate-500 mt-1">Christ‑centred digital outreach — dramavangelism, techvangelism, podcasts, teachings & church tools.</p>
+                    <span class="text-blue-600 text-xs font-bold">Visit hmggospel.pages.dev →</span>
+                </a>
             </div>
+            <p class="text-center text-xs text-slate-400 mt-6">“Learning Deliberately. Teaching Authentically.” — HMG Concepts, Est. 2015 · Lagos, Nigeria</p>
         </div>
     </main>
 
@@ -52,6 +88,7 @@
             Layout.renderSidebar('portfolio', me);
             document.getElementById('page-header').innerHTML = Layout.renderHeader('Developer Bio', 'About the architect of DramaConnect');
             Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
         }
         init();
     </script>

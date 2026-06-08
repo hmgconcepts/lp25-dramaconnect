@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasks | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-list-check text-blue-600 mr-2"></i> Assign Task</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input id="t-title" placeholder="Task title" class="dc-input md:col-span-2">
+                <select id="t-assignee" class="dc-input"></select>
+                <input id="t-due" type="date" class="dc-input">
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+                <input id="t-detail" placeholder="Details (optional)" class="dc-input md:col-span-3">
+                <select id="t-priority" class="dc-input">
+                    <option value="normal">Normal priority</option>
+                    <option value="high">High priority</option>
+                    <option value="low">Low priority</option>
+                </select>
+            </div>
+            <button id="t-add" class="dc-btn dc-btn-primary mt-4">Assign Task</button>
+        </div>
+
+        <div class="glass-card p-6 md:p-8 animate-fade-in">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-clipboard-list text-blue-600 mr-2"></i> <span id="list-title">My Tasks</span></h3>
+                <select id="filter" class="dc-input max-w-[180px]">
+                    <option value="all">All statuses</option>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="done">Done</option>
+                </select>
+            </div>
+            <div id="task-list" class="space-y-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, members = [], isAdmin = false, all = [];
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            isAdmin = Auth.isAdmin(me);
+            Layout.renderSidebar('tasks', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Tasks', isAdmin ? 'Assign & supervise department tasks' : 'Your assigned tasks');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('list-title').innerText = isAdmin ? 'All Tasks' : 'My Tasks';
+            document.getElementById('filter').onchange = render;
+
+            if (isAdmin) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('t-add').onclick = addTask;
+                try {
+                    members = (await DB.getMembers()).filter(m => !m.status || m.status === 'approved');
+                    document.getElementById('t-assignee').innerHTML = members.map(m => `<option value="${m.id}">${UI.esc(m.full_name || m.email)}</option>`).join('');
+                } catch (e) {}
+            }
+            load();
+        }
+
+        async function load() {
+            try {
+                all = isAdmin ? await DB.getTasks() : await DB.getMyTasks(me.id);
+                render();
+            } catch (e) { document.getElementById('task-list').innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+
+        function render() {
+            const f = document.getElementById('filter').value;
+            const list = all.filter(t => f === 'all' || t.status === f);
+            const host = document.getElementById('task-list');
+            if (!list.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No tasks.</p>'; return; }
+            host.innerHTML = list.map(t => {
+                const pc = t.priority === 'high' ? 'badge-red' : t.priority === 'low' ? 'badge-member' : 'badge-yellow';
+                const sc = t.status === 'done' ? 'badge-green' : t.status === 'in_progress' ? 'badge-yellow' : 'badge-member';
+                const who = t.profiles ? t.profiles.full_name : '';
+                const overdue = t.due_date && t.status !== 'done' && Utils.daysUntil(t.due_date) < 0;
+                return `
+                <div class="p-4 bg-slate-50 rounded-xl">
+                    <div class="flex flex-wrap justify-between items-start gap-3">
+                        <div class="min-w-0">
+                            <p class="font-bold text-slate-800">${UI.esc(t.title)} <span class="badge ${pc} ml-1">${t.priority}</span> <span class="badge ${sc} ml-1">${t.status.replace('_',' ')}</span></p>
+                            ${t.detail ? `<p class="text-sm text-slate-600 mt-1">${UI.esc(t.detail)}</p>` : ''}
+                            <p class="text-xs text-slate-400 mt-1">
+                                ${isAdmin && who ? 'Assigned to ' + UI.esc(who) + ' • ' : ''}
+                                ${t.due_date ? 'Due ' + Utils.formatDate(t.due_date) + (overdue ? ' <span class="text-red-600 font-bold">(overdue)</span>' : ' • ' + Utils.relativeTime(t.due_date)) : 'No due date'}
+                            </p>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <select class="dc-input py-1 text-sm max-w-[150px]" onchange="setStatus('${t.id}', this.value)">
+                                <option value="open" ${t.status==='open'?'selected':''}>Open</option>
+                                <option value="in_progress" ${t.status==='in_progress'?'selected':''}>In progress</option>
+                                <option value="done" ${t.status==='done'?'selected':''}>Done</option>
+                            </select>
+                            ${isAdmin ? `<button class="text-red-600 text-xs font-bold hover:underline" onclick="delTask('${t.id}')">Delete</button>` : ''}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function addTask() {
+            const title = document.getElementById('t-title').value.trim();
+            const assignee_id = document.getElementById('t-assignee').value;
+            if (!title || !assignee_id) { UI.toast('Title and assignee are required.', 'warning'); return; }
+            try {
+                await DB.addTask({
+                    title, assignee_id,
+                    detail: document.getElementById('t-detail').value.trim() || null,
+                    due_date: document.getElementById('t-due').value || null,
+                    priority: document.getElementById('t-priority').value,
+                    assigned_by: me.full_name || me.email, status: 'open'
+                });
+                await DB.logActivity('task_assign', title);
+                // Also notify the assignee in-platform
+                await DB.sendInternalMessage({ sender_id: me.id, sender_name: me.full_name || me.email, recipient_id: assignee_id, to_admins: false, subject: 'New task assigned', body: 'You have a new task: ' + title });
+                ['t-title','t-detail','t-due'].forEach(id => document.getElementById(id).value = '');
+                UI.toast('Task assigned & member notified.', 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function setStatus(id, status) { try { await DB.updateTaskStatus(id, status); UI.toast('Updated.', 'success', 1500); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        async function delTask(id) { if (!await UI.confirm('Delete this task?')) return; try { await DB.deleteTask(id); UI.toast('Deleted.', 'success'); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.setStatus = setStatus; window.delTask = delTask;
+        init();
+    </script>
+</body>
+</html>

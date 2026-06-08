@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messaging | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Compose -->
+            <div class="lg:col-span-2 glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-paper-plane text-blue-600 mr-2"></i> Compose Message</h3>
+
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Audience</label>
+                <select id="audience" class="dc-input mb-4">
+                    <option value="all">All approved members</option>
+                    <option value="members">Members only (non-admin)</option>
+                    <option value="admins">Admins only</option>
+                    <option value="individual">A specific member…</option>
+                </select>
+
+                <div id="individual-wrap" class="mb-4 hidden">
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Select Member</label>
+                    <select id="member-select" class="dc-input"></select>
+                </div>
+
+                <div id="subject-wrap" class="mb-4">
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Subject (email only)</label>
+                    <input id="subject" class="dc-input" placeholder="e.g. Rehearsal Reminder">
+                </div>
+
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Message</label>
+                <textarea id="body" rows="6" class="dc-input mb-2" placeholder="Type your message here…"></textarea>
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <button class="text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold" onclick="insertTpl('Dear member, this is a reminder about our next rehearsal on [DATE] at [TIME]. Please be punctual. God bless you.')">Rehearsal reminder</button>
+                    <button class="text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold" onclick="insertTpl('Praise the Lord! You are invited to our upcoming drama presentation on [DATE]. Your presence matters.')">Event invite</button>
+                    <button class="text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold" onclick="insertTpl('Hello, please confirm your availability for this week. Reply YES or NO. Thank you.')">Availability check</button>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <button id="send-wa" class="dc-btn text-white" style="background:#25D366"><i class="fab fa-whatsapp mr-1"></i> Send via WhatsApp</button>
+                    <button id="send-email" class="dc-btn dc-btn-primary"><i class="fas fa-envelope mr-1"></i> Send via Email</button>
+                </div>
+                <p id="recipient-info" class="text-xs text-slate-400 mt-3"></p>
+            </div>
+
+            <!-- How it works -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-circle-info text-blue-600 mr-2"></i> How Messaging Works</h3>
+                <ul class="text-sm text-slate-600 space-y-3">
+                    <li><i class="fab fa-whatsapp text-green-600 mr-1"></i> <strong>WhatsApp (individual):</strong> opens WhatsApp with the member's number and your message pre‑filled — just press send.</li>
+                    <li><i class="fab fa-whatsapp text-green-600 mr-1"></i> <strong>WhatsApp (group):</strong> opens each member in turn (or copies the text) so you can paste it into your department WhatsApp group.</li>
+                    <li><i class="fas fa-envelope text-blue-600 mr-1"></i> <strong>Email (group):</strong> opens your email app with everyone added as <strong>BCC</strong> (privacy‑safe) and the subject/body pre‑filled.</li>
+                    <li><i class="fas fa-shield-halved text-slate-500 mr-1"></i> 100% free — uses your own WhatsApp/email. No paid API, no message limits from us.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="glass-card p-6 md:p-8 mt-6 animate-fade-in">
+            <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-clock-rotate-left text-blue-600 mr-2"></i> Message History</h3>
+            <div id="history" class="space-y-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, members = [];
+        async function init() {
+            me = await Auth.requireAdmin();
+            if (!me) return;
+            Layout.renderSidebar('messaging', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Messaging Center', 'Send WhatsApp & email to members — free');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+
+            try {
+                members = (await DB.getMembers()).filter(m => !m.status || m.status === 'approved');
+                document.getElementById('member-select').innerHTML = members.map(m =>
+                    `<option value="${m.id}">${UI.esc(m.full_name || m.email)}${m.phone ? ' • ' + UI.esc(m.phone) : ''}</option>`).join('');
+            } catch (e) { UI.toast(e.message, 'error'); }
+
+            document.getElementById('audience').onchange = onAudience;
+            document.getElementById('send-wa').onclick = sendWhatsApp;
+            document.getElementById('send-email').onclick = sendEmail;
+            onAudience();
+            loadHistory();
+        }
+
+        function selectedRecipients() {
+            const aud = document.getElementById('audience').value;
+            if (aud === 'individual') {
+                const id = document.getElementById('member-select').value;
+                return members.filter(m => m.id === id);
+            }
+            if (aud === 'admins') return members.filter(m => m.role === 'admin');
+            if (aud === 'members') return members.filter(m => m.role !== 'admin');
+            return members.slice();
+        }
+
+        function onAudience() {
+            const aud = document.getElementById('audience').value;
+            document.getElementById('individual-wrap').classList.toggle('hidden', aud !== 'individual');
+            updateInfo();
+        }
+        function updateInfo() {
+            const r = selectedRecipients();
+            const withPhone = r.filter(m => m.phone).length;
+            const withEmail = r.filter(m => m.email).length;
+            document.getElementById('recipient-info').innerText =
+                `${r.length} recipient(s) • ${withPhone} with phone (WhatsApp) • ${withEmail} with email`;
+        }
+        document.addEventListener('change', updateInfo);
+
+        function insertTpl(t) { document.getElementById('body').value = t; }
+        window.insertTpl = insertTpl;
+
+        async function record(channel, audience, recipients, subject, body) {
+            try {
+                await DB.logMessage({ channel, audience, recipients, subject: subject || null, body, sent_by: me.full_name || me.email });
+                await DB.logActivity('message_' + channel, `${audience}: ${recipients}`);
+                loadHistory();
+            } catch (e) { /* non-blocking */ }
+        }
+
+        async function sendWhatsApp() {
+            const body = document.getElementById('body').value.trim();
+            if (!body) { UI.toast('Type a message first.', 'warning'); return; }
+            const aud = document.getElementById('audience').value;
+            const r = selectedRecipients().filter(m => m.phone);
+            if (!r.length) { UI.toast('No recipients have a phone number on file.', 'warning'); return; }
+
+            if (aud === 'individual') {
+                window.open(Utils.whatsappLink(r[0].phone, body), '_blank');
+                record('whatsapp', aud, r[0].full_name || r[0].email, '', body);
+                return;
+            }
+            // Group: offer to copy text + open each chat.
+            const ok = await UI.confirm(`This will open WhatsApp for ${r.length} member(s), one after another. Your message is also copied so you can paste it into your department group. Continue?`, 'Group WhatsApp');
+            if (!ok) return;
+            try { await navigator.clipboard.writeText(body); UI.toast('Message copied to clipboard.', 'success'); } catch (e) {}
+            r.forEach((m, i) => setTimeout(() => window.open(Utils.whatsappLink(m.phone, body), '_blank'), i * 800));
+            record('whatsapp', aud, `${r.length} members`, '', body);
+        }
+
+        function sendEmail() {
+            const body = document.getElementById('body').value.trim();
+            const subject = document.getElementById('subject').value.trim();
+            if (!body) { UI.toast('Type a message first.', 'warning'); return; }
+            const aud = document.getElementById('audience').value;
+            const r = selectedRecipients().filter(m => m.email);
+            if (!r.length) { UI.toast('No recipients have an email on file.', 'warning'); return; }
+
+            let link;
+            if (aud === 'individual') link = Utils.mailtoLink(r[0].email, subject, body, false);
+            else link = Utils.mailtoLink(r.map(m => m.email), subject, body, true); // BCC group
+            window.location.href = link;
+            record('email', aud, aud === 'individual' ? (r[0].full_name || r[0].email) : `${r.length} members`, subject, body);
+        }
+
+        async function loadHistory() {
+            const host = document.getElementById('history');
+            try {
+                const msgs = await DB.getMessages(50);
+                if (!msgs.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No messages sent yet.</p>'; return; }
+                host.innerHTML = msgs.map(m => `
+                    <div class="flex items-start justify-between gap-3 p-3 bg-slate-50 rounded-xl">
+                        <div class="min-w-0">
+                            <p class="text-sm font-bold text-slate-800">
+                                <i class="fa${m.channel === 'whatsapp' ? 'b fa-whatsapp text-green-600' : 's fa-envelope text-blue-600'} mr-1"></i>
+                                ${UI.esc(m.subject || (m.body || '').slice(0, 40) + ((m.body || '').length > 40 ? '…' : ''))}
+                            </p>
+                            <p class="text-xs text-slate-500 mt-0.5">${UI.esc(m.recipients || '')} • ${UI.esc(m.audience || '')} • ${Utils.formatDateTime(m.created_at)}</p>
+                        </div>
+                        <button class="text-red-600 text-xs font-bold hover:underline" onclick="delMsg('${m.id}')">Delete</button>
+                    </div>`).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        async function delMsg(id) {
+            if (!await UI.confirm('Delete this message from history?')) return;
+            try { await DB.deleteMessage(id); loadHistory(); } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.delMsg = delMsg;
+        init();
+    </script>
+</body>
+</html>

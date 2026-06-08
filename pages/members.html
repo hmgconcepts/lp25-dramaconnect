@@ -9,10 +9,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
 </head>
-<body class="bg-slate-50 min-h-screen flex">
+<body class="bg-slate-50 min-h-screen app-shell">
     <div id="app-sidebar"></div>
-    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+    <main class="app-main">
         <div id="page-header"></div>
 
         <!-- Pending approvals (admin only) -->
@@ -50,6 +52,7 @@
             Layout.renderSidebar('members', me);
             document.getElementById('page-header').innerHTML = Layout.renderHeader('Members', 'Personnel directory & access control');
             Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
             if (Auth.isAdmin(me)) document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
             document.getElementById('search').oninput = e => render(filter(e.target.value));
             await load();
@@ -99,6 +102,8 @@
                     <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span></td>
                     ${isAdmin ? `<td>
                         <div class="flex gap-3 items-center">
+                            ${m.phone ? `<a href="${Utils.whatsappLink(m.phone, '')}" target="_blank" rel="noopener" title="WhatsApp" class="text-green-600 hover:opacity-70"><i class="fab fa-whatsapp"></i></a>` : ''}
+                            ${m.email ? `<a href="${Utils.mailtoLink(m.email, '', '', false)}" title="Email" class="text-blue-600 hover:opacity-70"><i class="fas fa-envelope"></i></a>` : ''}
                             <button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}','${m.role}')">${m.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
                             ${m.id !== me.id ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="removeMember('${m.id}','${UI.esc(m.full_name || m.email || '')}')">Remove</button>` : '<span class="text-xs text-slate-300">You</span>'}
                         </div>
@@ -107,8 +112,29 @@
             }).join('');
         }
         async function approve(id) {
-            try { await DB.setMemberStatus(id, 'approved'); await DB.logActivity('member_approve', id); UI.toast('Member approved.', 'success'); await load(); }
-            catch (e) { UI.toast(e.message, 'error'); }
+            try {
+                await DB.setMemberStatus(id, 'approved');
+                await DB.logActivity('member_approve', id);
+                UI.toast('Member approved.', 'success');
+                await load();
+                // Offer to notify the member (free, via the admin's own WhatsApp/email).
+                const m = all.find(x => x.id === id);
+                if (m) notifyApproved(m);
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        async function notifyApproved(m) {
+            const msg = `Hello ${m.full_name || ''}, your DramaConnect account has been approved. You can now sign in at ${location.origin}${location.pathname.replace(/pages\/.*$/, 'index.html')}. God bless you.`;
+            const overlay = UI.modal(`
+                <div class="p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-2">Notify ${UI.esc(m.full_name || 'member')}?</h3>
+                    <p class="text-sm text-slate-500 mb-4">Let them know they've been approved (optional, free):</p>
+                    <div class="flex flex-wrap gap-3">
+                        ${m.phone ? `<a href="${Utils.whatsappLink(m.phone, msg)}" target="_blank" rel="noopener" class="dc-btn text-white" style="background:#25D366"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</a>` : ''}
+                        ${m.email ? `<a href="${Utils.mailtoLink(m.email, 'Your DramaConnect account is approved', msg, false)}" class="dc-btn dc-btn-primary"><i class="fas fa-envelope mr-1"></i> Email</a>` : ''}
+                        <button class="dc-btn bg-slate-100 text-slate-700" onclick="this.closest('.fixed').remove()">Skip</button>
+                    </div>
+                </div>`, 'max-w-md');
         }
         async function reject(id) {
             if (!await UI.confirm('Reject and remove this access request?')) return;

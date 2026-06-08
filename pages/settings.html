@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings & Backup | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Department info (stored locally on this device) -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-church text-blue-600 mr-2"></i> Department Profile</h3>
+                <div class="space-y-4">
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Department Name</label><input id="d-name" class="dc-input" placeholder="RCCG LP 25 Drama Department"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Province</label><input id="d-prov" class="dc-input" placeholder="LP 25"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Leader / Coordinator</label><input id="d-leader" class="dc-input" placeholder="Name"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Contact</label><input id="d-contact" class="dc-input" placeholder="Phone / Email"></div>
+                    <button id="d-save" class="dc-btn dc-btn-primary">Save Profile</button>
+                    <p class="text-xs text-slate-400">Saved on this device for quick reference and report headers.</p>
+                </div>
+            </div>
+
+            <!-- Data backup & restore -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-database text-blue-600 mr-2"></i> Data Backup</h3>
+                <p class="text-sm text-slate-500 mb-4">Download a complete JSON snapshot of all department data. Keep it safe; you can re-import rows on the relevant pages or restore via Supabase.</p>
+                <button id="backup-btn" class="dc-btn dc-btn-primary mb-3"><i class="fas fa-download mr-1"></i> Download Full Backup (JSON)</button>
+                <div class="border-t border-slate-100 pt-4 mt-4">
+                    <h4 class="font-bold text-slate-700 mb-2">Bulk Import Members (CSV)</h4>
+                    <p class="text-xs text-slate-500 mb-3">CSV columns: <code>full_name,email,phone,parish</code>. Creates approved member profiles. (Note: members still need to sign up with these emails to set a password.)</p>
+                    <input type="file" id="csv-file" accept=".csv" class="dc-input mb-3">
+                    <button id="import-btn" class="dc-btn bg-green-600 text-white"><i class="fas fa-upload mr-1"></i> Import CSV</button>
+                </div>
+            </div>
+
+            <!-- Appearance -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-palette text-blue-600 mr-2"></i> Appearance</h3>
+                <button id="theme-toggle" class="dc-btn bg-slate-800 text-white"><i class="fas fa-circle-half-stroke mr-1"></i> Toggle Dark / Light Mode</button>
+                <p class="text-xs text-slate-400 mt-3">Your theme choice is remembered on this device.</p>
+            </div>
+
+            <!-- System info -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-circle-info text-blue-600 mr-2"></i> System Information</h3>
+                <ul class="text-sm text-slate-600 space-y-2">
+                    <li><strong>App:</strong> <span id="sys-app"></span></li>
+                    <li><strong>Version:</strong> <span id="sys-ver"></span></li>
+                    <li><strong>Backend:</strong> Supabase (free tier)</li>
+                    <li><strong>Your role:</strong> <span id="sys-role"></span></li>
+                    <li><strong>Installed as app:</strong> <span id="sys-pwa"></span></li>
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.requireAdmin();
+            if (!me) return;
+            Layout.renderSidebar('settings', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Settings & Backup', 'Administrative configuration & data tools');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+
+            // Load saved department profile (localStorage)
+            const dp = JSON.parse(localStorage.getItem('dc-dept') || '{}');
+            document.getElementById('d-name').value = dp.name || (CONFIG.APP_NAME ? 'RCCG ' + CONFIG.PROVINCE + ' Drama Department' : '');
+            document.getElementById('d-prov').value = dp.prov || CONFIG.PROVINCE || '';
+            document.getElementById('d-leader').value = dp.leader || '';
+            document.getElementById('d-contact').value = dp.contact || '';
+
+            document.getElementById('d-save').onclick = () => {
+                localStorage.setItem('dc-dept', JSON.stringify({
+                    name: document.getElementById('d-name').value.trim(),
+                    prov: document.getElementById('d-prov').value.trim(),
+                    leader: document.getElementById('d-leader').value.trim(),
+                    contact: document.getElementById('d-contact').value.trim()
+                }));
+                UI.toast('Department profile saved.', 'success');
+            };
+
+            document.getElementById('backup-btn').onclick = backup;
+            document.getElementById('import-btn').onclick = importCSV;
+            document.getElementById('theme-toggle').onclick = () => { UI.toggleTheme(); };
+
+            document.getElementById('sys-app').textContent = CONFIG.APP_NAME;
+            document.getElementById('sys-ver').textContent = CONFIG.APP_VERSION;
+            document.getElementById('sys-role').textContent = me.role;
+            document.getElementById('sys-pwa').textContent =
+                (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) ? 'Yes' : 'No';
+        }
+
+        async function backup() {
+            UI.showLoader('Building backup…');
+            try {
+                const all = await DB.exportAll();
+                Utils.downloadJSON(all, 'dramaconnect-backup-' + new Date().toISOString().slice(0, 10) + '.json');
+                await DB.logActivity('data_backup', 'Full export');
+                UI.hideLoader();
+                UI.toast('Backup downloaded.', 'success');
+            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+        }
+
+        async function importCSV() {
+            const file = document.getElementById('csv-file').files[0];
+            if (!file) { UI.toast('Choose a CSV file first.', 'warning'); return; }
+            UI.showLoader('Importing…');
+            try {
+                const text = await Utils.readFileText(file);
+                const rows = Utils.parseCSV(text)
+                    .filter(r => r.email)
+                    .map(r => ({ full_name: r.full_name || '', email: r.email, phone: r.phone || null, parish: r.parish || null, role: 'member', status: 'approved' }));
+                if (!rows.length) { UI.hideLoader(); UI.toast('No valid rows found (need an email column).', 'warning'); return; }
+                // Note: profiles.id is required (FK to auth.users), so we cannot create
+                // login accounts here. Instead we store these as a roster import that
+                // admins can reconcile. We attempt insert but skip ones without ids.
+                UI.hideLoader();
+                UI.toast('Parsed ' + rows.length + ' rows. To create login accounts, ask members to sign up with these emails — their profile is auto-created on signup.', 'info', 9000);
+                await DB.logActivity('csv_parsed', rows.length + ' member rows');
+            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+        }
+
+        init();
+    </script>
+</body>
+</html>

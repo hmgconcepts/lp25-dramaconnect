@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inbox | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Compose (in-platform) -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-pen-to-square text-blue-600 mr-2"></i> New Message</h3>
+                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">To</label>
+                <select id="to" class="dc-input mb-3"></select>
+                <input id="subject" class="dc-input mb-3" placeholder="Subject (optional)">
+                <textarea id="body" rows="5" class="dc-input mb-3" placeholder="Write your message…"></textarea>
+                <button id="send" class="dc-btn dc-btn-primary w-full"><i class="fas fa-paper-plane mr-1"></i> Send (in-platform)</button>
+                <p class="text-xs text-slate-400 mt-3">Messages stay inside DramaConnect. Recipients see them in their Inbox.</p>
+            </div>
+
+            <!-- Message list -->
+            <div class="lg:col-span-2 glass-card p-6 md:p-8 animate-fade-in">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-inbox text-blue-600 mr-2"></i> Messages</h3>
+                    <div class="flex gap-2">
+                        <button id="tab-in" class="dc-btn bg-blue-600 text-white text-sm py-2">Received</button>
+                        <button id="tab-sent" class="dc-btn bg-slate-100 text-slate-700 text-sm py-2">Sent</button>
+                    </div>
+                </div>
+                <div id="list" class="space-y-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, members = [], tab = 'in';
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('inbox', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Inbox', 'Private in-platform messages');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+
+            try {
+                members = (await DB.getMembers()).filter(m => !m.status || m.status === 'approved');
+            } catch (e) { members = []; }
+            buildRecipients();
+
+            document.getElementById('send').onclick = send;
+            document.getElementById('tab-in').onclick = () => { tab = 'in'; switchTab(); };
+            document.getElementById('tab-sent').onclick = () => { tab = 'sent'; switchTab(); };
+            load();
+        }
+
+        function buildRecipients() {
+            const opts = [];
+            if (Auth.isAdmin(me)) {
+                opts.push('<option value="all">📢 Broadcast — all members</option>');
+            } else {
+                opts.push('<option value="admins">👮 Department Admins (leadership)</option>');
+            }
+            members.filter(m => m.id !== me.id).forEach(m =>
+                opts.push(`<option value="${m.id}">${UI.esc(m.full_name || m.email)}${m.role === 'admin' ? ' (admin)' : ''}</option>`));
+            document.getElementById('to').innerHTML = opts.join('');
+        }
+
+        function switchTab() {
+            document.getElementById('tab-in').className = 'dc-btn text-sm py-2 ' + (tab === 'in' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700');
+            document.getElementById('tab-sent').className = 'dc-btn text-sm py-2 ' + (tab === 'sent' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700');
+            load();
+        }
+
+        async function send() {
+            const to = document.getElementById('to').value;
+            const subject = document.getElementById('subject').value.trim();
+            const body = document.getElementById('body').value.trim();
+            if (!body) { UI.toast('Write a message first.', 'warning'); return; }
+            const payload = { sender_id: me.id, sender_name: me.full_name || me.email, subject: subject || null, body };
+            if (to === 'all') { payload.recipient_id = null; payload.to_admins = false; }
+            else if (to === 'admins') { payload.recipient_id = null; payload.to_admins = true; }
+            else { payload.recipient_id = to; payload.to_admins = false; }
+            try {
+                await DB.sendInternalMessage(payload);
+                await DB.logActivity('inbox_send', to);
+                document.getElementById('subject').value = ''; document.getElementById('body').value = '';
+                UI.toast('Message sent.', 'success');
+                tab = 'sent'; switchTab();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        async function load() {
+            const host = document.getElementById('list');
+            try {
+                let msgs;
+                if (tab === 'sent') msgs = await DB.getSentMessages(me.id);
+                else {
+                    const all = await DB.getMyInbox(me);
+                    msgs = all.filter(m => m.sender_id !== me.id); // received only
+                }
+                if (!msgs.length) { host.innerHTML = `<p class="text-slate-400 text-sm">No ${tab === 'sent' ? 'sent' : 'received'} messages.</p>`; return; }
+                host.innerHTML = msgs.map(m => {
+                    const who = tab === 'sent'
+                        ? (m.to_admins ? 'To: Admins' : (m.recipient_id ? 'To: ' + recipientName(m.recipient_id) : 'To: All members'))
+                        : 'From: ' + UI.esc(m.sender_name || 'Member');
+                    const unread = tab === 'in' && !m.read_at;
+                    return `
+                    <div class="p-4 rounded-xl border ${unread ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-transparent'}">
+                        <div class="flex justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <p class="text-sm font-bold text-slate-800">${unread ? '<span class="badge badge-admin mr-1">NEW</span>' : ''}${UI.esc(m.subject || '(no subject)')}</p>
+                                <p class="text-xs text-slate-500 mt-0.5">${who} • ${Utils.formatDateTime(m.created_at)}</p>
+                                <p class="text-sm text-slate-600 mt-2 whitespace-pre-line">${UI.esc(m.body || '')}</p>
+                            </div>
+                            <div class="flex flex-col gap-2 items-end">
+                                ${unread ? `<button class="text-blue-600 text-xs font-bold hover:underline" onclick="markRead('${m.id}')">Mark read</button>` : ''}
+                                <button class="text-red-600 text-xs font-bold hover:underline" onclick="del('${m.id}')">Delete</button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        function recipientName(id) { const m = members.find(x => x.id === id); return m ? UI.esc(m.full_name || m.email) : 'member'; }
+        async function markRead(id) { try { await DB.markRead(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        async function del(id) { if (!await UI.confirm('Delete this message?')) return; try { await DB.deleteInbox(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.markRead = markRead; window.del = del;
+        init();
+    </script>
+</body>
+</html>

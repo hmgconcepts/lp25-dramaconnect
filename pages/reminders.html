@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduled Reminders | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-6 mb-8">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-bell text-blue-600 mr-2"></i> New Scheduled Reminder</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input id="r-title" placeholder="Title (e.g. Weekly Rehearsal)" class="dc-input md:col-span-2">
+                <select id="r-audience" class="dc-input"><option value="all">All members</option><option value="members">Members only</option><option value="admins">Admins only</option></select>
+                <select id="r-freq" class="dc-input"><option value="weekly">Weekly</option><option value="daily">Daily</option><option value="monthly">Monthly</option><option value="once">Once</option></select>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+                <textarea id="r-body" rows="2" placeholder="Message body…" class="dc-input md:col-span-3"></textarea>
+                <input id="r-next" type="datetime-local" class="dc-input">
+            </div>
+            <button id="r-add" class="dc-btn dc-btn-primary mt-4">Schedule Reminder</button>
+            <p class="text-xs text-slate-400 mt-2">When a reminder is due, it appears here with a <strong>"Send now"</strong> button that posts it to everyone's in‑platform Inbox (and you can also broadcast via WhatsApp/Email). This is the free, no‑server approach.</p>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-clock text-blue-600 mr-2"></i> Scheduled Reminders</h3>
+            <div id="rem-list" class="space-y-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, members = [];
+        async function init() {
+            me = await Auth.requireAdmin();
+            if (!me) return;
+            Layout.renderSidebar('reminders', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Scheduled Reminders', 'Recurring reminders for the department');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('r-add').onclick = add;
+            try { members = (await DB.getMembers()).filter(m => !m.status || m.status === 'approved'); } catch (e) { members = []; }
+            load();
+        }
+
+        function computeNext(current, freq) {
+            const d = new Date(current);
+            if (freq === 'daily') d.setDate(d.getDate() + 1);
+            else if (freq === 'weekly') d.setDate(d.getDate() + 7);
+            else if (freq === 'monthly') d.setMonth(d.getMonth() + 1);
+            else return null; // 'once'
+            return d.toISOString();
+        }
+
+        async function add() {
+            const title = document.getElementById('r-title').value.trim();
+            const next = document.getElementById('r-next').value;
+            if (!title || !next) { UI.toast('Title and first run date/time are required.', 'warning'); return; }
+            try {
+                await DB.addReminder({
+                    title, body: document.getElementById('r-body').value.trim() || null,
+                    audience: document.getElementById('r-audience').value,
+                    frequency: document.getElementById('r-freq').value,
+                    next_run: new Date(next).toISOString(), active: true,
+                    created_by: me.full_name || me.email
+                });
+                await DB.logActivity('reminder_add', title);
+                ['r-title','r-body','r-next'].forEach(id => document.getElementById(id).value = '');
+                UI.toast('Reminder scheduled.', 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        async function load() {
+            const host = document.getElementById('rem-list');
+            try {
+                const items = await DB.getReminders();
+                if (!items.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No reminders scheduled.</p>'; return; }
+                host.innerHTML = items.map(r => {
+                    const due = r.next_run && Utils.daysUntil(r.next_run) <= 0;
+                    return `
+                    <div class="p-4 rounded-xl ${due ? 'bg-yellow-50 border border-yellow-200' : 'bg-slate-50'}">
+                        <div class="flex flex-wrap justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-800">${UI.esc(r.title)} <span class="badge badge-member ml-1">${r.frequency}</span> <span class="badge ${r.active?'badge-green':'badge-red'} ml-1">${r.active?'active':'paused'}</span></p>
+                                ${r.body ? `<p class="text-sm text-slate-600 mt-1">${UI.esc(r.body)}</p>` : ''}
+                                <p class="text-xs text-slate-400 mt-1">Audience: ${UI.esc(r.audience)} • Next: ${Utils.formatDateTime(r.next_run)} ${due ? '<span class="text-yellow-700 font-bold">(due now)</span>' : '• ' + Utils.relativeTime(r.next_run)}</p>
+                            </div>
+                            <div class="flex gap-2 items-center">
+                                ${due ? `<button class="dc-btn bg-green-600 text-white text-xs py-2" onclick="sendNow('${r.id}')">Send now</button>` : ''}
+                                <button class="text-blue-600 text-xs font-bold hover:underline" onclick="toggle('${r.id}', ${r.active})">${r.active?'Pause':'Resume'}</button>
+                                <button class="text-red-600 text-xs font-bold hover:underline" onclick="del('${r.id}')">Delete</button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+
+        async function sendNow(id) {
+            try {
+                const items = await DB.getReminders();
+                const r = items.find(x => x.id === id);
+                if (!r) return;
+                // Post to in-platform inbox as a broadcast (audience-aware)
+                const payload = { sender_id: me.id, sender_name: me.full_name || me.email, subject: '🔔 ' + r.title, body: r.body || r.title };
+                if (r.audience === 'admins') { payload.recipient_id = null; payload.to_admins = true; }
+                else { payload.recipient_id = null; payload.to_admins = false; }
+                await DB.sendInternalMessage(payload);
+                // Advance schedule (or deactivate if 'once')
+                const next = computeNext(r.next_run, r.frequency);
+                await DB.updateReminder(id, next ? { next_run: next } : { active: false });
+                await DB.logActivity('reminder_send', r.title);
+                UI.toast('Reminder sent to Inbox' + (next ? ' & rescheduled.' : '.'), 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function toggle(id, active) { try { await DB.updateReminder(id, { active: !active }); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        async function del(id) { if (!await UI.confirm('Delete this reminder?')) return; try { await DB.deleteReminder(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.sendNow = sendNow; window.toggle = toggle; window.del = del;
+        init();
+    </script>
+</body>
+</html>
