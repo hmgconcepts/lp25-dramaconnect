@@ -96,6 +96,90 @@ const Utils = {
     initials(name) {
         if (!name) return '?';
         return name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    },
+
+    /** Minimal CSV parser → array of objects keyed by the header row. */
+    parseCSV(text) {
+        const rows = [];
+        let row = [], field = '', inQuotes = false;
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+            if (inQuotes) {
+                if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+                else if (c === '"') inQuotes = false;
+                else field += c;
+            } else {
+                if (c === '"') inQuotes = true;
+                else if (c === ',') { row.push(field); field = ''; }
+                else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+                else if (c === '\r') { /* ignore */ }
+                else field += c;
+            }
+        }
+        if (field.length || row.length) { row.push(field); rows.push(row); }
+        if (!rows.length) return [];
+        const headers = rows[0].map(h => h.trim());
+        return rows.slice(1).filter(r => r.some(v => v && v.trim() !== '')).map(r => {
+            const o = {};
+            headers.forEach((h, idx) => o[h] = (r[idx] || '').trim());
+            return o;
+        });
+    },
+
+    /** Download any JS object/array as a JSON file (for backups). */
+    downloadJSON(obj, filename = 'backup.json') {
+        const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    },
+
+    /** Read a File object as text (Promise). */
+    readFileText(file) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = reject;
+            r.readAsText(file);
+        });
+    },
+
+    /* ----------------------- MESSAGING HELPERS ----------------------- */
+    /**
+     * Normalise a phone number to international digits for wa.me.
+     * Default country code is Nigeria (234). Handles 0XXXXXXXXXX,
+     * +234XXXXXXXXXX, 234XXXXXXXXXX, and bare 10-digit numbers.
+     */
+    normalizePhone(phone, countryCode = '234') {
+        if (!phone) return '';
+        let p = String(phone).replace(/[^\d+]/g, '');
+        if (p.startsWith('+')) return p.slice(1);          // already international
+        if (p.startsWith('00')) return p.slice(2);
+        if (p.startsWith('0')) return countryCode + p.slice(1); // local -> intl
+        if (p.startsWith(countryCode)) return p;
+        if (p.length === 10) return countryCode + p;       // bare 10-digit
+        return p;
+    },
+
+    /** Build a wa.me WhatsApp deep link with a pre-filled message. */
+    whatsappLink(phone, text) {
+        const num = this.normalizePhone(phone);
+        return 'https://wa.me/' + num + (text ? '?text=' + encodeURIComponent(text) : '');
+    },
+
+    /** Build a mailto: link. `emails` may be a string or array (used as BCC for groups). */
+    mailtoLink(emails, subject, body, useBcc = false) {
+        const list = Array.isArray(emails) ? emails.filter(Boolean).join(',') : (emails || '');
+        const params = [];
+        if (subject) params.push('subject=' + encodeURIComponent(subject));
+        if (body) params.push('body=' + encodeURIComponent(body));
+        if (useBcc) {
+            params.unshift('bcc=' + encodeURIComponent(list));
+            return 'mailto:?' + params.join('&');
+        }
+        return 'mailto:' + encodeURIComponent(list) + (params.length ? '?' + params.join('&') : '');
     }
 };
 window.Utils = Utils;

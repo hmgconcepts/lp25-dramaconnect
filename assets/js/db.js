@@ -187,6 +187,200 @@ const DB = {
             .select('*, profiles(full_name), rehearsals(rehearsal_date)');
         if (error) throw error;
         return data || [];
+    },
+
+    /* ============== EXTERNAL BROADCAST LOG (WhatsApp/Email) ======= */
+    /** Log an outgoing external broadcast (for the broadcast history). */
+    async logMessage(payload) {
+        const { error } = await sb.from('messages').insert([payload]);
+        if (error) throw error;
+    },
+    async getMessages(limit = 100) {
+        const { data, error } = await sb.from('messages')
+            .select('*').order('created_at', { ascending: false }).limit(limit);
+        if (error) throw error;
+        return data || [];
+    },
+    async deleteMessage(id) {
+        const { error } = await sb.from('messages').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    /* ============== IN-PLATFORM MESSAGING (internal inbox) ======== */
+    /**
+     * Send an internal message. `recipient_id` = a member's id, or NULL for a
+     * broadcast to everyone. `to_admins` = true means "to all admins" (member
+     * contacting leadership).
+     */
+    async sendInternalMessage(payload) {
+        const { error } = await sb.from('inbox').insert([payload]);
+        if (error) throw error;
+    },
+    /** Messages addressed TO me: direct, broadcasts, and (if admin) to_admins. */
+    async getMyInbox(user) {
+        let query = sb.from('inbox').select('*').order('created_at', { ascending: false });
+        // RLS enforces visibility; we still order/return everything visible to me.
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+    },
+    /** Messages I have sent. */
+    async getSentMessages(userId) {
+        const { data, error } = await sb.from('inbox').select('*')
+            .eq('sender_id', userId).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    async markRead(messageId) {
+        const { error } = await sb.from('inbox').update({ read_at: new Date().toISOString() }).eq('id', messageId);
+        if (error) throw error;
+    },
+    async deleteInbox(id) {
+        const { error } = await sb.from('inbox').delete().eq('id', id);
+        if (error) throw error;
+    },
+    async getUnreadCount(user) {
+        const { data, error } = await sb.from('inbox').select('id, read_at, recipient_id, sender_id');
+        if (error) return 0;
+        return (data || []).filter(m => !m.read_at && m.sender_id !== user.id).length;
+    },
+
+    /* ===================== TASKS / ASSIGNMENTS ==================== */
+    async getTasks() {
+        const { data, error } = await sb.from('tasks')
+            .select('*, profiles!tasks_assignee_id_fkey(full_name)')
+            .order('due_date', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+    async getMyTasks(userId) {
+        const { data, error } = await sb.from('tasks').select('*')
+            .eq('assignee_id', userId).order('due_date', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+    async addTask(payload) {
+        const { error } = await sb.from('tasks').insert([payload]);
+        if (error) throw error;
+    },
+    async updateTaskStatus(id, status) {
+        const { error } = await sb.from('tasks').update({ status }).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteTask(id) {
+        const { error } = await sb.from('tasks').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    /* ===================== SCHEDULED REMINDERS =================== */
+    async getReminders() {
+        const { data, error } = await sb.from('reminders')
+            .select('*').order('next_run', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+    async addReminder(payload) {
+        const { error } = await sb.from('reminders').insert([payload]);
+        if (error) throw error;
+    },
+    async updateReminder(id, updates) {
+        const { error } = await sb.from('reminders').update(updates).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteReminder(id) {
+        const { error } = await sb.from('reminders').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    /* ===================== RESOURCE LIBRARY ====================== */
+    async getResources() {
+        const { data, error } = await sb.from('resources')
+            .select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    async addResource(payload) {
+        const { error } = await sb.from('resources').insert([payload]);
+        if (error) throw error;
+    },
+    async deleteResource(id) {
+        const { error } = await sb.from('resources').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    /* ========================= POLLS / VOTING ===================== */
+    async getPolls() {
+        const { data, error } = await sb.from('polls')
+            .select('*, poll_votes(id, option_index, voter_id)')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    async addPoll(payload) {
+        const { error } = await sb.from('polls').insert([payload]);
+        if (error) throw error;
+    },
+    async closePoll(id, open) {
+        const { error } = await sb.from('polls').update({ is_open: open }).eq('id', id);
+        if (error) throw error;
+    },
+    async deletePoll(id) {
+        const { error } = await sb.from('polls').delete().eq('id', id);
+        if (error) throw error;
+    },
+    async castVote(pollId, optionIndex, voterId) {
+        const { error } = await sb.from('poll_votes').upsert(
+            { poll_id: pollId, option_index: optionIndex, voter_id: voterId },
+            { onConflict: 'poll_id,voter_id' }
+        );
+        if (error) throw error;
+    },
+
+    /* ========================= NOTIFICATIONS ====================== */
+    /** Lightweight unified feed for the bell: unread inbox + open tasks. */
+    async getNotifications(user) {
+        const out = [];
+        try {
+            const inbox = await this.getMyInbox(user);
+            inbox.filter(m => !m.read_at && m.sender_id !== user.id).slice(0, 10).forEach(m => out.push({
+                type: 'message', icon: 'fa-envelope', color: '#2563eb',
+                text: (m.sender_name || 'Someone') + ': ' + (m.subject || (m.body || '').slice(0, 40)),
+                time: m.created_at, href: 'inbox.html'
+            }));
+        } catch (e) {}
+        try {
+            const tasks = await this.getMyTasks(user.id);
+            tasks.filter(t => t.status !== 'done').slice(0, 10).forEach(t => out.push({
+                type: 'task', icon: 'fa-list-check', color: '#16a34a',
+                text: 'Task: ' + t.title + (t.due_date ? ' (due ' + t.due_date + ')' : ''),
+                time: t.created_at, href: 'tasks.html'
+            }));
+        } catch (e) {}
+        out.sort((a, b) => new Date(b.time) - new Date(a.time));
+        return out;
+    },
+
+    /* ===================== BULK / BACKUP (admin) =================== */
+    /** Bulk-insert productions/events/finances from an array of rows. */
+    async bulkInsert(table, rows) {
+        if (!rows || !rows.length) return;
+        const { error } = await sb.from(table).insert(rows);
+        if (error) throw error;
+    },
+
+    /** Export the entire department dataset (for backup). Read-only. */
+    async exportAll() {
+        const tables = ['profiles', 'productions', 'cast_list', 'finances', 'budgets',
+                        'rehearsals', 'attendance', 'announcements', 'events',
+                        'messages', 'inbox', 'tasks', 'reminders',
+                        'resources', 'polls', 'poll_votes'];
+        const out = { exported_at: new Date().toISOString(), data: {} };
+        for (const t of tables) {
+            const { data, error } = await sb.from(t).select('*');
+            if (error) throw error;
+            out.data[t] = data || [];
+        }
+        return out;
     }
 };
 window.DB = DB;
