@@ -17,6 +17,19 @@ const DB = {
         if (error) throw error;
         return data;
     },
+    /** Members whose birthday is today (by month/day). */
+    async getTodaysBirthdays() {
+        const now = new Date();
+        const { data, error } = await sb.from('profiles').select('*')
+            .eq('birth_month', now.getMonth() + 1).eq('birth_day', now.getDate());
+        if (error) throw error;
+        return data || [];
+    },
+    /** Mark that today's birthday greeting was handled for a member (dedupe). */
+    async markBirthdaySent(memberId, dayKey) {
+        const { error } = await sb.from('profiles').update({ bday_last_sent: dayKey }).eq('id', memberId);
+        if (error) throw error;
+    },
     async updateMember(userId, updates) {
         const { data, error } = await sb.from('profiles').update(updates).eq('id', userId).select();
         if (error) throw error;
@@ -36,6 +49,31 @@ const DB = {
         // service_role key — never exposed to the browser.)
         const { error } = await sb.from('profiles').delete().eq('id', userId);
         if (error) throw error;
+    },
+
+    /**
+     * Admin creates a full login account for a member who has NOT signed up.
+     * This calls the secure `admin-create-member` Edge Function (which uses the
+     * service_role key SERVER-SIDE — never in the browser). Returns the created
+     * account info incl. the password to hand to the member.
+     * If the function is not deployed, falls back to a "roster-only" profile
+     * (no login) and tells the admin to deploy the function for full accounts.
+     */
+    async adminCreateMember({ full_name, email, password, phone, parish, role, makeAdmin }) {
+        const { data: { session } } = await sb.auth.getSession();
+        const token = session ? session.access_token : null;
+        const fnUrl = CONFIG.SUPABASE_URL.replace('.supabase.co', '.functions.supabase.co') + '/admin-create-member';
+        const resp = await fetch(fnUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token || CONFIG.SUPABASE_KEY) },
+            body: JSON.stringify({ full_name, email, password, phone, parish, role: (makeAdmin ? 'admin' : (role || 'member')) })
+        });
+        if (!resp.ok) {
+            let msg = 'admin-create-member function error';
+            try { const j = await resp.json(); msg = (j && (j.error || j.message)) || msg; } catch (e) {}
+            const err = new Error(msg); err.status = resp.status; throw err;
+        }
+        return await resp.json();
     },
 
     /* ====================== PRODUCTIONS & CASTING ==================== */
@@ -85,6 +123,28 @@ const DB = {
             .insert([{ rehearsal_date: date, notes: note }]).select();
         if (error) throw error;
         return data;
+    },
+    /** Admin sets/updates the self check-in code + open window for a rehearsal. */
+    async setCheckinCode(rehearsalId, code, open) {
+        const { error } = await sb.from('rehearsals')
+            .update({ checkin_code: code, checkin_open: open }).eq('id', rehearsalId);
+        if (error) throw error;
+    },
+    /** Member self check-in using the code. Returns true on success. */
+    async selfCheckIn(rehearsalId, memberId, code) {
+        // Verify the code & that check-in is open (RLS lets members read rehearsals).
+        const { data: reh, error: e1 } = await sb.from('rehearsals')
+            .select('checkin_code, checkin_open').eq('id', rehearsalId).maybeSingle();
+        if (e1) throw e1;
+        if (!reh || !reh.checkin_open) throw new Error('Check-in is closed for this rehearsal.');
+        if (!reh.checkin_code || String(reh.checkin_code).trim() !== String(code).trim())
+            throw new Error('Incorrect check-in code.');
+        const { error } = await sb.from('attendance').upsert(
+            { rehearsal_id: rehearsalId, member_id: memberId, status: 'present' },
+            { onConflict: 'rehearsal_id,member_id' }
+        );
+        if (error) throw error;
+        return true;
     },
     async deleteRehearsal(id) {
         const { error } = await sb.from('rehearsals').delete().eq('id', id);
@@ -162,6 +222,26 @@ const DB = {
     async deleteEvent(id) {
         const { error } = await sb.from('events').delete().eq('id', id);
         if (error) throw error;
+    },
+    async getRsvps(eventId) {
+        const { data, error } = await sb.from('event_rsvps')
+            .select('*, profiles(full_name)').eq('event_id', eventId);
+        if (error) throw error;
+        return data || [];
+    },
+    /** Member RSVPs to an event: 'going' | 'maybe' | 'no'. */
+    async setRsvp(eventId, memberId, response) {
+        const { error } = await sb.from('event_rsvps').upsert(
+            { event_id: eventId, member_id: memberId, response },
+            { onConflict: 'event_id,member_id' }
+        );
+        if (error) throw error;
+    },
+    async getMyRsvps(memberId) {
+        const { data, error } = await sb.from('event_rsvps')
+            .select('*').eq('member_id', memberId);
+        if (error) throw error;
+        return data || [];
     },
 
     /* ======================== ACTIVITY LOG ======================= */
@@ -373,7 +453,7 @@ const DB = {
         const tables = ['profiles', 'productions', 'cast_list', 'finances', 'budgets',
                         'rehearsals', 'attendance', 'announcements', 'events',
                         'messages', 'inbox', 'tasks', 'reminders',
-                        'resources', 'polls', 'poll_votes'];
+                        'resources', 'polls', 'poll_votes', 'event_rsvps'];
         const out = { exported_at: new Date().toISOString(), data: {} };
         for (const t of tables) {
             const { data, error } = await sb.from(t).select('*');

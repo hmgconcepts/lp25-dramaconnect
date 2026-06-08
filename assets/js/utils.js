@@ -180,6 +180,25 @@ const Utils = {
             return 'mailto:?' + params.join('&');
         }
         return 'mailto:' + encodeURIComponent(list) + (params.length ? '?' + params.join('&') : '');
+    },
+
+    /* ----------------------- BIRTHDAY HELPERS ----------------------- */
+    monthName(m) {
+        const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        return (m >= 1 && m <= 12) ? names[m - 1] : '';
+    },
+    /** True if the member's birth_month/birth_day match a given date (defaults today). */
+    isBirthday(member, date = new Date()) {
+        return member && member.birth_month === (date.getMonth() + 1) && member.birth_day === date.getDate();
+    },
+    /** Today's date as YYYY-MM-DD (local). */
+    todayKey(date = new Date()) {
+        const p = n => String(n).padStart(2, '0');
+        return date.getFullYear() + '-' + p(date.getMonth() + 1) + '-' + p(date.getDate());
+    },
+    /** Default birthday message text. */
+    birthdayMessage(member) {
+        return `Happy Birthday, ${member.full_name || 'dear member'}! 🎉🎂 The entire RCCG LP 25 Drama Department celebrates you today. May this new year of your life overflow with God's grace, joy and favour. We love and appreciate you!`;
     }
 };
 window.Utils = Utils;

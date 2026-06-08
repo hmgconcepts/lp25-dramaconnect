@@ -18,6 +18,7 @@ const Layout = {
             { id: 'casting',       href: 'casting.html',       icon: 'fa-masks-theater',  label: 'Casting' },
             { id: 'rehearsals',    href: 'rehearsals.html',    icon: 'fa-calendar-check', label: 'Rehearsals' },
             { id: 'attendance',    href: 'attendance.html',    icon: 'fa-user-check',     label: 'Attendance' },
+            { id: 'analytics',     href: 'analytics.html',     icon: 'fa-chart-line',     label: 'Attendance Analytics' },
             { id: 'finance',       href: 'finance.html',       icon: 'fa-wallet',         label: 'Finance' },
             { id: 'budgets',       href: 'budgets.html',       icon: 'fa-scale-balanced', label: 'Budgets' }
         ]},
@@ -27,8 +28,10 @@ const Layout = {
             { id: 'tasks',         href: 'tasks.html',         icon: 'fa-list-check',     label: 'Tasks' },
             { id: 'messaging',     href: 'messaging.html',     icon: 'fa-paper-plane',    label: 'WhatsApp/Email', adminOnly: true },
             { id: 'events',        href: 'events.html',        icon: 'fa-calendar-days',  label: 'Events' },
+            { id: 'birthdays',     href: 'birthdays.html',     icon: 'fa-cake-candles',   label: 'Birthdays' },
             { id: 'polls',         href: 'polls.html',         icon: 'fa-square-poll-vertical', label: 'Polls' },
             { id: 'resources',     href: 'resources.html',     icon: 'fa-folder-open',    label: 'Resources' },
+            { id: 'idcard',        href: 'idcard.html',        icon: 'fa-id-card',        label: 'My ID Card' },
             { id: 'reports',       href: 'reports.html',       icon: 'fa-file-export',    label: 'Reports' }
         ]},
         { group: 'Administration', items: [
