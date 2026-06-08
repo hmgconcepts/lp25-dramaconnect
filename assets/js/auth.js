@@ -58,14 +58,26 @@ const Auth = {
         return this._cachedUser;
     },
 
-    /** Guards a page; redirects to login if not signed in. */
+    /** Guards a page; redirects to login if not signed in OR not approved. */
     async checkSession() {
         const user = await this.getCurrentUser();
         if (!user) {
             window.location.href = Auth.indexUrl();
             return null;
         }
+        // Approval gate: admins are always allowed; everyone else must be approved.
+        if (user.role !== 'admin' && user.status && user.status !== 'approved') {
+            try { sessionStorage.setItem('dc-pending', '1'); } catch (e) {}
+            await sb.auth.signOut();
+            window.location.href = Auth.indexUrl();
+            return null;
+        }
         return user;
+    },
+
+    /** Returns true if the account is allowed onto the platform. */
+    isApproved(user) {
+        return !!(user && (user.role === 'admin' || user.status === 'approved' || !user.status));
     },
 
     /** Guards admin-only pages. */

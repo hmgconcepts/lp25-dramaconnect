@@ -26,6 +26,17 @@ const DB = {
         const { error } = await sb.from('profiles').update({ role }).eq('id', userId);
         if (error) throw error;
     },
+    async setMemberStatus(userId, status) {
+        const { error } = await sb.from('profiles').update({ status }).eq('id', userId);
+        if (error) throw error;
+    },
+    async deleteMember(userId) {
+        // Removes the profile row. (The auth.users record can be removed by an
+        // admin from the Supabase dashboard, or via an Edge Function with the
+        // service_role key — never exposed to the browser.)
+        const { error } = await sb.from('profiles').delete().eq('id', userId);
+        if (error) throw error;
+    },
 
     /* ====================== PRODUCTIONS & CASTING ==================== */
     async getProductions() {

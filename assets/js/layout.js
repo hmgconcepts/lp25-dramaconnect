@@ -72,9 +72,9 @@ const Layout = {
             </div>`;
 
         const html = `
-        <aside class="w-64 bg-slate-900 text-white h-screen sticky top-0 hidden md:flex flex-col no-print">${sidebarInner}</aside>
-        <!-- Mobile drawer -->
-        <div id="mobile-drawer" class="fixed inset-0 z-[9990] hidden md:hidden">
+        <aside class="w-64 bg-slate-900 text-white h-screen sticky top-0 hidden lg:flex flex-col no-print">${sidebarInner}</aside>
+        <!-- Mobile / tablet drawer (shown below the lg breakpoint = 1024px) -->
+        <div id="mobile-drawer" class="fixed inset-0 z-[9990] hidden lg:hidden">
             <div id="drawer-overlay" class="absolute inset-0 bg-black/50"></div>
             <aside class="absolute left-0 top-0 w-64 bg-slate-900 text-white h-full flex flex-col animate-fade-in">${sidebarInner.replace(/id="theme-btn"/, 'id="theme-btn-m"').replace(/id="theme-label"/, 'id="theme-label-m"').replace(/id="logout-btn"/, 'id="logout-btn-m"')}</aside>
         </div>`;
@@ -110,7 +110,7 @@ const Layout = {
         return `
         <header class="flex justify-between items-center mb-8 no-print gap-4">
             <div class="flex items-center gap-3">
-                <button class="md:hidden text-slate-600 text-xl" onclick="Layout.openDrawer()"><i class="fas fa-bars"></i></button>
+                <button class="lg:hidden text-white bg-slate-900 hover:bg-slate-700 transition w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-md" onclick="Layout.openDrawer()" aria-label="Open menu"><i class="fas fa-bars"></i></button>
                 <div>
                     <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 dark-text">${title}</h1>
                     <p class="text-slate-500 text-sm">${subtitle || ''}</p>
