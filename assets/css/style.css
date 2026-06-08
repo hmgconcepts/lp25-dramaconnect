@@ -1,0 +1,45 @@
+:root {
+    --rccg-blue: #003399;
+    --rccg-blue-dark: #002266;
+    --rccg-red: #cc0000;
+    --slate-50: #f8fafc;
+    --slate-100: #f1f5f9;
+    --slate-200: #e2e8f0;
+    --slate-800: #1e293b;
+}
+
+.rccg-blue { background-color: var(--rccg-blue); }
+.rccg-red { background-color: var(--rccg-red); }
+
+.sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-slate-400 font-medium hover:bg-slate-800 hover:text-white;
+}
+.sidebar-link.active {
+    @apply bg-blue-600 text-white shadow-md shadow-blue-900/50;
+}
+
+.glass-card {
+    @apply bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden;
+}
+
+.enterprise-table thead th {
+    @apply p-4 text-left text-[10px] uppercase tracking-wider text-slate-400 font-bold bg-slate-50 border-b border-slate-100;
+}
+.enterprise-table tbody td {
+    @apply p-4 text-sm text-slate-600 border-b border-slate-50;
+}
+
+.admin-only { display: none; }
+.hidden { display: none; }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+
+@media print {
+    .no-print { display: none !important; }
+    body { background: white; }
+    .glass-card { border: none; shadow: none; }
+}
