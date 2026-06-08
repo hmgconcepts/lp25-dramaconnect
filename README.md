@@ -1,4 +1,4 @@
-# 🎭 DramaConnect Enterprise v9 — RCCG LP 25 Drama Department
+# 🎭 DramaConnect Enterprise v11 — RCCG LP 25 Drama Department
 
 DramaConnect is a complete, **zero‑cost institutional management hub** for the
 RCCG LP 25 Drama Department. It runs entirely on **free‑tier tools** (Supabase +
@@ -10,7 +10,31 @@ static hosting) and requires **no paid AI API** — keeping running costs at
 
 ---
 
-## ✨ What's New in v9 (this `enterprise v4` build)
+## ✨ What's New in v11 (this `enterprise v6` build)
+
+| New in v11 | Description |
+| :-- | :-- |
+| 🧑‍💼 **Rich member profiles** | Phone, WhatsApp, birthday (month+day only), gender, occupation, drama unit, home address & social links (Facebook, Instagram, TikTok, X). Members **complete their own details later** — ideal for admin‑created accounts. |
+| 📊 **Profile completion meter** | Shows each member how complete their profile is. |
+| 🎂 **Automatic birthday greetings** | A free **birthday‑bot** Edge Function posts Inbox + department greetings (and optional email) every birthday. Plus a **Birthdays** page with one‑tap WhatsApp/Email greetings. |
+| 👥 **Bulk CSV account creation** | Admins create many logins at once and download a credential sheet. |
+| 📈 **Attendance Analytics** | Per‑member attendance rate %, chart, KPIs & Excel export. |
+| 🪪 **Printable ID cards** | Each member gets a branded membership card with a QR code (print or save as PDF). |
+
+---
+
+## ✨ What's New in v10 (carried over)
+
+| New in v10 | Description |
+| :-- | :-- |
+| 🆕 **Admin creates member logins** | Admins add members who haven't signed up and **generate their login credentials** (auto‑generated or chosen password), then hand them over via Copy/WhatsApp/Email. Powered by a secure Edge Function (service_role server‑side only). |
+| 📍 **Member self check‑in** | Admin opens a **check‑in code** for a rehearsal; members mark **their own** attendance by entering the code. |
+| 📅 **Event RSVP** | Members RSVP **Going / Maybe / No**; admins see counts and the full RSVP list. |
+| 🔒 **Granular RLS** | New per‑row policies so members manage only their own attendance & RSVPs. |
+
+---
+
+## ✨ What's New in v9 (carried over)
 
 | New in v9 | Description |
 | :-- | :-- |
@@ -97,7 +121,7 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for a detailed explanation of every
 ## 📂 Folder Structure
 
 ```
-enterprise v4/
+enterprise v6/
 ├── index.html              # Landing + login / signup / forgot password
 ├── manifest.json           # PWA manifest
 ├── sw.js                   # Service worker (offline shell)
@@ -119,26 +143,31 @@ enterprise v4/
 │       ├── utils.js        # Currency/date/CSV/export helpers
 │       ├── layout.js       # Shared sidebar + header (local-CSS navigation)
 │       └── install.js      # PWA install prompt
-├── pages/                  # 24 authenticated app pages
+├── pages/                  # 27 authenticated app pages
 │   ├── home.html       dashboard.html  members.html      productions.html
-│   ├── casting.html    rehearsals.html attendance.html   finance.html
-│   ├── budgets.html    inbox.html      announcements.html tasks.html
-│   ├── messaging.html  events.html     polls.html        resources.html
-│   ├── reports.html    reminders.html  activity.html     settings.html
-│   ├── profile.html    portfolio.html  reset.html
+│   ├── casting.html    rehearsals.html attendance.html   analytics.html
+│   ├── finance.html    budgets.html    inbox.html        announcements.html
+│   ├── tasks.html      messaging.html  events.html       birthdays.html
+│   ├── polls.html      resources.html  idcard.html       reports.html
+│   ├── reminders.html  activity.html   settings.html     profile.html
+│   ├── portfolio.html  reset.html
 ├── database/
 │   ├── schema.sql                # Full schema + RLS + triggers
 │   └── repair_and_upgrade.sql    # All-in-one setup/repair (run this once)
 ├── supabase/functions/
-│   ├── notify-approval/index.ts  # OPTIONAL auto approval email
-│   └── run-reminders/index.ts    # OPTIONAL scheduled auto reminders
+│   ├── notify-approval/index.ts      # OPTIONAL auto approval email
+│   ├── run-reminders/index.ts        # OPTIONAL scheduled auto reminders
+│   ├── birthday-bot/index.ts         # OPTIONAL automatic birthday greetings
+│   └── admin-create-member/index.ts  # Admin creates member logins
 └── docs/
-    ├── SETUP_CHECKLIST.md      # Tick‑box first‑time setup
-    ├── DEPLOYMENT.md           # Step‑by‑step deployment (3 free hosts)
-    ├── FEATURES.md             # Detailed explanation of every feature
-    ├── EMAIL_NOTIFICATIONS.md  # Optional automated approval emails
-    ├── SCHEDULED_REMINDERS.md  # Optional fully-automatic reminders
-    └── USER_GUIDE.md           # End‑user manual
+    ├── SETUP_CHECKLIST.md       # Tick‑box first‑time setup
+    ├── DEPLOYMENT.md            # Step‑by‑step deployment (3 free hosts)
+    ├── FEATURES.md              # Detailed explanation of every feature
+    ├── ADMIN_CREATE_MEMBER.md   # Admin-created logins (Edge Function)
+    ├── SCHEDULED_REMINDERS.md   # Optional fully-automatic reminders
+    ├── BIRTHDAY_BOT.md          # Optional automatic birthday greetings
+    ├── EMAIL_NOTIFICATIONS.md   # Optional automated approval emails
+    └── USER_GUIDE.md            # End‑user manual
 ```
 
 ---
