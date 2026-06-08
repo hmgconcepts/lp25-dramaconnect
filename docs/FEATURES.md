@@ -13,11 +13,15 @@ it, where to find it, and how it works under the hood. All features run on
 - **What:** email + password login via Supabase Auth. On success the user is
   redirected to the dashboard. Already‑signed‑in users are auto‑redirected.
 
-### 1.2 Member Registration (Sign Up)
+### 1.2 Member Registration (Sign Up) + Admin Approval
 - **Where:** landing page → "Request Access".
 - **What:** creates a Supabase auth user with the member's full name. A database
   trigger (`handle_new_user`) automatically creates a matching `profiles` row
-  with the default role `member`.
+  with role `member` and status **`pending`**.
+- **Approval gate:** a newly registered user **cannot access the platform** until
+  an admin approves them. If a pending user tries to sign in, they are shown
+  *"Your account is awaiting admin approval"* and are signed out. Admins approve
+  (or reject) requests on the **Members** page.
 - **Why it matters:** without the trigger, new users would have no profile and
   the dashboard could not display their name or enforce roles.
 
@@ -51,10 +55,16 @@ it, where to find it, and how it works under the hood. All features run on
 
 - **Where:** `pages/members.html` · **View:** all · **Manage:** admin.
 - **Features:**
-  - Avatar initials, email, phone, parish, and role badge for every member.
+  - Avatar initials, email, phone, parish, **status** (approved/pending), and
+    role badge for every member.
   - **Live search** across name, email, and parish.
-  - **Role management (admin):** one click to promote a member to admin or demote
-    back — recorded in the Activity Log.
+  - **Pending Approvals panel (admin):** approve or reject each new access
+    request with one click. Promoting a pending user to admin auto-approves them.
+  - **Role management (admin):** one click to make a member an admin or demote
+    back to member.
+  - **Remove members (admin):** delete a member's profile from the platform
+    (you cannot remove your own account). Every action is recorded in the
+    Activity Log.
 
 ---
 
@@ -184,10 +194,15 @@ it, where to find it, and how it works under the hood. All features run on
 - One‑click toggle in the sidebar, **persisted** in `localStorage`, applied early
   to avoid flashes.
 
-### 15.3 Progressive Web App (PWA)
-- `manifest.json` + `sw.js` make the app **installable** ("Add to Home Screen")
-  and cache the UI shell for **offline** viewing. Supabase/API calls always go to
-  the network and are never cached.
+### 15.3 Progressive Web App (PWA) + Install Prompt
+- `manifest.json` + `sw.js` make the app **installable** and cache the UI shell
+  for **offline** viewing. Supabase/API calls always go to the network and are
+  never cached.
+- **Automatic install prompt (`install.js`):** while using the platform, the user
+  sees a friendly banner inviting them to **install the app**. On
+  Chrome/Edge/Android it triggers the native install dialog; on iOS Safari it
+  shows "Tap Share → Add to Home Screen". The prompt is dismissible and won't
+  reappear for 14 days, and never shows once the app is already installed.
 
 ### 15.4 Responsive & Mobile
 - Collapsible **mobile drawer** navigation; layouts adapt from phone to desktop.

@@ -119,20 +119,26 @@ You do **not** need to install anything on your computer.
 
 ## STAGE 4 — Create the First Administrator
 
-The system is **secure by default**: new users are plain members. Promote
-yourself once:
+The system is **secure by default**: new users are created as `member` with
+status `pending` and **cannot sign in until an admin approves them**. Set up the
+first admin once (the admin can approve everyone else from inside the app):
 
 1. Open your **live URL** and click **"Request Access"** to **sign up**.
    (If email confirmation is ON, click the link in your inbox first.)
-2. Go to **Supabase → Table Editor → `profiles`**.
-3. Find your row, change the **`role`** column from `member` to **`admin`**, and
-   save.
-   - Or run this in the SQL Editor:
-     ```sql
-     UPDATE profiles SET role = 'admin' WHERE email = 'you@example.com';
-     ```
-4. **Refresh** the app. All management tools (add/edit/delete, Activity Log,
-   role management) are now unlocked for you.
+2. Go to **Supabase → SQL Editor** and run (with your email):
+   ```sql
+   UPDATE profiles SET role = 'admin', status = 'approved'
+   WHERE email = 'you@example.com';
+   ```
+   *(Or use the all-in-one `database/repair_and_upgrade.sql`, which also does
+   this — just edit the email line.)*
+3. **Refresh** the app and sign in. All management tools (add/edit/delete,
+   Activity Log, role management, and the **Members → Pending Approvals** panel)
+   are now unlocked.
+
+> 🔑 **Approving future members:** as admin, go to **Members**. New sign‑ups
+> appear under **"Pending Approvals"** — click **Approve** (or **Reject**). You
+> can also **Make Admin** or **Remove** any member from the directory.
 
 ---
 
