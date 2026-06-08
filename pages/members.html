@@ -15,6 +15,12 @@
     <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
         <div id="page-header"></div>
 
+        <!-- Pending approvals (admin only) -->
+        <div id="pending-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-yellow-500">
+            <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-user-clock text-yellow-500 mr-2"></i> Pending Approvals <span id="pending-count" class="badge badge-yellow ml-2">0</span></h3>
+            <div id="pending-body" class="space-y-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+        </div>
+
         <div class="glass-card p-6 md:p-8 animate-fade-in">
             <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
                 <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-users text-blue-600 mr-2"></i> Personnel Directory</h3>
@@ -22,8 +28,8 @@
             </div>
             <div class="overflow-x-auto">
                 <table class="enterprise-table" id="members-table">
-                    <thead><tr><th>Member</th><th>Email</th><th>Phone</th><th>Parish</th><th>Role</th><th id="actions-col" class="admin-only">Actions</th></tr></thead>
-                    <tbody id="members-body"><tr><td colspan="6" class="text-center text-slate-400 py-8">Loading members…</td></tr></tbody>
+                    <thead><tr><th>Member</th><th>Email</th><th>Phone</th><th>Parish</th><th>Status</th><th>Role</th><th class="admin-only">Actions</th></tr></thead>
+                    <tbody id="members-body"><tr><td colspan="7" class="text-center text-slate-400 py-8">Loading members…</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -35,15 +41,16 @@
     <script src="../assets/js/db.js"></script>
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
     <script>
         let me = null, all = [];
         async function init() {
             me = await Auth.checkSession();
             if (!me) return;
             Layout.renderSidebar('members', me);
-            document.getElementById('page-header').innerHTML = Layout.renderHeader('Members', 'Department personnel directory');
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Members', 'Personnel directory & access control');
             Layout.setDate();
-            if (Auth.isAdmin(me)) document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'table-cell');
+            if (Auth.isAdmin(me)) document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
             document.getElementById('search').oninput = e => render(filter(e.target.value));
             await load();
         }
@@ -52,34 +59,80 @@
             return all.filter(m => [m.full_name, m.email, m.parish].some(v => (v || '').toLowerCase().includes(q)));
         }
         async function load() {
-            try { all = await DB.getMembers(); render(all); }
-            catch (e) { document.getElementById('members-body').innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
+            try { all = await DB.getMembers(); render(all); renderPending(); }
+            catch (e) { document.getElementById('members-body').innerHTML = `<tr><td colspan="7" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
+        }
+        function renderPending() {
+            if (!Auth.isAdmin(me)) return;
+            const pending = all.filter(m => m.status && m.status !== 'approved' && m.role !== 'admin');
+            document.getElementById('pending-count').textContent = pending.length;
+            const host = document.getElementById('pending-body');
+            if (!pending.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No pending requests. 🎉</p>'; return; }
+            host.innerHTML = pending.map(m => `
+                <div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-yellow-50 rounded-xl border border-yellow-100">
+                    <div class="flex items-center gap-3">
+                        <div class="h-9 w-9 rounded-full bg-yellow-500 text-white flex items-center justify-center text-xs font-bold">${UI.esc(Utils.initials(m.full_name))}</div>
+                        <div>
+                            <p class="font-bold text-slate-800 text-sm">${UI.esc(m.full_name || '—')}</p>
+                            <p class="text-xs text-slate-500">${UI.esc(m.email || '')}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="dc-btn bg-green-600 text-white text-xs py-2" onclick="approve('${m.id}')"><i class="fas fa-check mr-1"></i> Approve</button>
+                        <button class="dc-btn bg-red-600 text-white text-xs py-2" onclick="reject('${m.id}')"><i class="fas fa-xmark mr-1"></i> Reject</button>
+                    </div>
+                </div>`).join('');
         }
         function render(list) {
             const isAdmin = Auth.isAdmin(me);
             const body = document.getElementById('members-body');
-            if (!list.length) { body.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-8">No members found.</td></tr>'; return; }
-            body.innerHTML = list.map(m => `
+            if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-8">No members found.</td></tr>'; return; }
+            body.innerHTML = list.map(m => {
+                const approved = !m.status || m.status === 'approved';
+                return `
                 <tr>
                     <td><div class="flex items-center gap-3"><div class="h-9 w-9 rounded-full rccg-blue text-white flex items-center justify-center text-xs font-bold">${UI.esc(Utils.initials(m.full_name))}</div><span class="font-semibold text-slate-800">${UI.esc(m.full_name || '—')}</span></div></td>
                     <td>${UI.esc(m.email || '—')}</td>
                     <td>${UI.esc(m.phone || '—')}</td>
                     <td>${UI.esc(m.parish || '—')}</td>
+                    <td><span class="badge ${approved ? 'badge-green' : 'badge-yellow'}">${approved ? 'approved' : 'pending'}</span></td>
                     <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span></td>
-                    ${isAdmin ? `<td><button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}','${m.role}')">${m.role === 'admin' ? 'Demote' : 'Promote'}</button></td>` : ''}
-                </tr>`).join('');
+                    ${isAdmin ? `<td>
+                        <div class="flex gap-3 items-center">
+                            <button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}','${m.role}')">${m.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
+                            ${m.id !== me.id ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="removeMember('${m.id}','${UI.esc(m.full_name || m.email || '')}')">Remove</button>` : '<span class="text-xs text-slate-300">You</span>'}
+                        </div>
+                    </td>` : ''}
+                </tr>`;
+            }).join('');
+        }
+        async function approve(id) {
+            try { await DB.setMemberStatus(id, 'approved'); await DB.logActivity('member_approve', id); UI.toast('Member approved.', 'success'); await load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function reject(id) {
+            if (!await UI.confirm('Reject and remove this access request?')) return;
+            try { await DB.deleteMember(id); await DB.logActivity('member_reject', id); UI.toast('Request rejected.', 'success'); await load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
         }
         async function toggleRole(id, current) {
             const next = current === 'admin' ? 'member' : 'admin';
             if (!await UI.confirm(`Change this member's role to "${next}"?`)) return;
             try {
+                // Promoting to admin also approves them.
+                if (next === 'admin') await DB.setMemberStatus(id, 'approved');
                 await DB.setMemberRole(id, next);
-                await DB.logActivity('role_change', `Set member ${id} to ${next}`);
+                await DB.logActivity('role_change', `Set ${id} to ${next}`);
                 UI.toast('Role updated.', 'success');
                 await load();
             } catch (e) { UI.toast(e.message, 'error'); }
         }
-        window.toggleRole = toggleRole;
+        async function removeMember(id, name) {
+            if (!await UI.confirm(`Remove ${name || 'this member'} from the platform? This deletes their profile.`)) return;
+            try { await DB.deleteMember(id); await DB.logActivity('member_remove', name || id); UI.toast('Member removed.', 'success'); await load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.approve = approve; window.reject = reject; window.toggleRole = toggleRole; window.removeMember = removeMember;
         init();
     </script>
 </body>
