@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Center | DramaConnect Enterprise</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 bg-slate-900 text-white h-screen sticky top-0 hidden md:flex flex-col no-print">
+        <div class="p-6 flex items-center gap-3 border-b border-slate-800">
+            <img src="../assets/img/rccg_logo.png" alt="Logo" class="h-10 w-10 bg-white rounded-full p-1">
+            <span class="font-bold text-lg tracking-tight">DramaConnect</span>
+        </div>
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+            <p class="text-[10px] text-slate-500 uppercase font-bold px-4 mb-2">Core Management</p>
+            <a href="dashboard.html" class="sidebar-link active"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="members.html" class="sidebar-link"><i class="fas fa-users"></i> Members</a>
+            <a href="productions.html" class="sidebar-link"><i class="fas fa-book-open"></i> Productions</a>
+            <a href="rehearsals.html" class="sidebar-link"><i class="fas fa-calendar-check"></i> Rehearsals</a>
+            <a href="finance.html" class="sidebar-link"><i class="fas fa-wallet"></i> Finance</a>
+            <a href="reports.html" class="sidebar-link"><i class="fas fa-file-export"></i> Reports</a>
+            
+            <div class="pt-6">
+                <p class="text-[10px] text-slate-500 uppercase font-bold px-4 mb-2">User Workspace</p>
+                <a href="profile.html" class="sidebar-link"><i class="fas fa-user-circle"></i> My Profile</a>
+                <a href="portfolio.html" class="sidebar-link text-blue-400 font-bold"><i class="fas fa-rocket"></i> Developer Bio</a>
+            </div>
+        </nav>
+        <div class="p-4 border-t border-slate-800">
+            <button id="logout-btn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-900/20 transition">
+                <i class="fas fa-sign-out-alt"></i> Sign Out
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 h-screen overflow-y-auto p-8">
+        <header class="flex justify-between items-center mb-8 no-print">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-800">Enterprise Dashboard</h1>
+                <p class="text-slate-500">Welcome back, <span id="user-name" class="font-bold text-blue-600">...</span></p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <p id="current-date" class="text-sm font-bold text-slate-700"></p>
+                    <p class="text-xs text-slate-400 uppercase tracking-widest">Province LP 25</p>
+                </div>
+                <img src="../assets/img/rccg_logo.png" alt="Logo" class="h-12 w-12 rounded-full border-2 border-white shadow-md">
+            </div>
+        </header>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="glass-card p-6 border-l-4 border-blue-600 animate-fade-in">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-slate-400 uppercase">Personnel</p>
+                        <h2 id="stat-members" class="text-3xl font-black text-slate-800">0</h2>
+                    </div>
+                    <div class="p-3 bg-blue-50 text-blue-600 rounded-2xl"><i class="fas fa-users"></i></div>
+                </div>
+            </div>
+            <div class="glass-card p-6 border-l-4 border-green-600 animate-fade-in" style="animation-delay: 0.1s">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-slate-400 uppercase">Net Treasury</p>
+                        <h2 id="stat-balance" class="text-3xl font-black text-slate-800">₦0</h2>
+                    </div>
+                    <div class="p-3 bg-green-50 text-green-600 rounded-2xl"><i class="fas fa-money-bill-wave"></i></div>
+                </div>
+            </div>
+            <div class="glass-card p-6 border-l-4 border-red-600 animate-fade-in" style="animation-delay: 0.2s">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-slate-400 uppercase">Productions</p>
+                        <h2 id="stat-plays" class="text-3xl font-black text-slate-800">0</h2>
+                    </div>
+                    <div class="p-3 bg-red-50 text-red-600 rounded-2xl"><i class="fas fa-theater-masks"></i></div>
+                </div>
+            </div>
+            <div class="glass-card p-6 border-l-4 border-yellow-600 animate-fade-in" style="animation-delay: 0.3s">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-slate-400 uppercase">Avg Attendance</p>
+                        <h2 id="stat-attendance" class="text-3xl font-black text-slate-800">0%</h2>
+                    </div>
+                    <div class="p-3 bg-yellow-50 text-yellow-600 rounded-2xl"><i class="fas fa-user-check"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Finance Trend Chart -->
+            <div class="lg:col-span-2 glass-card p-8">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fas fa-chart-pie text-blue-600"></i> Treasury Distribution
+                </h3>
+                <div class="h-80">
+                    <canvas id="financeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Alerts & Next Events -->
+            <div class="glass-card p-8">
+                <h3 class="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                    <i class="fas fa-bell text-red-600"></i> Administration Alerts
+                </h3>
+                <div id="alerts-list" class="space-y-4">
+                    <!-- Dynamic Alerts -->
+                    <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
+                        <div class="p-2 bg-blue-100 text-blue-600 rounded-lg"><i class="fas fa-info-circle"></i></div>
+                        <div>
+                            <p class="text-sm font-bold text-slate-700">System Update v4</p>
+                            <p class="text-xs text-slate-500">Multi-page architecture & PDF reporting now active.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script>
+        async function initDashboard() {
+            const user = await Auth.checkSession();
+            if(!user) return;
+
+            document.getElementById('user-name').innerText = user.full_name || 'Member';
+            document.getElementById('current-date').innerText = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+            try {
+                const members = await DB.getMembers();
+                const trans = await DB.getTransactions();
+                const plays = await DB.getProductions();
+
+                document.getElementById('stat-members').innerText = members.length;
+                document.getElementById('stat-plays').innerText = plays.length;
+                
+                const balance = trans.reduce((acc, curr) => curr.type === 'income' ? acc + Number(curr.amount) : acc - Number(curr.amount), 0);
+                document.getElementById('stat-balance').innerText = Utils.formatCurrency(balance);
+
+                renderChart(trans);
+            } catch (e) { console.error(e); }
+        }
+
+        function renderChart(trans) {
+            const ctx = document.getElementById('financeChart').getContext('2d');
+            const income = trans.filter(t => t.type === 'income').reduce((a, b) => a + Number(b.amount), 0);
+            const expense = trans.filter(t => t.type === 'expense').reduce((a, b) => a + Number(b.amount), 0);
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Treasury Income', 'Production Costs'],
+                    datasets: [{
+                        data: [income, expense],
+                        backgroundColor: ['#16a34a', '#dc2626'],
+                        borderWidth: 0,
+                        hoverOffset: 15
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { font: { family: 'Inter', weight: 'bold' } } } },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        document.getElementById('logout-btn').onclick = () => Auth.signOut();
+        initDashboard();
+    </script>
+</body>
+</html>
