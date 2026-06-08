@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
+            <div class="glass-card p-5 border-l-4 border-green-600"><p class="text-xs font-bold text-slate-400 uppercase">Income</p><h2 id="sum-income" class="text-2xl font-black text-green-600">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-red-600"><p class="text-xs font-bold text-slate-400 uppercase">Expense</p><h2 id="sum-expense" class="text-2xl font-black text-red-600">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-blue-600"><p class="text-xs font-bold text-slate-400 uppercase">Balance</p><h2 id="sum-balance" class="text-2xl font-black text-slate-800">—</h2></div>
+        </div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-plus-circle text-blue-600 mr-2"></i> Record Transaction</h3>
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                <input id="t-desc" placeholder="Description" class="dc-input md:col-span-2">
+                <select id="t-type" class="dc-input"><option value="income">Income</option><option value="expense">Expense</option></select>
+                <input id="t-amount" type="number" min="0" step="0.01" placeholder="Amount" class="dc-input">
+                <input id="t-date" type="date" class="dc-input">
+            </div>
+            <button id="t-add-btn" class="dc-btn dc-btn-primary mt-4">Save</button>
+        </div>
+
+        <div class="glass-card p-6 md:p-8 animate-fade-in">
+            <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-wallet text-blue-600 mr-2"></i> Ledger</h3>
+            <div class="overflow-x-auto">
+                <table class="enterprise-table" id="finance-table">
+                    <thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th class="admin-only">Action</th></tr></thead>
+                    <tbody id="finance-body"><tr><td colspan="5" class="text-center text-slate-400 py-8">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('finance', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Finance', 'Treasury ledger');
+            Layout.setDate();
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' || el.tagName === 'TD' ? 'table-cell' : 'block');
+                document.getElementById('t-add-btn').onclick = add;
+            }
+            load();
+        }
+        async function load() {
+            const body = document.getElementById('finance-body');
+            try {
+                const trans = await DB.getTransactions();
+                let income = 0, expense = 0;
+                trans.forEach(t => t.type === 'income' ? income += Number(t.amount) : expense += Number(t.amount));
+                document.getElementById('sum-income').innerText = Utils.formatCurrency(income);
+                document.getElementById('sum-expense').innerText = Utils.formatCurrency(expense);
+                document.getElementById('sum-balance').innerText = Utils.formatCurrency(income - expense);
+                if (!trans.length) { body.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400 py-8">No transactions.</td></tr>'; return; }
+                const isAdmin = Auth.isAdmin(me);
+                body.innerHTML = trans.map(t => `
+                    <tr>
+                        <td>${Utils.formatDate(t.date)}</td>
+                        <td class="font-semibold text-slate-800">${UI.esc(t.description || '—')}</td>
+                        <td><span class="badge ${t.type === 'income' ? 'badge-green' : 'badge-red'}">${t.type}</span></td>
+                        <td class="font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">${Utils.formatCurrency(t.amount)}</td>
+                        ${isAdmin ? `<td><button class="text-red-600 text-xs font-bold hover:underline" onclick="del('${t.id}')">Delete</button></td>` : ''}
+                    </tr>`).join('');
+            } catch (e) { body.innerHTML = `<tr><td colspan="5" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
+        }
+        async function add() {
+            const desc = document.getElementById('t-desc').value.trim();
+            const amount = parseFloat(document.getElementById('t-amount').value);
+            if (!desc || isNaN(amount) || amount < 0) { UI.toast('Enter a valid description and amount.', 'warning'); return; }
+            try {
+                const payload = { description: desc, type: document.getElementById('t-type').value, amount };
+                const d = document.getElementById('t-date').value; if (d) payload.date = d;
+                await DB.addTransaction(payload);
+                await DB.logActivity('finance_add', `${payload.type} ${amount}`);
+                document.getElementById('t-desc').value = ''; document.getElementById('t-amount').value = '';
+                UI.toast('Transaction saved.', 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function del(id) {
+            if (!await UI.confirm('Delete this transaction?')) return;
+            try { await DB.deleteTransaction(id); UI.toast('Deleted.', 'success'); load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.del = del;
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budgets | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-scale-balanced text-blue-600 mr-2"></i> Set / Update Budget</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <select id="b-prod" class="dc-input md:col-span-2"></select>
+                <input id="b-amount" type="number" min="0" step="0.01" placeholder="Allocated amount" class="dc-input">
+            </div>
+            <button id="b-save" class="dc-btn dc-btn-primary mt-4">Save Budget</button>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-chart-column text-blue-600 mr-2"></i> Budget Allocations</h3>
+            <div id="budget-list" class="space-y-4"><p class="text-slate-400 text-sm">Loading…</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('budgets', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Budgets', 'Plan & track production spending');
+            Layout.setDate();
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('b-save').onclick = save;
+                try {
+                    const plays = await DB.getProductions();
+                    document.getElementById('b-prod').innerHTML = plays.map(p => `<option value="${p.id}">${UI.esc(p.title)}</option>`).join('');
+                } catch (e) {}
+            }
+            load();
+        }
+        async function load() {
+            const host = document.getElementById('budget-list');
+            try {
+                const [budgets, trans] = await Promise.all([DB.getBudgets(), DB.getTransactions()]);
+                if (!budgets.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No budgets allocated yet.</p>'; return; }
+                // Note: actual-spend matching by production requires a production_id on finances;
+                // here we show allocation and a generic department expense ratio.
+                host.innerHTML = budgets.map(b => {
+                    const title = b.productions ? b.productions.title : 'Production';
+                    const allocated = Number(b.allocated_amount) || 0;
+                    return `
+                    <div class="p-4 bg-slate-50 rounded-2xl">
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="font-bold text-slate-800">${UI.esc(title)}</p>
+                            <p class="font-black text-blue-600">${Utils.formatCurrency(allocated)}</p>
+                        </div>
+                        <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div class="h-full rccg-blue" style="width:100%"></div>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1">Allocated • updated ${Utils.formatDate(b.updated_at)}</p>
+                    </div>`;
+                }).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
+        }
+        async function save() {
+            const pid = document.getElementById('b-prod').value;
+            const amount = parseFloat(document.getElementById('b-amount').value);
+            if (!pid || isNaN(amount) || amount < 0) { UI.toast('Choose a production and valid amount.', 'warning'); return; }
+            try {
+                await DB.setBudget(pid, amount);
+                await DB.logActivity('budget_set', `${pid}: ${amount}`);
+                document.getElementById('b-amount').value = '';
+                UI.toast('Budget saved.', 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        init();
+    </script>
+</body>
+</html>

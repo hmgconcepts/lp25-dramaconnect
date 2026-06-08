@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Bio | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-8 md:p-10 max-w-3xl mx-auto animate-fade-in text-center">
+            <div class="h-24 w-24 mx-auto rounded-full rccg-blue text-white flex items-center justify-center text-3xl font-black mb-4">AA</div>
+            <h2 class="text-2xl font-extrabold text-slate-800">Adewale Samson Adeagbo</h2>
+            <p class="text-slate-500 mb-1">Software Engineer · DataTech · EdTech · FaithTech</p>
+            <p class="text-blue-600 font-bold mb-6">HMG Concepts</p>
+            <p class="text-slate-600 leading-relaxed mb-8">
+                DramaConnect Enterprise was architected and built to demonstrate how modern,
+                cost-free tooling — Supabase, vanilla JavaScript, and a clean, mobile-first
+                interface — can deliver professional, institution-grade software with zero
+                recurring infrastructure cost.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 text-left">
+                <div class="p-4 bg-slate-50 rounded-2xl"><i class="fas fa-database text-blue-600 mb-2"></i><p class="font-bold text-slate-800 text-sm">DataTech</p><p class="text-xs text-slate-500">Dashboards & data systems</p></div>
+                <div class="p-4 bg-slate-50 rounded-2xl"><i class="fas fa-graduation-cap text-blue-600 mb-2"></i><p class="font-bold text-slate-800 text-sm">EdTech</p><p class="text-xs text-slate-500">Learning platforms</p></div>
+                <div class="p-4 bg-slate-50 rounded-2xl"><i class="fas fa-church text-blue-600 mb-2"></i><p class="font-bold text-slate-800 text-sm">FaithTech</p><p class="text-xs text-slate-500">Church management tools</p></div>
+            </div>
+            <div class="flex flex-wrap justify-center gap-4">
+                <a href="https://cssadewale.pages.dev" target="_blank" rel="noopener" class="dc-btn dc-btn-primary"><i class="fas fa-id-badge mr-1"></i> View Portfolio</a>
+                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="dc-btn bg-white text-blue-600 border border-blue-200">Explore HMG Concepts <i class="fas fa-arrow-right ml-1"></i></a>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        async function init() {
+            const me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('portfolio', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Developer Bio', 'About the architect of DramaConnect');
+            Layout.setDate();
+        }
+        init();
+    </script>
+</body>
+</html>

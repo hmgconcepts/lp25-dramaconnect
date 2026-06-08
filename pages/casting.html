@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casting | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-6 mb-6">
+            <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Select Production</label>
+            <select id="prod-select" class="dc-input max-w-md"><option value="">— Choose —</option></select>
+        </div>
+
+        <div id="admin-add" class="glass-card p-6 mb-6 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-user-plus text-blue-600 mr-2"></i> Assign Role</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <select id="c-member" class="dc-input"></select>
+                <input id="c-role" placeholder="Character (e.g. The Prodigal Son)" class="dc-input">
+                <input id="c-notes" placeholder="Notes (optional)" class="dc-input">
+            </div>
+            <button id="c-add-btn" class="dc-btn dc-btn-primary mt-4">Assign to Cast</button>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-masks-theater text-red-600 mr-2"></i> Cast List</h3>
+            <div id="cast-list"><p class="text-slate-400 text-sm">Select a production to view its cast.</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        let me = null, members = [];
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('casting', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Casting', 'Assign characters & roles to members');
+            Layout.setDate();
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('c-add-btn').onclick = assign;
+            }
+            try {
+                const [plays, mem] = await Promise.all([DB.getProductions(), DB.getMembers()]);
+                members = mem;
+                document.getElementById('prod-select').innerHTML = '<option value="">— Choose —</option>' +
+                    plays.map(p => `<option value="${p.id}">${UI.esc(p.title)}</option>`).join('');
+                document.getElementById('c-member').innerHTML = mem.map(m => `<option value="${m.id}">${UI.esc(m.full_name || m.email)}</option>`).join('');
+                document.getElementById('prod-select').onchange = loadCast;
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function loadCast() {
+            const pid = document.getElementById('prod-select').value;
+            const host = document.getElementById('cast-list');
+            if (!pid) { host.innerHTML = '<p class="text-slate-400 text-sm">Select a production.</p>'; return; }
+            try {
+                const cast = await DB.getCast(pid);
+                if (!cast.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No cast assigned yet.</p>'; return; }
+                const isAdmin = Auth.isAdmin(me);
+                host.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">` + cast.map(c => `
+                    <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                        <div>
+                            <p class="font-bold text-slate-800">${UI.esc(c.character_role || 'Role')}</p>
+                            <p class="text-sm text-slate-500">${UI.esc(c.profiles ? c.profiles.full_name : 'Member')}</p>
+                            ${c.notes ? `<p class="text-xs text-slate-400 mt-1">${UI.esc(c.notes)}</p>` : ''}
+                        </div>
+                        ${isAdmin ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="remove('${c.id}')">Remove</button>` : ''}
+                    </div>`).join('') + `</div>`;
+            } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
+        }
+        async function assign() {
+            const pid = document.getElementById('prod-select').value;
+            if (!pid) { UI.toast('Select a production first.', 'warning'); return; }
+            const member_id = document.getElementById('c-member').value;
+            const role = document.getElementById('c-role').value.trim();
+            if (!member_id || !role) { UI.toast('Choose member and enter character.', 'warning'); return; }
+            try {
+                await DB.addCastMember({ production_id: pid, member_id, character_role: role, notes: document.getElementById('c-notes').value.trim() || null });
+                document.getElementById('c-role').value = ''; document.getElementById('c-notes').value = '';
+                UI.toast('Cast member assigned.', 'success');
+                loadCast();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function remove(id) {
+            if (!await UI.confirm('Remove this cast assignment?')) return;
+            try { await DB.removeCastMember(id); UI.toast('Removed.', 'success'); loadCast(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.remove = remove;
+        init();
+    </script>
+</body>
+</html>

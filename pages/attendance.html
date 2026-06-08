@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-6 mb-6">
+            <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Select Rehearsal</label>
+            <select id="reh-select" class="dc-input max-w-md"><option value="">— Choose —</option></select>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-user-check text-blue-600 mr-2"></i> Checklist</h3>
+                <div id="admin-tools" class="admin-only flex gap-2">
+                    <button id="all-present" class="dc-btn bg-green-600 text-white text-sm py-2">Mark All Present</button>
+                </div>
+            </div>
+            <div id="att-list"><p class="text-slate-400 text-sm">Select a rehearsal to mark attendance.</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        let me = null, members = [], current = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('attendance', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Attendance', 'Mark and review rehearsal attendance');
+            Layout.setDate();
+            const isAdmin = Auth.isAdmin(me);
+            if (isAdmin) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'flex');
+                document.getElementById('all-present').onclick = markAll;
+            }
+            try {
+                const [rehearsals, mem] = await Promise.all([DB.getRehearsals(), DB.getMembers()]);
+                members = mem;
+                const sel = document.getElementById('reh-select');
+                sel.innerHTML = '<option value="">— Choose —</option>' +
+                    rehearsals.map(r => `<option value="${r.id}">${Utils.formatDate(r.rehearsal_date)} — ${UI.esc(r.notes || 'Session')}</option>`).join('');
+                sel.onchange = () => loadAtt(sel.value);
+                const param = new URLSearchParams(location.search).get('rehearsal');
+                if (param) { sel.value = param; loadAtt(param); }
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function loadAtt(id) {
+            current = id;
+            const host = document.getElementById('att-list');
+            if (!id) { host.innerHTML = '<p class="text-slate-400 text-sm">Select a rehearsal.</p>'; return; }
+            try {
+                const existing = await DB.getAttendance(id);
+                const map = {}; existing.forEach(a => map[a.member_id] = a.status);
+                const isAdmin = Auth.isAdmin(me);
+                host.innerHTML = `<div class="space-y-2">` + members.map(m => {
+                    const st = map[m.id] || 'absent';
+                    return `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <div class="h-8 w-8 rounded-full rccg-blue text-white flex items-center justify-center text-xs font-bold">${UI.esc(Utils.initials(m.full_name))}</div>
+                            <span class="font-semibold text-slate-800 text-sm">${UI.esc(m.full_name || m.email)}</span>
+                        </div>
+                        ${isAdmin
+                            ? `<select data-mid="${m.id}" class="dc-input py-1 max-w-[130px] text-sm" onchange="mark('${m.id}', this.value)">
+                                 <option value="present" ${st === 'present' ? 'selected' : ''}>Present</option>
+                                 <option value="absent" ${st === 'absent' ? 'selected' : ''}>Absent</option>
+                                 <option value="excused" ${st === 'excused' ? 'selected' : ''}>Excused</option>
+                               </select>`
+                            : `<span class="badge ${st === 'present' ? 'badge-green' : st === 'excused' ? 'badge-yellow' : 'badge-red'}">${st}</span>`}
+                    </div>`;
+                }).join('') + `</div>`;
+            } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
+        }
+        async function mark(mid, status) {
+            try { await DB.markAttendance(current, mid, status); UI.toast('Saved.', 'success', 1500); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function markAll() {
+            if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
+            UI.showLoader('Marking all present…');
+            try {
+                for (const m of members) await DB.markAttendance(current, m.id, 'present');
+                UI.hideLoader(); UI.toast('All marked present.', 'success'); loadAtt(current);
+            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+        }
+        window.mark = mark;
+        init();
+    </script>
+</body>
+</html>

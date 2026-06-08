@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Announcements | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-bullhorn text-blue-600 mr-2"></i> Post Announcement</h3>
+            <div class="space-y-3">
+                <input id="a-title" placeholder="Title" class="dc-input">
+                <textarea id="a-body" rows="3" placeholder="Message…" class="dc-input"></textarea>
+            </div>
+            <button id="a-add" class="dc-btn dc-btn-primary mt-4">Publish</button>
+        </div>
+
+        <div id="ann-list" class="space-y-4"><p class="text-slate-400 text-sm">Loading…</p></div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('announcements', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Announcements', 'Department-wide notices');
+            Layout.setDate();
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('a-add').onclick = add;
+            }
+            load();
+        }
+        async function load() {
+            const host = document.getElementById('ann-list');
+            try {
+                const anns = await DB.getAnnouncements();
+                if (!anns.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No announcements yet.</p>'; return; }
+                const isAdmin = Auth.isAdmin(me);
+                host.innerHTML = anns.map(a => `
+                    <div class="glass-card p-5 animate-fade-in">
+                        <div class="flex justify-between items-start gap-3">
+                            <div>
+                                <h4 class="font-bold text-slate-800">${UI.esc(a.title)}</h4>
+                                <p class="text-sm text-slate-600 mt-1 whitespace-pre-line">${UI.esc(a.body || '')}</p>
+                                <p class="text-[11px] text-slate-400 mt-2">${Utils.formatDateTime(a.created_at)}</p>
+                            </div>
+                            ${isAdmin ? `<button class="text-red-600 text-xs font-bold hover:underline" onclick="del('${a.id}')">Delete</button>` : ''}
+                        </div>
+                    </div>`).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
+        }
+        async function add() {
+            const title = document.getElementById('a-title').value.trim();
+            const body = document.getElementById('a-body').value.trim();
+            if (!title) { UI.toast('Title is required.', 'warning'); return; }
+            try {
+                await DB.addAnnouncement({ title, body, author_name: me.full_name || me.email });
+                await DB.logActivity('announcement_post', title);
+                document.getElementById('a-title').value = ''; document.getElementById('a-body').value = '';
+                UI.toast('Published.', 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function del(id) {
+            if (!await UI.confirm('Delete this announcement?')) return;
+            try { await DB.deleteAnnouncement(id); UI.toast('Deleted.', 'success'); load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.del = del;
+        init();
+    </script>
+</body>
+</html>

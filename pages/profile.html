@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen flex">
+    <div id="app-sidebar"></div>
+    <main class="flex-1 h-screen overflow-y-auto p-6 md:p-8">
+        <div id="page-header"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-user-circle text-blue-600 mr-2"></i> My Details</h3>
+                <div class="space-y-4">
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Full Name</label><input id="pf-name" class="dc-input"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Email</label><input id="pf-email" disabled class="dc-input bg-slate-50 text-slate-500"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Phone</label><input id="pf-phone" class="dc-input"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Parish</label><input id="pf-parish" class="dc-input"></div>
+                    <button id="pf-save" class="dc-btn dc-btn-primary">Save Changes</button>
+                </div>
+            </div>
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-key text-blue-600 mr-2"></i> Change Password</h3>
+                <div class="space-y-4">
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">New Password</label><input id="pw-new" type="password" class="dc-input" placeholder="Minimum 6 characters"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Confirm Password</label><input id="pw-conf" type="password" class="dc-input"></div>
+                    <button id="pw-save" class="dc-btn dc-btn-primary">Update Password</button>
+                </div>
+                <div class="mt-8 pt-6 border-t border-slate-100">
+                    <p class="text-xs text-slate-400 uppercase font-bold mb-1">Account Role</p>
+                    <span id="role-badge" class="badge badge-member">member</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('profile', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('My Profile', 'Manage your personal details');
+            Layout.setDate();
+            document.getElementById('pf-name').value = me.full_name || '';
+            document.getElementById('pf-email').value = me.email || '';
+            document.getElementById('pf-phone').value = me.phone || '';
+            document.getElementById('pf-parish').value = me.parish || '';
+            const rb = document.getElementById('role-badge');
+            rb.textContent = me.role || 'member';
+            rb.className = 'badge ' + (me.role === 'admin' ? 'badge-admin' : 'badge-member');
+            document.getElementById('pf-save').onclick = saveProfile;
+            document.getElementById('pw-save').onclick = savePassword;
+        }
+        async function saveProfile() {
+            try {
+                await DB.updateMember(me.id, {
+                    full_name: document.getElementById('pf-name').value.trim(),
+                    phone: document.getElementById('pf-phone').value.trim(),
+                    parish: document.getElementById('pf-parish').value.trim()
+                });
+                UI.toast('Profile updated.', 'success');
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function savePassword() {
+            const np = document.getElementById('pw-new').value;
+            const cp = document.getElementById('pw-conf').value;
+            if (np.length < 6) { UI.toast('Password must be at least 6 characters.', 'warning'); return; }
+            if (np !== cp) { UI.toast('Passwords do not match.', 'warning'); return; }
+            try { await Auth.updatePassword(np); UI.toast('Password updated.', 'success');
+                document.getElementById('pw-new').value = ''; document.getElementById('pw-conf').value = '';
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        init();
+    </script>
+</body>
+</html>
