@@ -15,8 +15,10 @@ CREATE TABLE IF NOT EXISTS profiles (
   phone       TEXT,
   parish      TEXT,
   role        TEXT DEFAULT 'member',          -- 'member' | 'admin'
+  status      TEXT DEFAULT 'pending',         -- 'pending' | 'approved'
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
 
 -- --------------------------------------------------------------- 2. PRODUCTIONS
 CREATE TABLE IF NOT EXISTS productions (
@@ -109,16 +111,21 @@ CREATE TABLE IF NOT EXISTS activity_log (
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, email, role)
+  INSERT INTO public.profiles (id, full_name, email, role, status)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
     NEW.email,
-    'member'
-  );
+    'member',
+    'pending'
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'handle_new_user failed for %: %', NEW.id, SQLERRM;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -142,45 +149,73 @@ ALTER TABLE activity_log  ENABLE ROW LEVEL SECURITY;
 -- Admin check helper. SECURITY DEFINER bypasses RLS so a policy ON profiles can
 -- safely call it WITHOUT causing "infinite recursion detected in policy".
 CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
   );
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+$$;
+
+-- IMPORTANT: drop EVERY existing policy on these tables first (whatever it is
+-- named). This removes any old recursive policies from earlier setups that
+-- cause "infinite recursion detected in policy for relation profiles".
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT policyname, tablename FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN ('profiles','productions','cast_list','finances','budgets',
+                        'rehearsals','attendance','announcements','events','activity_log')
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', r.policyname, r.tablename);
+  END LOOP;
+END $$;
 
 -- ---- READ: any authenticated user can read every table ----
+-- (Plain check — the profiles SELECT policy does NOT call is_admin(), so when
+--  is_admin() reads profiles it can never re-trigger an admin policy.)
 DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
                            'rehearsals','attendance','announcements','events','activity_log']
   LOOP
-    EXECUTE format('DROP POLICY IF EXISTS "read_auth" ON %I;', t);
-    EXECUTE format('CREATE POLICY "read_auth" ON %I FOR SELECT USING (auth.role() = ''authenticated'');', t);
+    EXECUTE format('CREATE POLICY "dc_read" ON public.%I FOR SELECT USING (auth.role() = ''authenticated'');', t);
   END LOOP;
 END $$;
 
--- ---- WRITE: admins only (except a user may update their OWN profile) ----
-DO $$
-DECLARE t TEXT;
-BEGIN
-  FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log']
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS "admin_all" ON %I;', t);
-    EXECUTE format('CREATE POLICY "admin_all" ON %I FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());', t);
-  END LOOP;
-END $$;
-
--- A user may update their OWN profile (name/phone/parish).
-DROP POLICY IF EXISTS "self_update_profile" ON profiles;
-CREATE POLICY "self_update_profile" ON profiles
+-- ---- WRITES on profiles: admins (split per command, never on SELECT) ----
+CREATE POLICY "dc_profiles_insert_admin" ON public.profiles
+  FOR INSERT WITH CHECK (public.is_admin());
+CREATE POLICY "dc_profiles_update_admin" ON public.profiles
+  FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "dc_profiles_delete_admin" ON public.profiles
+  FOR DELETE USING (public.is_admin());
+-- A user may update their OWN profile.
+CREATE POLICY "dc_profiles_self_update" ON public.profiles
   FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
+-- ---- WRITES on the other tables: admins only ----
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['productions','cast_list','finances','budgets',
+                           'rehearsals','attendance','announcements','events']
+  LOOP
+    EXECUTE format('CREATE POLICY "dc_admin_write" ON public.%I FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());', t);
+  END LOOP;
+END $$;
+
 -- Allow any authenticated user to write to the activity log (app logs actions).
-DROP POLICY IF EXISTS "log_insert_auth" ON activity_log;
-CREATE POLICY "log_insert_auth" ON activity_log
+CREATE POLICY "dc_log_insert" ON public.activity_log
   FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "dc_log_admin" ON public.activity_log
+  FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 -- ============================================================================
 -- DONE. Next: sign up in the app, then promote yourself to admin:
