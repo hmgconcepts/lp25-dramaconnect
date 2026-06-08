@@ -38,7 +38,7 @@ You do **not** need to install anything on your computer.
 ### 1.2 Create all tables, security, and triggers (one click)
 1. In the left sidebar, click **SQL Editor**.
 2. Click **+ New query**.
-3. Open the file **`database/schema.sql`** from this project, **copy ALL of it**,
+3. Open the file **`database/repair_and_upgrade.sql`** from this project, **copy ALL of it**,
    and paste it into the editor.
 4. Click **Run** (or press `Ctrl/Cmd + Enter`).
 5. You should see **"Success. No rows returned"**. This created all 10 tables,
@@ -81,12 +81,12 @@ You do **not** need to install anything on your computer.
 ## STAGE 3 — Publish the Website (pick ONE)
 
 > Whichever host you choose, the **`index.html` must be at the root** of what you
-> upload. The `dramaconnect` folder already has it at the root.
+> upload. The `enterprise` folder already has it at the root.
 
 ### Option A — GitHub Pages (simplest, 100% free)
 
-1. Create a new GitHub repository, e.g. `dramaconnect` (Public).
-2. Upload **the contents of the `dramaconnect` folder** (not the folder itself)
+1. Create a new GitHub repository, e.g. `dramaconnect-enterprise` (Public).
+2. Upload **the contents of the `enterprise v4` folder** (not the folder itself)
    so that `index.html` sits at the repository root.
    - Easiest: on the repo page click **"Add file → Upload files"**, drag in
      everything, then **Commit**.
@@ -94,10 +94,10 @@ You do **not** need to install anything on your computer.
 4. Under **"Build and deployment" → Source**, choose **"Deploy from a branch"**.
 5. Branch: **`main`**, Folder: **`/ (root)`** → **Save**.
 6. Wait ~1 minute. Your live URL appears at the top, e.g.
-   `https://YOUR-USERNAME.github.io/dramaconnect/`.
+   `https://YOUR-USERNAME.github.io/dramaconnect-enterprise/`.
 
 > ✅ This project already uses **relative paths** and a path‑aware redirect, so it
-> works correctly under the `/dramaconnect/` sub‑path on GitHub Pages.
+> works correctly under the `/dramaconnect-enterprise/` sub‑path on GitHub Pages.
 
 ### Option B — Cloudflare Pages (free, custom domains easy)
 
@@ -160,11 +160,13 @@ first admin once (the admin can approve everyone else from inside the app):
 | :-- | :-- | :-- |
 | `supabase is not defined` | Library script missing or wrong order | Every page already loads `@supabase/supabase-js@2` **before** `config.js`. Don't remove or reorder these tags. |
 | `Failed to fetch` / nothing loads | Wrong URL/key in `config.js` | Re‑copy the **Project URL** and **anon** key exactly. |
-| `infinite recursion detected in policy` | Old RLS policies | Re‑run `database/schema.sql` (it uses the recursion‑safe `is_admin()` helper). |
-| Dashboard empty after signup | Missing profile trigger | Re‑run `database/schema.sql` — it creates `handle_new_user`. |
-| **Registered user not in `profiles` table** (can't make them admin) | Trigger didn't run, OR signup happened before the trigger existed | Run **`database/fix_profiles.sql`** — it re‑installs a hardened trigger AND backfills profiles for users who already signed up. Edit the email line to promote your admin. |
+| `infinite recursion detected in policy` | Old RLS policies | Re‑run `database/repair_and_upgrade.sql` (it uses the recursion‑safe `is_admin()` helper). |
+| Dashboard empty after signup | Missing profile trigger | Re‑run `database/repair_and_upgrade.sql` — it creates `handle_new_user`. |
+| **Registered user not in `profiles` table** (can't make them admin) | Trigger didn't run, OR signup happened before the trigger existed | Run **`database/repair_and_upgrade.sql`** — it re‑installs a hardened trigger AND backfills profiles for users who already signed up. Edit the email line to promote your admin. |
 | Can't see admin buttons | You're still a `member` | Complete **Stage 4** to set your role to `admin`. |
 | Login email never arrives | Email confirmation ON + slow SMTP | Turn confirmation OFF for internal use (Stage 1.3) or check spam. |
+| **Can't reach the menu / sub‑pages on a tablet or phone** | Older builds tied the menu to the Tailwind CDN, which can fail on weak connections | **Fixed in v6:** navigation now uses local CSS and always shows a ☰ button below 1024px width. Make sure you deployed this `enterprise` build and (for PWA users) the new `sw.js` (cache `dramaconnect-v7`). Hard‑refresh once. |
+| Styling looks plain + a yellow "low‑bandwidth mode" bar appears | The Tailwind CDN failed to load on that device/connection | This is the safety net working — all features still function. It clears automatically when the CDN loads on a better connection. |
 
 ---
 

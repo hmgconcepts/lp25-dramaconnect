@@ -47,7 +47,18 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
 - **Rehearsals / Attendance:** view sessions and attendance status.
 - **Finance / Budgets:** view the ledger and planned budgets.
 - **Announcements / Events:** read notices and the calendar.
+- **Inbox:** read messages sent to you, and **message the Department Admins
+  (leadership)** or any other member — all inside the platform.
+- **Tasks:** see tasks assigned to you and update your progress
+  (Open → In progress → Done).
 - **Reports:** preview and **download** data as Excel, CSV, or PDF (or print it).
+- **My Dashboard:** your personal home — greeting, unread messages, open tasks,
+  next rehearsal/event, announcements and quick actions. (This is your landing
+  page after sign-in.)
+- **Notifications bell:** the 🔔 at the top shows unread messages and open tasks.
+- **Resources:** open scripts, documents, audio and video shared by the
+  department.
+- **Polls:** vote on questions the admins post and see live results.
 - **My Profile:** update your name, phone, parish, and password.
 
 ---
