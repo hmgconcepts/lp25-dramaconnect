@@ -22,8 +22,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 Deno.serve(async () => {
-  const url = Deno.env.get("PROJECT_URL")!;
-  const serviceKey = Deno.env.get("SERVICE_ROLE_KEY")!;
+  const url = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("PROJECT_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY")!;
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   const FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "onboarding@resend.dev";
   if (!url || !serviceKey) return json({ error: "Missing secrets" }, 500);
