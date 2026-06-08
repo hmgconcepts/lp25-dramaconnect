@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My ID Card | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        .id-card { width: 340px; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.15); background:#fff; }
+        .id-top { background: var(--rccg-blue); color:#fff; padding: 16px; text-align:center; }
+        .id-body { padding: 16px; }
+        .id-photo { width: 86px; height: 86px; border-radius: 50%; object-fit: cover; border: 3px solid var(--rccg-blue); background:#fff; }
+        @media print { .no-print { display:none !important; } body { background:#fff; } .id-card { box-shadow:none; border:1px solid #ccc; } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="flex flex-col items-center gap-6">
+            <div id="card" class="id-card">
+                <div class="id-top">
+                    <img src="../assets/img/rccg_logo.png" alt="RCCG" style="height:40px;width:40px;background:#fff;border-radius:50%;padding:3px;margin:0 auto 6px;display:block;">
+                    <p style="font-weight:800;font-size:14px;letter-spacing:.5px;">RCCG LP 25 DRAMA</p>
+                    <p style="font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:2px;">Member Identity Card</p>
+                </div>
+                <div class="id-body">
+                    <div class="flex items-center gap-4">
+                        <div id="id-avatar" class="id-photo flex items-center justify-center text-2xl font-black text-blue-800">--</div>
+                        <div class="min-w-0">
+                            <p id="id-name" class="font-extrabold text-slate-800 text-lg leading-tight">—</p>
+                            <p id="id-role" class="text-xs text-slate-500">—</p>
+                            <p id="id-unit" class="text-xs text-slate-400">—</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-end justify-between">
+                        <div class="text-[11px] text-slate-500 leading-relaxed">
+                            <p id="id-phone"></p>
+                            <p id="id-parish"></p>
+                            <p id="id-id" class="text-slate-300"></p>
+                        </div>
+                        <div id="qr"></div>
+                    </div>
+                    <p class="text-[9px] text-slate-400 text-center mt-3">Powered by HMG Concepts · DramaConnect</p>
+                </div>
+            </div>
+
+            <div class="flex gap-3 no-print">
+                <button onclick="window.print()" class="dc-btn dc-btn-primary"><i class="fas fa-print mr-1"></i> Print / Save PDF</button>
+                <a href="profile.html" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-pen mr-1"></i> Edit My Details</a>
+            </div>
+            <p class="text-xs text-slate-400 no-print">Tip: in the print dialog choose "Save as PDF" to keep a digital copy.</p>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('idcard', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('My ID Card', 'Your printable membership card');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+
+            document.getElementById('id-avatar').innerText = Utils.initials(me.full_name);
+            document.getElementById('id-name').innerText = me.full_name || 'Member';
+            document.getElementById('id-role').innerText = (me.role === 'admin' ? 'Administrator' : 'Member') + (me.occupation ? ' • ' + me.occupation : '');
+            document.getElementById('id-unit').innerText = me.unit ? ('Unit: ' + me.unit) : '';
+            document.getElementById('id-phone').innerText = me.phone ? ('☎ ' + me.phone) : '';
+            document.getElementById('id-parish').innerText = me.parish ? ('⛪ ' + me.parish) : '';
+            document.getElementById('id-id').innerText = 'ID: ' + (me.id || '').slice(0, 8).toUpperCase();
+
+            // QR encodes a verification payload (name + id) — scannable for quick lookup.
+            const payload = JSON.stringify({ n: me.full_name, id: (me.id||'').slice(0,8), org: 'RCCG LP25 Drama' });
+            if (window.QRCode) {
+                new QRCode(document.getElementById('qr'), { text: payload, width: 64, height: 64, correctLevel: QRCode.CorrectLevel.M });
+            } else {
+                document.getElementById('qr').innerHTML = '<span class="text-[9px] text-slate-300">QR offline</span>';
+            }
+        }
+        init();
+    </script>
+</body>
+</html>

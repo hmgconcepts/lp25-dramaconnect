@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Analytics | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="glass-card p-5 border-l-4 border-blue-600"><p class="text-xs font-bold text-slate-400 uppercase">Sessions</p><h2 id="k-sessions" class="text-2xl font-black text-slate-800">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-green-600"><p class="text-xs font-bold text-slate-400 uppercase">Avg Attendance</p><h2 id="k-avg" class="text-2xl font-black text-slate-800">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-yellow-500"><p class="text-xs font-bold text-slate-400 uppercase">Best Attendee</p><h2 id="k-best" class="text-base font-black text-slate-800">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-red-600"><p class="text-xs font-bold text-slate-400 uppercase">Members Tracked</p><h2 id="k-members" class="text-2xl font-black text-slate-800">—</h2></div>
+        </div>
+
+        <div class="glass-card p-6 md:p-8 mb-6">
+            <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-chart-bar text-blue-600 mr-2"></i> Attendance Rate by Member</h3>
+            <div class="h-80"><canvas id="chart"></canvas></div>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-table text-blue-600 mr-2"></i> Per-Member Breakdown</h3>
+                <button id="export" class="dc-btn bg-green-600 text-white text-sm py-2"><i class="fas fa-file-excel mr-1"></i> Export Excel</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="enterprise-table" id="tbl">
+                    <thead><tr><th>Member</th><th>Present</th><th>Excused</th><th>Absent</th><th>Sessions</th><th>Rate</th></tr></thead>
+                    <tbody id="tbody"><tr><td colspan="6" class="text-center text-slate-400 py-8">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, rows = [], chart = null;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('analytics', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Attendance Analytics', 'Participation rates & trends');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('export').onclick = () => Utils.exportToExcel(rows, 'attendance-analytics.xlsx');
+            load();
+        }
+        async function load() {
+            try {
+                const [members, rehearsals, report] = await Promise.all([
+                    DB.getMembers(), DB.getRehearsals(), DB.getAttendanceReport()
+                ]);
+                const sessions = rehearsals.length;
+                document.getElementById('k-sessions').innerText = sessions;
+                document.getElementById('k-members').innerText = members.length;
+
+                // tally per member
+                const stat = {};
+                members.forEach(m => stat[m.id] = { name: m.full_name || m.email || 'Member', present: 0, excused: 0, absent: 0 });
+                report.forEach(a => {
+                    if (!stat[a.member_id]) return;
+                    if (a.status === 'present') stat[a.member_id].present++;
+                    else if (a.status === 'excused') stat[a.member_id].excused++;
+                });
+                rows = Object.values(stat).map(s => {
+                    const absent = Math.max(0, sessions - s.present - s.excused);
+                    const rate = sessions ? Math.round(s.present / sessions * 100) : 0;
+                    return { Member: s.name, Present: s.present, Excused: s.excused, Absent: absent, Sessions: sessions, Rate: rate + '%', _rate: rate };
+                }).sort((a, b) => b._rate - a._rate);
+
+                const avg = rows.length ? Math.round(rows.reduce((a, b) => a + b._rate, 0) / rows.length) : 0;
+                document.getElementById('k-avg').innerText = avg + '%';
+                document.getElementById('k-best').innerText = rows.length ? rows[0].Member : '—';
+
+                renderTable(); renderChart();
+            } catch (e) { document.getElementById('tbody').innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
+        }
+        function renderTable() {
+            const body = document.getElementById('tbody');
+            if (!rows.length) { body.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-8">No data.</td></tr>'; return; }
+            body.innerHTML = rows.map(r => `
+                <tr>
+                    <td class="font-semibold text-slate-800">${UI.esc(r.Member)}</td>
+                    <td>${r.Present}</td><td>${r.Excused}</td><td>${r.Absent}</td><td>${r.Sessions}</td>
+                    <td><span class="badge ${r._rate>=75?'badge-green':r._rate>=40?'badge-yellow':'badge-red'}">${r.Rate}</span></td>
+                </tr>`).join('');
+        }
+        function renderChart() {
+            const top = rows.slice(0, 15);
+            const ctx = document.getElementById('chart').getContext('2d');
+            if (chart) chart.destroy();
+            if (typeof Chart === 'undefined') return;
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: top.map(r => r.Member), datasets: [{ label: 'Attendance %', data: top.map(r => r._rate), backgroundColor: '#2563eb', borderRadius: 6 }] },
+                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } }
+            });
+        }
+        init();
+    </script>
+</body>
+</html>

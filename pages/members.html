@@ -17,6 +17,30 @@
     <main class="app-main">
         <div id="page-header"></div>
 
+        <!-- Add member with login (admin only) -->
+        <div id="add-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-blue-600">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-user-plus text-blue-600 mr-2"></i> Add Member &amp; Create Login</h3>
+            <p class="text-xs text-slate-500 mb-4">Create an account for a member who hasn't signed up. Leave password blank to auto‑generate one. You'll get credentials to hand over (and can send them via WhatsApp/Email).</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input id="nm-name" placeholder="Full name" class="dc-input">
+                <input id="nm-email" type="email" placeholder="Email (login)" class="dc-input">
+                <input id="nm-password" placeholder="Password (blank = auto)" class="dc-input">
+                <input id="nm-phone" placeholder="Phone (for WhatsApp)" class="dc-input">
+                <input id="nm-parish" placeholder="Parish" class="dc-input">
+                <label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" id="nm-admin"> Make this member an admin</label>
+            </div>
+            <button id="nm-create" class="dc-btn dc-btn-primary mt-4"><i class="fas fa-user-plus mr-1"></i> Create Account</button>
+        </div>
+
+        <!-- Bulk create from CSV (admin only) -->
+        <div id="bulk-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-green-600">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-users-rectangle text-green-600 mr-2"></i> Bulk Create Logins (CSV)</h3>
+            <p class="text-xs text-slate-500 mb-3">CSV columns: <code>full_name,email,phone,parish</code> (password auto‑generated for each). Creates many accounts at once, then gives you a downloadable credential sheet.</p>
+            <input type="file" id="bulk-file" accept=".csv" class="dc-input mb-3">
+            <button id="bulk-go" class="dc-btn bg-green-600 text-white"><i class="fas fa-upload mr-1"></i> Create Accounts</button>
+            <div id="bulk-progress" class="text-sm text-slate-500 mt-3"></div>
+        </div>
+
         <!-- Pending approvals (admin only) -->
         <div id="pending-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-yellow-500">
             <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-user-clock text-yellow-500 mr-2"></i> Pending Approvals <span id="pending-count" class="badge badge-yellow ml-2">0</span></h3>
@@ -53,7 +77,11 @@
             document.getElementById('page-header').innerHTML = Layout.renderHeader('Members', 'Personnel directory & access control');
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
-            if (Auth.isAdmin(me)) document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
+                document.getElementById('nm-create').onclick = createMember;
+                document.getElementById('bulk-go').onclick = bulkCreate;
+            }
             document.getElementById('search').oninput = e => render(filter(e.target.value));
             await load();
         }
@@ -158,6 +186,93 @@
             try { await DB.deleteMember(id); await DB.logActivity('member_remove', name || id); UI.toast('Member removed.', 'success'); await load(); }
             catch (e) { UI.toast(e.message, 'error'); }
         }
+        async function createMember() {
+            const full_name = document.getElementById('nm-name').value.trim();
+            const email = document.getElementById('nm-email').value.trim();
+            const password = document.getElementById('nm-password').value.trim();
+            const phone = document.getElementById('nm-phone').value.trim();
+            const parish = document.getElementById('nm-parish').value.trim();
+            const makeAdmin = document.getElementById('nm-admin').checked;
+            if (!email || !full_name) { UI.toast('Full name and email are required.', 'warning'); return; }
+            UI.showLoader('Creating account…');
+            try {
+                const res = await DB.adminCreateMember({ full_name, email, password, phone, parish, makeAdmin });
+                await DB.logActivity('member_create', email);
+                UI.hideLoader();
+                showCredentials(res, full_name, phone);
+                ['nm-name','nm-email','nm-password','nm-phone','nm-parish'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('nm-admin').checked = false;
+                await load();
+            } catch (e) {
+                UI.hideLoader();
+                if (e.status === 404 || /Failed to fetch|function error|not configured/i.test(e.message)) {
+                    UI.toast('The admin-create-member function is not deployed yet. See docs/ADMIN_CREATE_MEMBER.md. Falling back to invite by email.', 'warning', 9000);
+                } else {
+                    UI.toast(e.message, 'error', 7000);
+                }
+            }
+        }
+
+        function showCredentials(res, name, phone) {
+            const loginUrl = location.origin + location.pathname.replace(/pages\/.*$/, 'index.html');
+            const msg = `Hello ${name||''}, your DramaConnect account is ready.\nLogin: ${loginUrl}\nEmail: ${res.email}\nPassword: ${res.password}\nPlease change your password after first login. God bless you.`;
+            UI.modal(`
+                <div class="p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-circle-check text-green-600 mr-1"></i> Account Created</h3>
+                    <p class="text-sm text-slate-500 mb-3">Hand these credentials to the member (they can change the password later):</p>
+                    <div class="bg-slate-50 rounded-xl p-4 text-sm mb-4">
+                        <p><strong>Email:</strong> ${UI.esc(res.email)}</p>
+                        <p><strong>Password:</strong> <span class="font-mono">${UI.esc(res.password)}</span></p>
+                        <p><strong>Role:</strong> ${UI.esc(res.role)}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button class="dc-btn dc-btn-primary" onclick="navigator.clipboard.writeText(${JSON.stringify(msg)}).then(()=>UI.toast('Copied.','success'))"><i class="fas fa-copy mr-1"></i> Copy</button>
+                        ${phone ? `<a class="dc-btn text-white" style="background:#25D366" target="_blank" rel="noopener" href="${Utils.whatsappLink(phone, msg)}"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</a>` : ''}
+                        <a class="dc-btn bg-blue-600 text-white" href="${Utils.mailtoLink(res.email, 'Your DramaConnect login', msg, false)}"><i class="fas fa-envelope mr-1"></i> Email</a>
+                        <button class="dc-btn bg-slate-100 text-slate-700" onclick="this.closest('.fixed').remove()">Close</button>
+                    </div>
+                </div>`, 'max-w-md');
+        }
+
+        async function bulkCreate() {
+            const file = document.getElementById('bulk-file').files[0];
+            if (!file) { UI.toast('Choose a CSV file first.', 'warning'); return; }
+            const prog = document.getElementById('bulk-progress');
+            let rows;
+            try {
+                const text = await Utils.readFileText(file);
+                rows = Utils.parseCSV(text).filter(r => r.email);
+            } catch (e) { UI.toast('Could not read CSV: ' + e.message, 'error'); return; }
+            if (!rows.length) { UI.toast('No valid rows (need an email column).', 'warning'); return; }
+            if (!await UI.confirm(`Create ${rows.length} login account(s)? Each gets an auto‑generated password.`)) return;
+
+            const results = [];
+            let ok = 0, fail = 0;
+            for (let i = 0; i < rows.length; i++) {
+                const r = rows[i];
+                prog.innerText = `Processing ${i + 1} / ${rows.length}…`;
+                try {
+                    const res = await DB.adminCreateMember({
+                        full_name: r.full_name || '', email: r.email,
+                        password: '', phone: r.phone || '', parish: r.parish || '', makeAdmin: false
+                    });
+                    results.push({ full_name: r.full_name || '', email: res.email, password: res.password, status: 'created' });
+                    ok++;
+                } catch (e) {
+                    results.push({ full_name: r.full_name || '', email: r.email, password: '', status: 'FAILED: ' + e.message });
+                    fail++;
+                }
+            }
+            prog.innerText = `Done. ${ok} created, ${fail} failed.`;
+            await DB.logActivity('bulk_create', `${ok} created, ${fail} failed`);
+            // Download a credential sheet (CSV) for the admin to distribute.
+            Utils.exportToCSV(results, 'new-member-credentials.csv');
+            UI.toast(`${ok} account(s) created. Credential sheet downloaded.`, ok ? 'success' : 'warning', 8000);
+            await load();
+        }
+
+        window.bulkCreate = bulkCreate;
+        window.createMember = createMember;
         window.approve = approve; window.reject = reject; window.toggleRole = toggleRole; window.removeMember = removeMember;
         init();
     </script>

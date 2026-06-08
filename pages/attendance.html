@@ -22,6 +22,30 @@
             <select id="reh-select" class="dc-input max-w-md"><option value="">— Choose —</option></select>
         </div>
 
+        <!-- Member self check-in -->
+        <div id="selfcheck-card" class="glass-card p-6 mb-6 border-l-4 border-green-600 hidden">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-location-check text-green-600 mr-2"></i> Self Check‑In</h3>
+            <p class="text-xs text-slate-500 mb-3">Enter the code the admin announces at rehearsal to mark yourself present.</p>
+            <div class="flex flex-wrap gap-2 items-center">
+                <input id="checkin-code" class="dc-input max-w-[200px]" placeholder="Enter code">
+                <button id="checkin-btn" class="dc-btn bg-green-600 text-white"><i class="fas fa-check mr-1"></i> Check In</button>
+                <span id="checkin-status" class="text-sm font-bold"></span>
+            </div>
+        </div>
+
+        <!-- Admin check-in code control -->
+        <div id="code-card" class="glass-card p-6 mb-6 admin-only border-l-4 border-blue-600">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-key text-blue-600 mr-2"></i> Self Check‑In Code (admin)</h3>
+            <p class="text-xs text-slate-500 mb-3">Set a code and open check‑in so members can mark their own attendance for the selected rehearsal.</p>
+            <div class="flex flex-wrap gap-2 items-center">
+                <input id="set-code" class="dc-input max-w-[200px]" placeholder="e.g. DRAMA25">
+                <button id="open-code" class="dc-btn bg-green-600 text-white text-sm py-2">Open check‑in</button>
+                <button id="close-code" class="dc-btn bg-red-600 text-white text-sm py-2">Close check‑in</button>
+                <button id="gen-code" class="dc-btn bg-slate-100 text-slate-700 text-sm py-2">Generate</button>
+                <span id="code-state" class="text-sm font-bold"></span>
+            </div>
+        </div>
+
         <div class="glass-card p-6 md:p-8">
             <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
                 <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-user-check text-blue-600 mr-2"></i> Checklist</h3>
@@ -41,7 +65,7 @@
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
     <script>
-        let me = null, members = [], current = null;
+        let me = null, members = [], current = null, rehearsalsCache = [];
         async function init() {
             me = await Auth.checkSession();
             if (!me) return;
@@ -51,11 +75,21 @@
             if (Layout.loadNotifications) Layout.loadNotifications(me);
             const isAdmin = Auth.isAdmin(me);
             if (isAdmin) {
-                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'flex');
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
                 document.getElementById('all-present').onclick = markAll;
+                document.getElementById('open-code').onclick = () => setCode(true);
+                document.getElementById('close-code').onclick = () => setCode(false);
+                document.getElementById('gen-code').onclick = () => {
+                    document.getElementById('set-code').value = 'DC' + Math.floor(1000 + Math.random() * 9000);
+                };
+            } else {
+                // Members see the self check-in card.
+                document.getElementById('selfcheck-card').classList.remove('hidden');
+                document.getElementById('checkin-btn').onclick = selfCheckIn;
             }
             try {
                 const [rehearsals, mem] = await Promise.all([DB.getRehearsals(), DB.getMembers()]);
+                rehearsalsCache = rehearsals;
                 members = mem;
                 const sel = document.getElementById('reh-select');
                 sel.innerHTML = '<option value="">— Choose —</option>' +
@@ -65,8 +99,51 @@
                 if (param) { sel.value = param; loadAtt(param); }
             } catch (e) { UI.toast(e.message, 'error'); }
         }
+
+        function currentRehearsal() { return rehearsalsCache.find(r => r.id === current); }
+
+        function refreshCodeState() {
+            const r = currentRehearsal();
+            const el = document.getElementById('code-state');
+            const cs = document.getElementById('checkin-status');
+            if (r && Auth.isAdmin(me) && el) {
+                el.textContent = r.checkin_open ? ('OPEN • code: ' + (r.checkin_code || '—')) : 'closed';
+                el.className = 'text-sm font-bold ' + (r.checkin_open ? 'text-green-600' : 'text-slate-400');
+                if (r.checkin_code) document.getElementById('set-code').value = r.checkin_code;
+            }
+            if (r && !Auth.isAdmin(me) && cs) {
+                cs.textContent = r.checkin_open ? 'Check‑in is OPEN' : 'Check‑in is closed';
+                cs.className = 'text-sm font-bold ' + (r.checkin_open ? 'text-green-600' : 'text-slate-400');
+            }
+        }
+
+        async function setCode(open) {
+            if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
+            const code = document.getElementById('set-code').value.trim();
+            if (open && !code) { UI.toast('Enter a code to open check‑in.', 'warning'); return; }
+            try {
+                await DB.setCheckinCode(current, code || null, open);
+                const r = currentRehearsal(); if (r) { r.checkin_code = code; r.checkin_open = open; }
+                refreshCodeState();
+                UI.toast(open ? 'Check‑in opened.' : 'Check‑in closed.', 'success');
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        async function selfCheckIn() {
+            if (!current) { UI.toast('Select the rehearsal first.', 'warning'); return; }
+            const code = document.getElementById('checkin-code').value.trim();
+            if (!code) { UI.toast('Enter the check‑in code.', 'warning'); return; }
+            try {
+                await DB.selfCheckIn(current, me.id, code);
+                UI.toast('You are checked in. ✅', 'success');
+                document.getElementById('checkin-code').value = '';
+                loadAtt(current);
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
         async function loadAtt(id) {
             current = id;
+            refreshCodeState();
             const host = document.getElementById('att-list');
             if (!id) { host.innerHTML = '<p class="text-slate-400 text-sm">Select a rehearsal.</p>'; return; }
             try {

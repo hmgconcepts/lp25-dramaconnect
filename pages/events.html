@@ -53,15 +53,27 @@
             }
             load();
         }
+        let myRsvps = {};
         async function load() {
             const host = document.getElementById('event-list');
             try {
-                const events = await DB.getEvents();
+                const [events, rsvpRows] = await Promise.all([DB.getEvents(), DB.getMyRsvps(me.id).catch(() => [])]);
+                myRsvps = {}; rsvpRows.forEach(r => myRsvps[r.event_id] = r.response);
                 if (!events.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No events scheduled.</p>'; return; }
                 const isAdmin = Auth.isAdmin(me);
+                // Load RSVP counts per event (one query each, small N).
+                const counts = {};
+                await Promise.all(events.map(async ev => {
+                    try { const rs = await DB.getRsvps(ev.id); counts[ev.id] = rs; } catch (e) { counts[ev.id] = []; }
+                }));
                 host.innerHTML = events.map(e => {
                     const days = Utils.daysUntil(e.event_date);
                     const past = days !== null && days < 0;
+                    const rs = counts[e.id] || [];
+                    const going = rs.filter(r => r.response === 'going').length;
+                    const maybe = rs.filter(r => r.response === 'maybe').length;
+                    const mine = myRsvps[e.id];
+                    const btn = (val, label, cls) => `<button onclick="rsvp('${e.id}','${val}')" class="text-xs px-3 py-1 rounded-full font-bold ${mine===val?cls:'bg-slate-100 text-slate-600'}">${label}</button>`;
                     return `
                     <div class="glass-card p-6 animate-fade-in ${past ? 'opacity-60' : ''}">
                         <div class="flex items-center justify-between mb-2">
@@ -72,11 +84,37 @@
                         <p class="text-sm text-slate-500 mt-1"><i class="fas fa-clock mr-1"></i> ${Utils.formatDateTime(e.event_date)}</p>
                         ${e.location ? `<p class="text-sm text-slate-500"><i class="fas fa-location-dot mr-1"></i> ${UI.esc(e.location)}</p>` : ''}
                         ${e.description ? `<p class="text-xs text-slate-400 mt-2">${UI.esc(e.description)}</p>` : ''}
-                        ${isAdmin ? `<button class="text-red-600 text-xs font-bold hover:underline mt-3" onclick="del('${e.id}')">Delete</button>` : ''}
+                        <div class="mt-3 pt-3 border-t border-slate-100">
+                            <p class="text-xs text-slate-400 mb-2">RSVP: <strong>${going}</strong> going • <strong>${maybe}</strong> maybe</p>
+                            ${!past ? `<div class="flex gap-2">
+                                ${btn('going','✅ Going','bg-green-600 text-white')}
+                                ${btn('maybe','🤔 Maybe','bg-yellow-500 text-white')}
+                                ${btn('no','❌ No','bg-red-600 text-white')}
+                            </div>` : ''}
+                        </div>
+                        ${isAdmin ? `<button class="text-red-600 text-xs font-bold hover:underline mt-3" onclick="del('${e.id}')">Delete</button> <button class="text-blue-600 text-xs font-bold hover:underline mt-3" onclick="viewRsvps('${e.id}')">View RSVPs</button>` : ''}
                     </div>`;
                 }).join('');
             } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
         }
+        async function rsvp(id, response) {
+            try { await DB.setRsvp(id, me.id, response); UI.toast('RSVP saved.', 'success', 1500); load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function viewRsvps(id) {
+            try {
+                const rs = await DB.getRsvps(id);
+                const group = v => rs.filter(r => r.response === v).map(r => UI.esc(r.profiles ? r.profiles.full_name : 'Member')).join(', ') || '—';
+                UI.modal(`<div class="p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-3">RSVPs</h3>
+                    <p class="text-sm mb-2"><span class="badge badge-green">Going</span> ${group('going')}</p>
+                    <p class="text-sm mb-2"><span class="badge badge-yellow">Maybe</span> ${group('maybe')}</p>
+                    <p class="text-sm mb-4"><span class="badge badge-red">No</span> ${group('no')}</p>
+                    <button class="dc-btn bg-slate-100 text-slate-700" onclick="this.closest('.fixed').remove()">Close</button>
+                </div>`, 'max-w-md');
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.rsvp = rsvp; window.viewRsvps = viewRsvps;
         async function add() {
             const title = document.getElementById('e-title').value.trim();
             const date = document.getElementById('e-date').value;
