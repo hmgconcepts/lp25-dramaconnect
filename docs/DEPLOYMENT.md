@@ -156,6 +156,7 @@ yourself once:
 | `Failed to fetch` / nothing loads | Wrong URL/key in `config.js` | Re‑copy the **Project URL** and **anon** key exactly. |
 | `infinite recursion detected in policy` | Old RLS policies | Re‑run `database/schema.sql` (it uses the recursion‑safe `is_admin()` helper). |
 | Dashboard empty after signup | Missing profile trigger | Re‑run `database/schema.sql` — it creates `handle_new_user`. |
+| **Registered user not in `profiles` table** (can't make them admin) | Trigger didn't run, OR signup happened before the trigger existed | Run **`database/fix_profiles.sql`** — it re‑installs a hardened trigger AND backfills profiles for users who already signed up. Edit the email line to promote your admin. |
 | Can't see admin buttons | You're still a `member` | Complete **Stage 4** to set your role to `admin`. |
 | Login email never arrives | Email confirmation ON + slow SMTP | Turn confirmation OFF for internal use (Stage 1.3) or check spam. |
 
