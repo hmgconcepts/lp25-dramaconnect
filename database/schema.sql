@@ -16,6 +16,18 @@ CREATE TABLE IF NOT EXISTS profiles (
   parish      TEXT,
   role        TEXT DEFAULT 'member',          -- 'member' | 'admin'
   status      TEXT DEFAULT 'pending',         -- 'pending' | 'approved'
+  birth_month INT,                            -- 1-12 (no year, for privacy)
+  birth_day   INT,                            -- 1-31
+  occupation  TEXT,
+  address     TEXT,
+  gender      TEXT,
+  unit        TEXT,
+  facebook    TEXT,
+  instagram   TEXT,
+  tiktok      TEXT,
+  twitter     TEXT,
+  whatsapp    TEXT,
+  bday_last_sent TEXT,                         -- 'YYYY-MM-DD' guard for birthday bot
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
@@ -62,6 +74,8 @@ CREATE TABLE IF NOT EXISTS rehearsals (
   id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   rehearsal_date  DATE NOT NULL,
   notes           TEXT,
+  checkin_code    TEXT,
+  checkin_open    BOOLEAN DEFAULT FALSE,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -177,6 +191,15 @@ CREATE TABLE IF NOT EXISTS poll_votes (
   UNIQUE(poll_id, voter_id)
 );
 
+CREATE TABLE IF NOT EXISTS event_rsvps (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  event_id    UUID REFERENCES events(id) ON DELETE CASCADE,
+  member_id   UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  response    TEXT DEFAULT 'going',
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(event_id, member_id)
+);
+
 -- ============================================================================
 -- AUTO-CREATE A PROFILE WHEN A NEW USER SIGNS UP
 -- Without this, signed-up users have no profile row and the dashboard cannot
@@ -226,6 +249,7 @@ ALTER TABLE reminders     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resources     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE polls         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE poll_votes    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_rsvps   ENABLE ROW LEVEL SECURITY;
 
 -- Admin check helper. SECURITY DEFINER bypasses RLS so a policy ON profiles can
 -- safely call it WITHOUT causing "infinite recursion detected in policy".
@@ -251,7 +275,7 @@ BEGIN
     SELECT policyname, tablename FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename IN ('profiles','productions','cast_list','finances','budgets',
-                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes')
+                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps')
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', r.policyname, r.tablename);
   END LOOP;
@@ -264,7 +288,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps']
   LOOP
     EXECUTE format('CREATE POLICY "dc_read" ON public.%I FOR SELECT USING (auth.role() = ''authenticated'');', t);
   END LOOP;
@@ -328,6 +352,15 @@ CREATE POLICY "polls_admin" ON public.polls FOR ALL USING (public.is_admin()) WI
 CREATE POLICY "votes_insert" ON public.poll_votes FOR INSERT WITH CHECK (voter_id = auth.uid());
 CREATE POLICY "votes_update" ON public.poll_votes FOR UPDATE USING (voter_id = auth.uid()) WITH CHECK (voter_id = auth.uid());
 CREATE POLICY "votes_delete" ON public.poll_votes FOR DELETE USING (voter_id = auth.uid() OR public.is_admin());
+
+-- Self check-in: members manage their OWN attendance row.
+CREATE POLICY "attendance_self_insert" ON public.attendance FOR INSERT WITH CHECK (member_id = auth.uid());
+CREATE POLICY "attendance_self_update" ON public.attendance FOR UPDATE USING (member_id = auth.uid()) WITH CHECK (member_id = auth.uid());
+
+-- Event RSVPs: members manage their OWN response (everyone reads via dc_read).
+CREATE POLICY "rsvp_self_insert" ON public.event_rsvps FOR INSERT WITH CHECK (member_id = auth.uid());
+CREATE POLICY "rsvp_self_update" ON public.event_rsvps FOR UPDATE USING (member_id = auth.uid()) WITH CHECK (member_id = auth.uid());
+CREATE POLICY "rsvp_self_delete" ON public.event_rsvps FOR DELETE USING (member_id = auth.uid() OR public.is_admin());
 
 -- ============================================================================
 -- DONE. Next: sign up in the app, then promote yourself to admin:

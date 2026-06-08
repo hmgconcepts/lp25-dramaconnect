@@ -183,8 +183,38 @@ CREATE TABLE IF NOT EXISTS public.poll_votes (
   UNIQUE(poll_id, voter_id)
 );
 
+-- EVENT RSVPs (member responses to events).
+CREATE TABLE IF NOT EXISTS public.event_rsvps (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  event_id    UUID REFERENCES public.events(id) ON DELETE CASCADE,
+  member_id   UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  response    TEXT DEFAULT 'going',   -- 'going' | 'maybe' | 'no'
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(event_id, member_id)
+);
+
 -- 1. Ensure the approval column exists on older profiles tables ---------------
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+
+-- Extended member profile fields (added v11). All optional; members complete
+-- them later. birth_month + birth_day store only month/day for birthday
+-- celebration (no year required, for privacy).
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS birth_month  INT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS birth_day    INT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS occupation   TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS address      TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS gender       TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS unit         TEXT;   -- drama unit/group
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS facebook     TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS instagram    TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tiktok       TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS twitter      TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS whatsapp     TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bday_last_sent TEXT;  -- 'YYYY-MM-DD' guard so the bot sends once/day
+
+-- Self check-in support on rehearsals (member marks own attendance via a code).
+ALTER TABLE public.rehearsals ADD COLUMN IF NOT EXISTS checkin_code TEXT;
+ALTER TABLE public.rehearsals ADD COLUMN IF NOT EXISTS checkin_open BOOLEAN DEFAULT FALSE;
 
 -- 2. Hardened auto-profile trigger (new users start as 'pending') ------------
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -233,7 +263,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
@@ -248,7 +278,7 @@ BEGIN
     SELECT policyname, tablename FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename IN ('profiles','productions','cast_list','finances','budgets',
-                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes')
+                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps')
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', r.policyname, r.tablename);
   END LOOP;
@@ -270,7 +300,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('CREATE POLICY "dc_read" ON public.%I FOR SELECT USING (auth.role() = ''authenticated'');', t);
@@ -338,6 +368,21 @@ CREATE POLICY "polls_admin" ON public.polls FOR ALL USING (public.is_admin()) WI
 CREATE POLICY "votes_insert" ON public.poll_votes FOR INSERT WITH CHECK (voter_id = auth.uid());
 CREATE POLICY "votes_update" ON public.poll_votes FOR UPDATE USING (voter_id = auth.uid()) WITH CHECK (voter_id = auth.uid());
 CREATE POLICY "votes_delete" ON public.poll_votes FOR DELETE USING (voter_id = auth.uid() OR public.is_admin());
+
+-- ---- SELF CHECK-IN: members may insert/update THEIR OWN attendance row.
+--      (Admins already have full access via dc_admin_write.)
+CREATE POLICY "attendance_self_insert" ON public.attendance
+  FOR INSERT WITH CHECK (member_id = auth.uid());
+CREATE POLICY "attendance_self_update" ON public.attendance
+  FOR UPDATE USING (member_id = auth.uid()) WITH CHECK (member_id = auth.uid());
+
+-- ---- EVENT RSVPs: anyone reads (dc_read); members manage their OWN response.
+CREATE POLICY "rsvp_self_insert" ON public.event_rsvps
+  FOR INSERT WITH CHECK (member_id = auth.uid());
+CREATE POLICY "rsvp_self_update" ON public.event_rsvps
+  FOR UPDATE USING (member_id = auth.uid()) WITH CHECK (member_id = auth.uid());
+CREATE POLICY "rsvp_self_delete" ON public.event_rsvps
+  FOR DELETE USING (member_id = auth.uid() OR public.is_admin());
 
 -- 5. PROMOTE + APPROVE your admin account ------------------------------------
 --    >>> EDIT the email below to YOUR signup email, then run. <<<
