@@ -25,14 +25,22 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 ```
 
-### Step 2 — Deploy + secrets
+### Step 2 — Deploy
+Deploy from the **Supabase Dashboard → Edge Functions → Create a function**
+(name it `birthday-bot`, paste the code from
+`supabase/functions/birthday-bot/index.ts`, Deploy) — or via CLI:
 ```bash
 supabase functions deploy birthday-bot --no-verify-jwt
-supabase secrets set PROJECT_URL=https://YOUR_PROJECT_REF.supabase.co \
-                     SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
-# OPTIONAL e-mail delivery (free Resend account):
-supabase secrets set RESEND_API_KEY=re_xxx FROM_EMAIL=you@yourdomain.com
 ```
+> **No service_role key to set** — Supabase auto-provides it to the function
+> (`SUPABASE_SERVICE_ROLE_KEY`). It never goes in your repo or the browser.
+>
+> OPTIONAL — only if you also want email delivery (free Resend account):
+> ```bash
+> supabase secrets set RESEND_API_KEY=re_xxx FROM_EMAIL=you@yourdomain.com
+> ```
+> (These are the *only* secrets you'd ever set, and they're for email, not the
+> service_role key.)
 
 ### Step 3 — Schedule it daily (e.g. 06:00)
 In Supabase → SQL Editor:

@@ -21,14 +21,16 @@ supabase link --project-ref YOUR_PROJECT_REF
 Find `YOUR_PROJECT_REF` in Supabase → Project Settings → General.
 
 ## Step 2 — Deploy the function
-The function is included at `supabase/functions/run-reminders/index.ts`.
+The function is included at `supabase/functions/run-reminders/index.ts`. You can
+deploy it from the **Supabase Dashboard → Edge Functions → Create a function**
+(name it `run-reminders`, paste the code, Deploy) — or via CLI:
 ```bash
 supabase functions deploy run-reminders --no-verify-jwt
-supabase secrets set PROJECT_URL=https://YOUR_PROJECT_REF.supabase.co \
-                     SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 ```
-> The **service_role** key is used ONLY inside the server function (never in the
-> browser). Get it from Project Settings → API → service_role (keep it secret).
+> **No secrets to set.** Supabase automatically provides `SUPABASE_URL` and
+> `SUPABASE_SERVICE_ROLE_KEY` to the function. The service_role key stays inside
+> Supabase — it is never in your repo, `config.js`, or the browser. (See
+> `docs/ADMIN_CREATE_MEMBER.md` for a full explanation of the keys.)
 
 ## Step 3 — Schedule it (every 15 minutes)
 In Supabase → **SQL Editor**, enable the extensions and add the cron job:
