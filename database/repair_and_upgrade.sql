@@ -103,6 +103,86 @@ CREATE TABLE IF NOT EXISTS public.activity_log (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS public.messages (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  channel       TEXT,                 -- 'whatsapp' | 'email'
+  audience      TEXT,                 -- 'individual' | 'all' | 'admins' | 'members'
+  recipients    TEXT,                 -- summary (e.g. "12 members")
+  subject       TEXT,
+  body          TEXT,
+  sent_by       TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- IN-PLATFORM MESSAGING (internal inbox). recipient_id NULL = broadcast to all.
+-- to_admins = TRUE means addressed to all admins (member -> leadership).
+CREATE TABLE IF NOT EXISTS public.inbox (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  sender_id     UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  sender_name   TEXT,
+  recipient_id  UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  to_admins     BOOLEAN DEFAULT FALSE,
+  subject       TEXT,
+  body          TEXT,
+  read_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- TASKS / ASSIGNMENTS (admin assigns; assignee updates status).
+CREATE TABLE IF NOT EXISTS public.tasks (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title         TEXT NOT NULL,
+  detail        TEXT,
+  assignee_id   UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  assigned_by   TEXT,
+  due_date      DATE,
+  priority      TEXT DEFAULT 'normal',  -- 'low' | 'normal' | 'high'
+  status        TEXT DEFAULT 'open',    -- 'open' | 'in_progress' | 'done'
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- SCHEDULED REMINDERS (recurring broadcast templates).
+CREATE TABLE IF NOT EXISTS public.reminders (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title         TEXT NOT NULL,
+  body          TEXT,
+  audience      TEXT DEFAULT 'all',     -- 'all' | 'members' | 'admins'
+  frequency     TEXT DEFAULT 'weekly',  -- 'once' | 'daily' | 'weekly' | 'monthly'
+  next_run      TIMESTAMPTZ,
+  active        BOOLEAN DEFAULT TRUE,
+  created_by    TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RESOURCE LIBRARY (links to free cloud-stored scripts, docs, audio, video).
+CREATE TABLE IF NOT EXISTS public.resources (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title         TEXT NOT NULL,
+  category      TEXT DEFAULT 'document', -- 'script' | 'document' | 'audio' | 'video' | 'image' | 'link'
+  url           TEXT NOT NULL,
+  description   TEXT,
+  added_by      TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- POLLS / VOTING.
+CREATE TABLE IF NOT EXISTS public.polls (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  question      TEXT NOT NULL,
+  options       JSONB NOT NULL,          -- array of option strings
+  is_open       BOOLEAN DEFAULT TRUE,
+  created_by    TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.poll_votes (
+  id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  poll_id       UUID REFERENCES public.polls(id) ON DELETE CASCADE,
+  voter_id      UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  option_index  INT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(poll_id, voter_id)
+);
+
 -- 1. Ensure the approval column exists on older profiles tables ---------------
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
 
@@ -153,7 +233,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
@@ -168,7 +248,7 @@ BEGIN
     SELECT policyname, tablename FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename IN ('profiles','productions','cast_list','finances','budgets',
-                        'rehearsals','attendance','announcements','events','activity_log')
+                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes')
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', r.policyname, r.tablename);
   END LOOP;
@@ -190,7 +270,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('CREATE POLICY "dc_read" ON public.%I FOR SELECT USING (auth.role() = ''authenticated'');', t);
@@ -209,7 +289,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events']
+                           'rehearsals','attendance','announcements','events','messages']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('CREATE POLICY "dc_admin_write" ON public.%I FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());', t);
@@ -220,6 +300,44 @@ END $$;
 -- Activity log: any authenticated user inserts; admins manage.
 CREATE POLICY "dc_log_insert" ON public.activity_log FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "dc_log_admin"  ON public.activity_log FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- IN-PLATFORM INBOX: replace the generic dc_read with privacy-aware rules.
+DROP POLICY IF EXISTS "dc_read" ON public.inbox;
+-- You can read a message if: you sent it, it's addressed to you, it's a broadcast
+-- (recipient_id IS NULL and not to_admins), or it's to_admins and you are an admin.
+CREATE POLICY "inbox_read" ON public.inbox FOR SELECT USING (
+  sender_id = auth.uid()
+  OR recipient_id = auth.uid()
+  OR (recipient_id IS NULL AND to_admins = FALSE)
+  OR (to_admins = TRUE AND public.is_admin())
+);
+-- Any authenticated user may send a message (member -> admin, admin -> member).
+CREATE POLICY "inbox_insert" ON public.inbox FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Recipient (or admin) may update read_at; admins may manage.
+CREATE POLICY "inbox_update" ON public.inbox FOR UPDATE USING (
+  recipient_id = auth.uid() OR public.is_admin()
+  OR (to_admins = TRUE AND public.is_admin())
+);
+CREATE POLICY "inbox_delete" ON public.inbox FOR DELETE USING (
+  sender_id = auth.uid() OR recipient_id = auth.uid() OR public.is_admin()
+);
+
+-- ---- TASKS: admins manage; assignee can update their own task status.
+CREATE POLICY "tasks_admin" ON public.tasks FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "tasks_assignee_update" ON public.tasks FOR UPDATE
+  USING (assignee_id = auth.uid()) WITH CHECK (assignee_id = auth.uid());
+
+-- ---- REMINDERS: admins only (besides the read policy already granted).
+CREATE POLICY "reminders_admin" ON public.reminders FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- RESOURCES & POLLS: admins manage (everyone can read via dc_read).
+CREATE POLICY "resources_admin" ON public.resources FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "polls_admin" ON public.polls FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- POLL VOTES: any authenticated user may cast/update/remove THEIR OWN vote.
+CREATE POLICY "votes_insert" ON public.poll_votes FOR INSERT WITH CHECK (voter_id = auth.uid());
+CREATE POLICY "votes_update" ON public.poll_votes FOR UPDATE USING (voter_id = auth.uid()) WITH CHECK (voter_id = auth.uid());
+CREATE POLICY "votes_delete" ON public.poll_votes FOR DELETE USING (voter_id = auth.uid() OR public.is_admin());
 
 -- 5. PROMOTE + APPROVE your admin account ------------------------------------
 --    >>> EDIT the email below to YOUR signup email, then run. <<<
