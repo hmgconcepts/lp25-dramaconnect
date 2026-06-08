@@ -3,7 +3,7 @@
  * Strategy: cache-first for static assets, network-first for everything else.
  * Supabase API calls always go to the network (never cached).
  */
-const CACHE = 'dramaconnect-v5';
+const CACHE = 'dramaconnect-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -14,7 +14,9 @@ const ASSETS = [
   './assets/js/db.js',
   './assets/js/utils.js',
   './assets/js/layout.js',
+  './assets/js/install.js',
   './assets/img/rccg_logo.png',
+  './assets/img/developer.jpg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './manifest.json'

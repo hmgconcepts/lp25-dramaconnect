@@ -108,6 +108,7 @@
     <script src="assets/js/config.js"></script>
     <script src="assets/js/ui.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/install.js"></script>
     <script>
         const show = id => {
             ['login-section', 'signup-section', 'forgot-section'].forEach(s =>
@@ -118,10 +119,19 @@
         document.getElementById('go-login2').onclick = e => { e.preventDefault(); show('login-section'); };
         document.getElementById('go-forgot').onclick = e => { e.preventDefault(); show('forgot-section'); };
 
-        // Redirect if already signed in.
+        // Redirect if already signed in AND approved.
         (async () => {
-            try { const u = await Auth.getCurrentUser(); if (u) window.location.href = 'pages/dashboard.html'; } catch (e) {}
+            try {
+                const u = await Auth.getCurrentUser();
+                if (u && (u.role === 'admin' || !u.status || u.status === 'approved')) {
+                    window.location.href = 'pages/dashboard.html';
+                } else if (u) {
+                    await sb.auth.signOut();
+                }
+            } catch (e) {}
         })();
+        // Show a message if the user was bounced for being pending.
+        try { if (sessionStorage.getItem('dc-pending')) { sessionStorage.removeItem('dc-pending'); UI.toast('Your account is awaiting admin approval.', 'warning', 8000); } } catch (e) {}
 
         document.getElementById('login-btn').onclick = async () => {
             const email = document.getElementById('email').value.trim();
@@ -130,6 +140,14 @@
             UI.showLoader('Signing in…');
             try {
                 await Auth.signIn(email, pass);
+                // Approval gate — block users an admin has not yet approved.
+                const u = await Auth.getCurrentUser();
+                if (u && u.role !== 'admin' && u.status && u.status !== 'approved') {
+                    await sb.auth.signOut();
+                    UI.hideLoader();
+                    UI.toast('Your account is awaiting admin approval. Please try again once approved.', 'warning', 8000);
+                    return;
+                }
                 window.location.href = 'pages/dashboard.html';
             } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
         };
@@ -143,7 +161,7 @@
             try {
                 await Auth.signUp(email, pass, name);
                 UI.hideLoader();
-                UI.toast('Application submitted! Check your email to confirm, then an admin will approve access.', 'success', 7000);
+                UI.toast('Application submitted! An admin must approve your account before you can sign in.', 'success', 8000);
                 show('login-section');
             } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
         };
