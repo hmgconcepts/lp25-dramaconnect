@@ -25,8 +25,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const url = Deno.env.get("PROJECT_URL")!;
-  const serviceKey = Deno.env.get("SERVICE_ROLE_KEY")!;
+  // Supabase auto-injects SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY into every
+  // Edge Function — so you normally DON'T need to set any secrets yourself.
+  // (Manual PROJECT_URL / SERVICE_ROLE_KEY are accepted as a fallback.)
+  const url = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("PROJECT_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY")!;
   if (!url || !serviceKey) return json({ error: "Function not configured (missing secrets)." }, 500);
 
   // --- 1. Verify the caller is an authenticated ADMIN ---------------------
