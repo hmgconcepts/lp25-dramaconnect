@@ -25,7 +25,7 @@ Follow these in order. Tick each box. Total time ≈ 15 minutes. Everything here
 
 ## C. Publish the site (pick ONE — all free)
 - [ ] **C1.** **GitHub Pages:** create a repo → upload the **contents** of the
-      `enterprise v4` folder (so `index.html` is at the root) → **Settings →
+      `enterprise v6` folder (so `index.html` is at the root) → **Settings →
       Pages → Deploy from branch → main → / (root)**.
 - [ ] **C1-alt.** Or **Cloudflare Pages** / **Vercel** → import repo / drag the
       folder → Framework: **None** → output dir: `/` → **Deploy**.
@@ -53,6 +53,11 @@ Follow these in order. Tick each box. Total time ≈ 15 minutes. Everything here
       enough.
 - [ ] **F2.** **Install as an app:** on phone/tablet, accept the "Install
       DramaConnect" banner (or browser menu → *Add to Home Screen*).
+- [ ] **F3.** **Admin-created member logins:** to let admins create accounts &
+      hand out credentials, deploy the function in `docs/ADMIN_CREATE_MEMBER.md`.
+- [ ] **F4.** **Fully-automatic reminders:** see `docs/SCHEDULED_REMINDERS.md`.
+- [ ] **F5.** **Automatic birthday greetings:** see `docs/BIRTHDAY_BOT.md`
+      (works in‑app immediately; deploy the bot for full automation).
 
 ---
 

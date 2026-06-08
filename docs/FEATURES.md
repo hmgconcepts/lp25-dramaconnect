@@ -379,6 +379,83 @@ it, where to find it, and how it works under the hood. All features run on
 
 ---
 
+## 28. Admin-Created Member Logins (NEW in v10)
+
+- **Where:** `pages/members.html` → "Add Member & Create Login" · **Admin only.**
+- Admins create a complete login account for someone who **hasn't signed up**:
+  enter name + email (password optional — leave blank to **auto-generate** a
+  strong one), optionally mark them admin, and click **Create Account**.
+- A popup returns the **email + password** with **Copy / WhatsApp / Email**
+  buttons to deliver the credentials. The new member is auto-approved and can
+  change their password under My Profile.
+- **Security:** account creation runs in the secure `admin-create-member` Edge
+  Function — the Supabase **service_role** key is used **server-side only**,
+  never in the browser, and the function verifies the caller is an admin first.
+  Setup: `docs/ADMIN_CREATE_MEMBER.md`.
+
+## 29. Member Self Check-In (NEW in v10)
+
+- **Where:** `pages/attendance.html`.
+- **Admin:** for a selected rehearsal, set a **check-in code** and click **Open
+  check-in** (a "Generate" button creates a random code). Close it anytime.
+- **Member:** selects the rehearsal, enters the code, and taps **Check In** to
+  mark **their own** attendance as present. Enforced by RLS (members can only
+  write their own attendance row) and by code + open-window validation.
+
+## 30. Event RSVP (NEW in v10)
+
+- **Where:** `pages/events.html`.
+- **Members** RSVP to each upcoming event: **Going / Maybe / No** (one response,
+  changeable). Each card shows live **going/maybe counts**.
+- **Admins** can **View RSVPs** to see exactly who responded in each category —
+  useful for planning logistics and follow-up.
+
+---
+
+## 31. Rich Member Profiles & Self-Completion (NEW in v11)
+
+- **Where:** `pages/profile.html` · **Access:** all members.
+- Members now store: **phone, WhatsApp, birthday (month + day only — no year, for
+  privacy), gender, occupation, parish, drama unit, home address**, and **social
+  links** (Facebook, Instagram, TikTok, X/Twitter).
+- **Self-completion flow:** when an admin creates an account (with just name +
+  email), the member signs in and **completes the rest themselves** — including
+  adding/*changing their email*, occupation, address, socials, etc.
+- A **Profile Completion meter** shows progress and encourages members to finish.
+
+## 32. Automatic Birthday Celebrations (NEW in v11)
+
+- **Birthdays page** (`pages/birthdays.html`): today's celebrants + a by-month
+  list; admins send one-tap **WhatsApp/Email** greetings (free).
+- **Fully automatic bot** (`supabase/functions/birthday-bot`, optional, free):
+  every morning it posts a birthday greeting to the celebrant's **Inbox**, a
+  **department-wide** celebration, and (optionally) an **email** — once per day,
+  guarded against duplicates. Setup: `docs/BIRTHDAY_BOT.md`.
+- Privacy-conscious: only **month + day** are collected, never the birth year.
+
+## 33. Bulk CSV Account Creation (NEW in v11)
+
+- **Where:** `pages/members.html` → "Bulk Create Logins (CSV)" · **Admin only.**
+- Upload a CSV (`full_name,email,phone,parish`) to create **many login accounts
+  at once**; each gets an auto-generated password. A **credential sheet** CSV is
+  downloaded for you to distribute. Uses the same secure Edge Function.
+
+## 34. Attendance Analytics (NEW in v11)
+
+- **Where:** `pages/analytics.html`.
+- Per-member **attendance rate %**, present/excused/absent counts, KPIs (sessions,
+  average, best attendee), a **bar chart** of the top attendees, and **Excel
+  export** — for supervision and recognition.
+
+## 35. Printable Member ID Cards (NEW in v11)
+
+- **Where:** `pages/idcard.html` · **Access:** all members.
+- A branded RCCG LP 25 Drama **membership card** with the member's name, role,
+  unit, contact, a short ID, and a **QR code** (encodes name + ID for quick
+  verification). **Print or Save as PDF** in one click.
+
+---
+
 ## Free‑Tools / No‑AI Commitment
 
 Every capability above is delivered with **free, open tooling** and **no paid AI

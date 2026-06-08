@@ -59,7 +59,20 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
 - **Resources:** open scripts, documents, audio and video shared by the
   department.
 - **Polls:** vote on questions the admins post and see live results.
-- **My Profile:** update your name, phone, parish, and password.
+- **Self check‑in:** on the Attendance page, select the rehearsal and enter the
+  code the admin announces to mark yourself present.
+- **Event RSVP:** on the Events page, tap Going / Maybe / No for each event.
+- **Getting an account from an admin:** an admin can create your login for you
+  and give you an email + temporary password. Sign in, then change it under
+  My Profile.
+- **My Profile:** complete your full details — phone, WhatsApp, **birthday
+  (month & day)**, gender, occupation, parish, drama unit, home address and
+  **social links** — plus change your email and password. A completion meter
+  shows your progress. *(If an admin created your account, sign in with the
+  credentials they gave you and fill in the rest here.)*
+- **Birthdays:** see whose birthday it is; the system celebrates members
+  automatically on their day.
+- **My ID Card:** view and print your branded membership card (with QR code).
 
 ---
 

@@ -86,7 +86,7 @@ You do **not** need to install anything on your computer.
 ### Option A — GitHub Pages (simplest, 100% free)
 
 1. Create a new GitHub repository, e.g. `dramaconnect-enterprise` (Public).
-2. Upload **the contents of the `enterprise v4` folder** (not the folder itself)
+2. Upload **the contents of the `enterprise v6` folder** (not the folder itself)
    so that `index.html` sits at the repository root.
    - Easiest: on the repo page click **"Add file → Upload files"**, drag in
      everything, then **Commit**.
