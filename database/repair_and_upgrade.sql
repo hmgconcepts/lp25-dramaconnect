@@ -193,6 +193,29 @@ CREATE TABLE IF NOT EXISTS public.event_rsvps (
   UNIQUE(event_id, member_id)
 );
 
+-- ORG-WIDE PHOTO GALLERY (productions, events, group photos).
+CREATE TABLE IF NOT EXISTS public.gallery (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title       TEXT,
+  caption     TEXT,
+  image_url   TEXT NOT NULL,
+  album       TEXT DEFAULT 'General',  -- e.g. a production/event name
+  uploaded_by TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- SUGGESTION BOX (members submit ideas/feedback; admins review).
+CREATE TABLE IF NOT EXISTS public.suggestions (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title       TEXT NOT NULL,
+  body        TEXT,
+  anonymous   BOOLEAN DEFAULT FALSE,
+  author_id   UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  author_name TEXT,
+  status      TEXT DEFAULT 'new',      -- 'new' | 'reviewed' | 'actioned' | 'closed'
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 1. Ensure the approval column exists on older profiles tables ---------------
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
 
@@ -211,6 +234,16 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tiktok       TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS twitter      TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS whatsapp     TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bday_last_sent TEXT;  -- 'YYYY-MM-DD' guard so the bot sends once/day
+
+-- Profile photo (for the digital ID) + emergency / next-of-kin contact (v12).
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url     TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS emergency_name TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS emergency_phone TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS emergency_relation TEXT;
+
+-- Unit-leader permissions (v13): a member can be made leader of a unit. Unit
+-- leaders get elevated rights scoped to members of their own unit.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_unit_leader BOOLEAN DEFAULT FALSE;
 
 -- Self check-in support on rehearsals (member marks own attendance via a code).
 ALTER TABLE public.rehearsals ADD COLUMN IF NOT EXISTS checkin_code TEXT;
@@ -263,7 +296,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps','gallery','suggestions']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
@@ -278,7 +311,7 @@ BEGIN
     SELECT policyname, tablename FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename IN ('profiles','productions','cast_list','finances','budgets',
-                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps')
+                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps','gallery','suggestions')
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', r.policyname, r.tablename);
   END LOOP;
@@ -300,7 +333,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps','gallery','suggestions']
   LOOP
     IF to_regclass('public.'||t) IS NOT NULL THEN
       EXECUTE format('CREATE POLICY "dc_read" ON public.%I FOR SELECT USING (auth.role() = ''authenticated'');', t);
@@ -383,6 +416,88 @@ CREATE POLICY "rsvp_self_update" ON public.event_rsvps
   FOR UPDATE USING (member_id = auth.uid()) WITH CHECK (member_id = auth.uid());
 CREATE POLICY "rsvp_self_delete" ON public.event_rsvps
   FOR DELETE USING (member_id = auth.uid() OR public.is_admin());
+
+-- ---- UNIT-LEADER helper: true if the current user is a unit leader whose
+--      unit matches the given unit. SECURITY DEFINER avoids RLS recursion.
+CREATE OR REPLACE FUNCTION public.is_unit_leader_of(target_unit TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND is_unit_leader = TRUE
+      AND unit IS NOT NULL AND unit = target_unit
+  );
+$$;
+
+-- A unit leader may UPDATE the profiles of members in their own unit (e.g. fix
+-- details, set unit). They cannot change roles to admin (admin-only action).
+CREATE POLICY "profiles_unit_leader_update" ON public.profiles
+  FOR UPDATE USING (public.is_unit_leader_of(unit))
+  WITH CHECK (public.is_unit_leader_of(unit));
+
+-- ---- GALLERY: everyone reads (dc_read); admins + unit leaders may add;
+--      uploader or admin may delete.
+CREATE POLICY "gallery_insert" ON public.gallery
+  FOR INSERT WITH CHECK (
+    public.is_admin() OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_unit_leader = TRUE)
+  );
+CREATE POLICY "gallery_admin" ON public.gallery
+  FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- SUGGESTIONS: any authenticated member may submit; admins manage.
+CREATE POLICY "suggestions_insert" ON public.suggestions
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "suggestions_admin" ON public.suggestions
+  FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- STORAGE: public "avatars" bucket for profile photos (digital ID) ------
+-- Creates a public-read bucket and policies so each user manages their OWN
+-- photo. Files are stored as avatars/<user-id>/<filename>.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "avatars_public_read" ON storage.objects;
+CREATE POLICY "avatars_public_read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "avatars_user_insert" ON storage.objects;
+CREATE POLICY "avatars_user_insert" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+DROP POLICY IF EXISTS "avatars_user_update" ON storage.objects;
+CREATE POLICY "avatars_user_update" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+DROP POLICY IF EXISTS "avatars_user_delete" ON storage.objects;
+CREATE POLICY "avatars_user_delete" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- ---- STORAGE: public "gallery" bucket for org photos -----------------------
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('gallery', 'gallery', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "gallery_public_read" ON storage.objects;
+CREATE POLICY "gallery_public_read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'gallery');
+
+-- Any authenticated user may upload to gallery (the app limits the button to
+-- admins + unit leaders); uploader or admin may remove.
+DROP POLICY IF EXISTS "gallery_auth_insert" ON storage.objects;
+CREATE POLICY "gallery_auth_insert" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'gallery' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "gallery_owner_delete" ON storage.objects;
+CREATE POLICY "gallery_owner_delete" ON storage.objects
+  FOR DELETE USING (bucket_id = 'gallery' AND auth.role() = 'authenticated');
 
 -- 5. PROMOTE + APPROVE your admin account ------------------------------------
 --    >>> EDIT the email below to YOUR signup email, then run. <<<

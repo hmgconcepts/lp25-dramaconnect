@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS profiles (
   twitter     TEXT,
   whatsapp    TEXT,
   bday_last_sent TEXT,                         -- 'YYYY-MM-DD' guard for birthday bot
+  avatar_url     TEXT,                          -- profile photo URL (Supabase Storage)
+  emergency_name TEXT,
+  emergency_phone TEXT,
+  emergency_relation TEXT,
+  is_unit_leader BOOLEAN DEFAULT FALSE,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
@@ -200,6 +205,27 @@ CREATE TABLE IF NOT EXISTS event_rsvps (
   UNIQUE(event_id, member_id)
 );
 
+CREATE TABLE IF NOT EXISTS gallery (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title       TEXT,
+  caption     TEXT,
+  image_url   TEXT NOT NULL,
+  album       TEXT DEFAULT 'General',
+  uploaded_by TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS suggestions (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title       TEXT NOT NULL,
+  body        TEXT,
+  anonymous   BOOLEAN DEFAULT FALSE,
+  author_id   UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  author_name TEXT,
+  status      TEXT DEFAULT 'new',
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================================
 -- AUTO-CREATE A PROFILE WHEN A NEW USER SIGNS UP
 -- Without this, signed-up users have no profile row and the dashboard cannot
@@ -250,6 +276,8 @@ ALTER TABLE resources     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE polls         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE poll_votes    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_rsvps   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gallery       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suggestions   ENABLE ROW LEVEL SECURITY;
 
 -- Admin check helper. SECURITY DEFINER bypasses RLS so a policy ON profiles can
 -- safely call it WITHOUT causing "infinite recursion detected in policy".
@@ -275,7 +303,7 @@ BEGIN
     SELECT policyname, tablename FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename IN ('profiles','productions','cast_list','finances','budgets',
-                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps')
+                        'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps','gallery','suggestions')
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', r.policyname, r.tablename);
   END LOOP;
@@ -288,7 +316,7 @@ DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['profiles','productions','cast_list','finances','budgets',
-                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps']
+                           'rehearsals','attendance','announcements','events','activity_log','messages','inbox','tasks','reminders','resources','polls','poll_votes','event_rsvps','gallery','suggestions']
   LOOP
     EXECUTE format('CREATE POLICY "dc_read" ON public.%I FOR SELECT USING (auth.role() = ''authenticated'');', t);
   END LOOP;
@@ -361,6 +389,42 @@ CREATE POLICY "attendance_self_update" ON public.attendance FOR UPDATE USING (me
 CREATE POLICY "rsvp_self_insert" ON public.event_rsvps FOR INSERT WITH CHECK (member_id = auth.uid());
 CREATE POLICY "rsvp_self_update" ON public.event_rsvps FOR UPDATE USING (member_id = auth.uid()) WITH CHECK (member_id = auth.uid());
 CREATE POLICY "rsvp_self_delete" ON public.event_rsvps FOR DELETE USING (member_id = auth.uid() OR public.is_admin());
+
+-- Unit-leader helper + policy.
+CREATE OR REPLACE FUNCTION public.is_unit_leader_of(target_unit TEXT)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_unit_leader = TRUE AND unit IS NOT NULL AND unit = target_unit);
+$$;
+CREATE POLICY "profiles_unit_leader_update" ON public.profiles
+  FOR UPDATE USING (public.is_unit_leader_of(unit)) WITH CHECK (public.is_unit_leader_of(unit));
+
+-- Gallery: admins + unit leaders add; admins manage.
+CREATE POLICY "gallery_insert" ON public.gallery FOR INSERT WITH CHECK (public.is_admin() OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_unit_leader = TRUE));
+CREATE POLICY "gallery_admin" ON public.gallery FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- Suggestions: any member submits; admins manage.
+CREATE POLICY "suggestions_insert" ON public.suggestions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "suggestions_admin" ON public.suggestions FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- STORAGE: public "avatars" bucket for profile photos (digital ID).
+INSERT INTO storage.buckets (id, name, public) VALUES ('avatars','avatars',true) ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "avatars_public_read" ON storage.objects;
+CREATE POLICY "avatars_public_read" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
+DROP POLICY IF EXISTS "avatars_user_insert" ON storage.objects;
+CREATE POLICY "avatars_user_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id='avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+DROP POLICY IF EXISTS "avatars_user_update" ON storage.objects;
+CREATE POLICY "avatars_user_update" ON storage.objects FOR UPDATE USING (bucket_id='avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+DROP POLICY IF EXISTS "avatars_user_delete" ON storage.objects;
+CREATE POLICY "avatars_user_delete" ON storage.objects FOR DELETE USING (bucket_id='avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Gallery storage bucket.
+INSERT INTO storage.buckets (id, name, public) VALUES ('gallery','gallery',true) ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "gallery_public_read" ON storage.objects;
+CREATE POLICY "gallery_public_read" ON storage.objects FOR SELECT USING (bucket_id = 'gallery');
+DROP POLICY IF EXISTS "gallery_auth_insert" ON storage.objects;
+CREATE POLICY "gallery_auth_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id='gallery' AND auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "gallery_owner_delete" ON storage.objects;
+CREATE POLICY "gallery_owner_delete" ON storage.objects FOR DELETE USING (bucket_id='gallery' AND auth.role() = 'authenticated');
 
 -- ============================================================================
 -- DONE. Next: sign up in the app, then promote yourself to admin:
