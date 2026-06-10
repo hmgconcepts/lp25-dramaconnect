@@ -1,4 +1,4 @@
-# 🎭 DramaConnect Enterprise v11 — RCCG LP 25 Drama Department
+# 🎭 DramaConnect Enterprise v13 — RCCG LP 25 Drama Department
 
 DramaConnect is a complete, **zero‑cost institutional management hub** for the
 RCCG LP 25 Drama Department. It runs entirely on **free‑tier tools** (Supabase +
@@ -10,7 +10,33 @@ static hosting) and requires **no paid AI API** — keeping running costs at
 
 ---
 
-## ✨ What's New in v11 (this `enterprise v6` build)
+## ✨ What's New in v13 (this `enterprise v8` build)
+
+| New in v13 | Description |
+| :-- | :-- |
+| 🌐 **Multi‑language (English / Yorùbá)** | One‑click language switch in the sidebar (persists per device); extendable dictionary in `assets/js/i18n.js`. |
+| 🧑‍🤝‍🧑 **Per‑unit dashboard ("My Unit")** | Unit leaders get a focused view of their unit: members, avg attendance, open tasks, monthly birthdays, and one‑click "Message My Unit". |
+| 📥 **Excel + CSV member import** | Bulk‑create logins from `.xlsx/.xls` as well as `.csv`. |
+| ✂️ **Photo cropping before upload** | A free, built‑in (no library) drag‑to‑pan + zoom **square cropper** for profile photos and gallery images. |
+| 🧑‍✈️ **Unit‑leader permissions** | Admins can mark members as **Unit Leaders**; leaders can manage members in **their own unit** and upload to the gallery (scoped by RLS — they can't touch admin roles). |
+| 🖼️ **Org‑wide Photo Gallery** | Albums for productions/events with upload (admins + leaders), album filter, and a fullscreen lightbox. |
+| 💡 **Suggestion Box** | Members submit ideas/feedback (optionally **anonymous**); admins triage with statuses (new/reviewed/actioned/closed). |
+
+---
+
+## ✨ What's New in v12 (carried over)
+
+| New in v12 | Description |
+| :-- | :-- |
+| 📸 **Profile photo uploads** | Members upload a photo (free Supabase Storage) shown on their **digital ID card**, the **Directory** and the **Members** list. Each user manages only their own photo (storage RLS). |
+| 📇 **Member Directory** | A photo‑rich, searchable card grid with units filter and one‑tap WhatsApp/Email/social links. |
+| 🚑 **Emergency / Next‑of‑kin contact** | Captured on the profile — essential safeguarding info for any real organisation. |
+| ❓ **Help & FAQ page** | Searchable in‑app answers + a "Message an Admin" shortcut for onboarding. |
+| 🪪 **ID card with real photo** | The digital ID now shows the uploaded photo (initials fallback). |
+
+---
+
+## ✨ What's New in v11 (carried over)
 
 | New in v11 | Description |
 | :-- | :-- |
@@ -121,7 +147,7 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for a detailed explanation of every
 ## 📂 Folder Structure
 
 ```
-enterprise v6/
+enterprise v8/
 ├── index.html              # Landing + login / signup / forgot password
 ├── manifest.json           # PWA manifest
 ├── sw.js                   # Service worker (offline shell)
@@ -143,13 +169,14 @@ enterprise v6/
 │       ├── utils.js        # Currency/date/CSV/export helpers
 │       ├── layout.js       # Shared sidebar + header (local-CSS navigation)
 │       └── install.js      # PWA install prompt
-├── pages/                  # 27 authenticated app pages
-│   ├── home.html       dashboard.html  members.html      productions.html
-│   ├── casting.html    rehearsals.html attendance.html   analytics.html
-│   ├── finance.html    budgets.html    inbox.html        announcements.html
-│   ├── tasks.html      messaging.html  events.html       birthdays.html
-│   ├── polls.html      resources.html  idcard.html       reports.html
-│   ├── reminders.html  activity.html   settings.html     profile.html
+├── pages/                  # 31 authenticated app pages
+│   ├── home.html       dashboard.html  members.html      directory.html
+│   ├── productions.html casting.html   rehearsals.html   attendance.html
+│   ├── analytics.html  finance.html    budgets.html      inbox.html
+│   ├── announcements.html tasks.html   messaging.html    events.html
+│   ├── birthdays.html  gallery.html    polls.html        suggestions.html
+│   ├── resources.html  idcard.html     reports.html      reminders.html
+│   ├── activity.html   settings.html   profile.html      help.html
 │   ├── portfolio.html  reset.html
 ├── database/
 │   ├── schema.sql                # Full schema + RLS + triggers
@@ -166,6 +193,7 @@ enterprise v6/
     ├── ADMIN_CREATE_MEMBER.md   # Admin-created logins (Edge Function)
     ├── SCHEDULED_REMINDERS.md   # Optional fully-automatic reminders
     ├── BIRTHDAY_BOT.md          # Optional automatic birthday greetings
+    ├── PHOTO_UPLOADS.md         # Profile photos via Supabase Storage
     ├── EMAIL_NOTIFICATIONS.md   # Optional automated approval emails
     └── USER_GUIDE.md            # End‑user manual
 ```
