@@ -14,11 +14,13 @@ const Layout = {
             { id: 'home',          href: 'home.html',          icon: 'fa-house',          label: 'My Dashboard' },
             { id: 'dashboard',     href: 'dashboard.html',     icon: 'fa-th-large',       label: 'Command Center' },
             { id: 'members',       href: 'members.html',       icon: 'fa-users',          label: 'Members' },
+            { id: 'directory',     href: 'directory.html',     icon: 'fa-address-book',   label: 'Directory' },
             { id: 'productions',   href: 'productions.html',   icon: 'fa-book-open',      label: 'Productions' },
             { id: 'casting',       href: 'casting.html',       icon: 'fa-masks-theater',  label: 'Casting' },
             { id: 'rehearsals',    href: 'rehearsals.html',    icon: 'fa-calendar-check', label: 'Rehearsals' },
             { id: 'attendance',    href: 'attendance.html',    icon: 'fa-user-check',     label: 'Attendance' },
             { id: 'analytics',     href: 'analytics.html',     icon: 'fa-chart-line',     label: 'Attendance Analytics' },
+            { id: 'myunit',        href: 'myunit.html',        icon: 'fa-people-group',   label: 'My Unit', leaderOnly: true },
             { id: 'finance',       href: 'finance.html',       icon: 'fa-wallet',         label: 'Finance' },
             { id: 'budgets',       href: 'budgets.html',       icon: 'fa-scale-balanced', label: 'Budgets' }
         ]},
@@ -29,9 +31,10 @@ const Layout = {
             { id: 'messaging',     href: 'messaging.html',     icon: 'fa-paper-plane',    label: 'WhatsApp/Email', adminOnly: true },
             { id: 'events',        href: 'events.html',        icon: 'fa-calendar-days',  label: 'Events' },
             { id: 'birthdays',     href: 'birthdays.html',     icon: 'fa-cake-candles',   label: 'Birthdays' },
+            { id: 'gallery',       href: 'gallery.html',       icon: 'fa-images',         label: 'Photo Gallery' },
             { id: 'polls',         href: 'polls.html',         icon: 'fa-square-poll-vertical', label: 'Polls' },
+            { id: 'suggestions',   href: 'suggestions.html',   icon: 'fa-lightbulb',      label: 'Suggestion Box' },
             { id: 'resources',     href: 'resources.html',     icon: 'fa-folder-open',    label: 'Resources' },
-            { id: 'idcard',        href: 'idcard.html',        icon: 'fa-id-card',        label: 'My ID Card' },
             { id: 'reports',       href: 'reports.html',       icon: 'fa-file-export',    label: 'Reports' }
         ]},
         { group: 'Administration', items: [
@@ -41,13 +44,15 @@ const Layout = {
         ]},
         { group: 'Workspace', items: [
             { id: 'profile',       href: 'profile.html',       icon: 'fa-user-circle',    label: 'My Profile' },
+            { id: 'idcard',        href: 'idcard.html',        icon: 'fa-id-card',        label: 'My ID Card' },
+            { id: 'help',          href: 'help.html',          icon: 'fa-circle-question', label: 'Help & FAQ' },
             { id: 'portfolio',     href: 'portfolio.html',     icon: 'fa-rocket',         label: 'Developer Bio', accent: true }
         ]}
     ],
 
-    _buildNav(active, isAdmin) {
+    _buildNav(active, isAdmin, isLeader) {
         return this.nav.map(g => {
-            const items = g.items.filter(i => !i.adminOnly || isAdmin);
+            const items = g.items.filter(i => (!i.adminOnly || isAdmin) && (!i.leaderOnly || isLeader || isAdmin));
             if (!items.length) return '';
             return `
             <div class="pt-1">
@@ -62,7 +67,8 @@ const Layout = {
 
     renderSidebar(active, user) {
         const isAdmin = Auth.isAdmin(user);
-        const navHtml = this._buildNav(active, isAdmin);
+        const isLeader = Auth.isUnitLeader(user);
+        const navHtml = this._buildNav(active, isAdmin, isLeader);
 
         const sidebarInner = `
             <div class="p-6 flex items-center gap-3 border-b border-slate-800">
@@ -74,6 +80,10 @@ const Layout = {
             </div>
             <nav class="flex-1 p-4 space-y-1 overflow-y-auto">${navHtml}</nav>
             <div class="p-4 border-t border-slate-800 space-y-2">
+                <select id="lang-sel" class="w-full px-3 py-2 rounded-xl bg-slate-800 text-slate-200 text-sm border-none outline-none">
+                    <option value="en">🌐 English</option>
+                    <option value="yo">🌐 Yorùbá</option>
+                </select>
                 <button id="theme-btn" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition text-sm">
                     <i class="fas fa-moon w-5 text-center"></i> <span id="theme-label">Dark Mode</span>
                 </button>
@@ -114,6 +124,14 @@ const Layout = {
             sync();
         };
         wireTheme('theme-btn', 'theme-label'); wireTheme('theme-btn-m', 'theme-label-m');
+
+        // Language selector (if i18n is loaded)
+        const ls = document.getElementById('lang-sel');
+        if (ls && window.I18n) {
+            ls.value = I18n.lang;
+            ls.onchange = () => { I18n.set(ls.value); };
+            I18n.apply();
+        }
 
         const overlay = document.getElementById('drawer-overlay');
         if (overlay) overlay.onclick = () => this.closeDrawer();

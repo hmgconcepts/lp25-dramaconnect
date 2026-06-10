@@ -30,6 +30,27 @@ const DB = {
         const { error } = await sb.from('profiles').update({ bday_last_sent: dayKey }).eq('id', memberId);
         if (error) throw error;
     },
+    /**
+     * Upload a profile photo to the public "avatars" bucket and save its URL on
+     * the profile. Path is avatars/<user-id>/avatar.<ext> (RLS scopes by folder).
+     * Returns the public URL.
+     */
+    async uploadAvatar(userId, file) {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `${userId}/avatar_${Date.now()}.${ext}`;
+        const { error: upErr } = await sb.storage.from('avatars')
+            .upload(path, file, { upsert: true, cacheControl: '3600' });
+        if (upErr) throw upErr;
+        const { data } = sb.storage.from('avatars').getPublicUrl(path);
+        const url = data.publicUrl;
+        const { error } = await sb.from('profiles').update({ avatar_url: url }).eq('id', userId);
+        if (error) throw error;
+        return url;
+    },
+    async removeAvatar(userId) {
+        const { error } = await sb.from('profiles').update({ avatar_url: null }).eq('id', userId);
+        if (error) throw error;
+    },
     async updateMember(userId, updates) {
         const { data, error } = await sb.from('profiles').update(updates).eq('id', userId).select();
         if (error) throw error;
@@ -37,6 +58,51 @@ const DB = {
     },
     async setMemberRole(userId, role) {
         const { error } = await sb.from('profiles').update({ role }).eq('id', userId);
+        if (error) throw error;
+    },
+    /** Admin toggles unit-leader status for a member. */
+    async setUnitLeader(userId, isLeader) {
+        const { error } = await sb.from('profiles').update({ is_unit_leader: isLeader }).eq('id', userId);
+        if (error) throw error;
+    },
+
+    /* ======================== GALLERY ============================ */
+    async getGallery() {
+        const { data, error } = await sb.from('gallery').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    /** Upload an image to the public "gallery" bucket and create a row. */
+    async addGalleryPhoto(file, { title, caption, album, uploaded_by }) {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await sb.storage.from('gallery').upload(path, file, { cacheControl: '3600' });
+        if (upErr) throw upErr;
+        const { data } = sb.storage.from('gallery').getPublicUrl(path);
+        const { error } = await sb.from('gallery').insert([{ title, caption, album: album || 'General', image_url: data.publicUrl, uploaded_by }]);
+        if (error) throw error;
+    },
+    async deleteGalleryPhoto(id) {
+        const { error } = await sb.from('gallery').delete().eq('id', id);
+        if (error) throw error;
+    },
+
+    /* ======================= SUGGESTIONS ========================= */
+    async getSuggestions() {
+        const { data, error } = await sb.from('suggestions').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+    async addSuggestion(payload) {
+        const { error } = await sb.from('suggestions').insert([payload]);
+        if (error) throw error;
+    },
+    async setSuggestionStatus(id, status) {
+        const { error } = await sb.from('suggestions').update({ status }).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteSuggestion(id) {
+        const { error } = await sb.from('suggestions').delete().eq('id', id);
         if (error) throw error;
     },
     async setMemberStatus(userId, status) {
@@ -453,7 +519,7 @@ const DB = {
         const tables = ['profiles', 'productions', 'cast_list', 'finances', 'budgets',
                         'rehearsals', 'attendance', 'announcements', 'events',
                         'messages', 'inbox', 'tasks', 'reminders',
-                        'resources', 'polls', 'poll_votes', 'event_rsvps'];
+                        'resources', 'polls', 'poll_votes', 'event_rsvps', 'gallery', 'suggestions'];
         const out = { exported_at: new Date().toISOString(), data: {} };
         for (const t of tables) {
             const { data, error } = await sb.from(t).select('*');

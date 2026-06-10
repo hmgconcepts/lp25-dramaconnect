@@ -96,6 +96,16 @@ const Auth = {
         return !!(user && user.role === 'admin');
     },
 
+    /** True for unit leaders (and admins, who outrank leaders). */
+    isUnitLeader(user) {
+        return !!(user && (user.role === 'admin' || user.is_unit_leader === true));
+    },
+
+    /** Elevated = admin OR unit leader (can do some management). */
+    canManage(user) {
+        return this.isAdmin(user) || this.isUnitLeader(user);
+    },
+
     /** Path to index.html that works at root or inside /pages/. */
     indexUrl() {
         return window.location.pathname.includes('/pages/') ? '../index.html' : 'index.html';

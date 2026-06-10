@@ -98,6 +98,21 @@ const Utils = {
         return name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
     },
 
+    /**
+     * Render an avatar: the member's photo if present, else a coloured initials
+     * circle. `size` is px. Returns an HTML string. (UI.esc must exist.)
+     */
+    avatar(member, size = 40) {
+        const s = size + 'px';
+        const name = member && (member.full_name || member.email) || '';
+        if (member && member.avatar_url) {
+            return `<img src="${(window.UI?UI.esc:String)(member.avatar_url)}" alt="${(window.UI?UI.esc:String)(name)}" style="width:${s};height:${s};border-radius:9999px;object-fit:cover;" loading="lazy">`;
+        }
+        const init = this.initials(name);
+        const fs = Math.round(size * 0.4) + 'px';
+        return `<div style="width:${s};height:${s};border-radius:9999px;background:var(--rccg-blue,#003399);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${fs};">${(window.UI?UI.esc:String)(init)}</div>`;
+    },
+
     /** Minimal CSV parser → array of objects keyed by the header row. */
     parseCSV(text) {
         const rows = [];
