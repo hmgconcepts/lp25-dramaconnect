@@ -72,7 +72,18 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
   credentials they gave you and fill in the rest here.)*
 - **Birthdays:** see whose birthday it is; the system celebrates members
   automatically on their day.
-- **My ID Card:** view and print your branded membership card (with QR code).
+- **My ID Card:** view and print your branded membership card (with photo & QR code).
+- **Profile photo:** in My Profile, tap **Upload Photo** — it shows on your ID
+  card and in the directory.
+- **Directory:** browse members with photos and reach them via WhatsApp/email/socials.
+- **Help & FAQ:** searchable answers to common questions.
+- **Photo cropping:** when you upload a photo, you can drag and zoom to crop it
+  to a neat square before it saves.
+- **Photo Gallery:** browse department albums (productions, events). Admins and
+  unit leaders can upload.
+- **Suggestion Box:** share ideas or feedback (you may post anonymously).
+- **Unit Leaders:** if an admin makes you a unit leader, you can help manage
+  members in your own unit and upload gallery photos.
 
 ---
 

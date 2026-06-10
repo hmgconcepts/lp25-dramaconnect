@@ -454,6 +454,73 @@ it, where to find it, and how it works under the hood. All features run on
   unit, contact, a short ID, and a **QR code** (encodes name + ID for quick
   verification). **Print or Save as PDF** in one click.
 
+## 36. Profile Photo Uploads (NEW in v12)
+
+- **Where:** `pages/profile.html` → "Upload Photo" · **Access:** all members.
+- Photos are stored free in **Supabase Storage** (a public `avatars` bucket
+  created automatically by `repair_and_upgrade.sql`). Each member can upload,
+  replace or remove **only their own** photo (enforced by storage RLS, scoped to
+  `avatars/<user-id>/…`).
+- The photo appears automatically on the **digital ID card**, the **Member
+  Directory**, and the **Members** table (initials shown as a fallback).
+- Setup details + fallback: `docs/PHOTO_UPLOADS.md`. No AI/paid API — plain file
+  storage on the free tier.
+
+## 37. Member Directory (NEW in v12)
+
+- **Where:** `pages/directory.html` · **Access:** all members.
+- A photo-rich, searchable card grid of the department: search by name, unit or
+  occupation, filter by **drama unit**, and reach anyone via one-tap **WhatsApp,
+  Email**, or their **social links** (Facebook, Instagram, TikTok, X).
+
+## 38. Emergency / Next-of-Kin Contact (NEW in v12)
+
+- **Where:** `pages/profile.html`.
+- Members record an **emergency contact name, phone and relationship** —
+  essential safeguarding information for rehearsals, events and travel.
+
+## 39. Help & FAQ (NEW in v12)
+
+- **Where:** `pages/help.html` · **Access:** all members.
+- A searchable list of common how-tos (photos, ID card, check-in, RSVP,
+  messaging, birthdays, install, password reset) plus a **"Message an Admin"**
+  shortcut — smoothing onboarding for new members.
+
+## 40. Photo Cropping (NEW in v13)
+
+- **Where:** profile photo upload + gallery upload (`assets/js/crop.js`).
+- Before any photo is uploaded, a built‑in **square cropper** opens: drag to
+  reposition, use the slider to zoom, then "Use Photo". It outputs a clean
+  square JPEG (512px avatars / 800px gallery). Pure canvas — **no external
+  library, no API**, works on touch and mouse.
+
+## 41. Unit-Leader Permissions (NEW in v13)
+
+- **Where:** Members page → "Unit Lead" button (admin only) sets/clears the role.
+- **Unit Leaders** are trusted members who can:
+  - **update profiles of members in their own unit** (e.g. fix details, set unit),
+  - **upload to the Photo Gallery**.
+- They **cannot** grant admin rights or manage other units. Enforced at the
+  database with a `is_unit_leader_of(unit)` security‑definer function and RLS, so
+  the limits hold even outside the UI. This delegates day‑to‑day coordination
+  without giving away full admin access.
+
+## 42. Org-Wide Photo Gallery (NEW in v13)
+
+- **Where:** `pages/gallery.html` · **View:** all · **Upload:** admins + unit
+  leaders.
+- Organise photos into **albums** (e.g. "Easter Play 2026"), filter by album,
+  and view any image in a **fullscreen lightbox**. Images are stored free in a
+  public Supabase Storage `gallery` bucket (auto‑created by the SQL).
+
+## 43. Suggestion Box (NEW in v13)
+
+- **Where:** `pages/suggestions.html` · **Submit:** all members · **Manage:**
+  admins.
+- Members submit ideas/feedback, optionally **anonymously**. Admins triage each
+  with a status (**new → reviewed → actioned → closed**). A simple, powerful way
+  to capture grassroots input.
+
 ---
 
 ## Free‑Tools / No‑AI Commitment

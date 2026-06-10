@@ -25,7 +25,7 @@ Follow these in order. Tick each box. Total time ≈ 15 minutes. Everything here
 
 ## C. Publish the site (pick ONE — all free)
 - [ ] **C1.** **GitHub Pages:** create a repo → upload the **contents** of the
-      `enterprise v6` folder (so `index.html` is at the root) → **Settings →
+      `enterprise v8` folder (so `index.html` is at the root) → **Settings →
       Pages → Deploy from branch → main → / (root)**.
 - [ ] **C1-alt.** Or **Cloudflare Pages** / **Vercel** → import repo / drag the
       folder → Framework: **None** → output dir: `/` → **Deploy**.
