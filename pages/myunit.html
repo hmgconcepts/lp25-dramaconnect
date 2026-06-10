@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Unit | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-6 mb-6 rccg-blue text-white">
+            <h2 class="text-xl font-extrabold" id="unit-name">My Unit</h2>
+            <p class="opacity-90 text-sm" id="unit-sub"></p>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="glass-card p-5 border-l-4 border-blue-600"><p class="text-xs font-bold text-slate-400 uppercase">Unit Members</p><h2 id="k-count" class="text-2xl font-black text-slate-800">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-green-600"><p class="text-xs font-bold text-slate-400 uppercase">Avg Attendance</p><h2 id="k-att" class="text-2xl font-black text-slate-800">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-yellow-500"><p class="text-xs font-bold text-slate-400 uppercase">Open Tasks</p><h2 id="k-tasks" class="text-2xl font-black text-slate-800">—</h2></div>
+            <div class="glass-card p-5 border-l-4 border-pink-500"><p class="text-xs font-bold text-slate-400 uppercase">Birthdays (mo.)</p><h2 id="k-bday" class="text-2xl font-black text-slate-800">—</h2></div>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-people-group text-blue-600 mr-2"></i> Unit Members</h3>
+                <button id="msg-unit" class="dc-btn dc-btn-primary text-sm py-2"><i class="fas fa-paper-plane mr-1"></i> Message My Unit</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="enterprise-table">
+                    <thead><tr><th>Member</th><th>Phone</th><th>Birthday</th><th>Contact</th></tr></thead>
+                    <tbody id="rows"><tr><td colspan="4" class="text-center text-slate-400 py-8">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, unitMembers = [];
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            if (!Auth.isUnitLeader(me)) { UI.toast('Unit leaders only.', 'warning'); window.location.href = 'home.html'; return; }
+            Layout.renderSidebar('myunit', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('My Unit', 'Coordinate your unit');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+
+            const unit = me.unit || '(no unit set)';
+            document.getElementById('unit-name').innerText = unit;
+            document.getElementById('unit-sub').innerText = 'Led by ' + (me.full_name || 'you');
+            document.getElementById('msg-unit').onclick = messageUnit;
+            load();
+        }
+        async function load() {
+            try {
+                const [members, rehearsals, report] = await Promise.all([
+                    DB.getMembers(), DB.getRehearsals().catch(()=>[]), DB.getAttendanceReport().catch(()=>[])
+                ]);
+                unitMembers = members.filter(m => m.unit && m.unit === me.unit);
+                document.getElementById('k-count').innerText = unitMembers.length;
+
+                const sessions = rehearsals.length;
+                const ids = new Set(unitMembers.map(m => m.id));
+                const present = report.filter(a => ids.has(a.member_id) && a.status === 'present').length;
+                const avg = (sessions && unitMembers.length) ? Math.round(present / (sessions * unitMembers.length) * 100) : 0;
+                document.getElementById('k-att').innerText = (isFinite(avg)?avg:0) + '%';
+
+                let tasks = 0;
+                for (const m of unitMembers) { try { tasks += (await DB.getMyTasks(m.id)).filter(t => t.status !== 'done').length; } catch(e){} }
+                document.getElementById('k-tasks').innerText = tasks;
+
+                const mo = new Date().getMonth() + 1;
+                document.getElementById('k-bday').innerText = unitMembers.filter(m => m.birth_month === mo).length;
+
+                const body = document.getElementById('rows');
+                body.innerHTML = unitMembers.length ? unitMembers.map(m => `
+                    <tr>
+                        <td><div class="flex items-center gap-3">${Utils.avatar(m,32)}<span class="font-semibold text-slate-800">${UI.esc(m.full_name||m.email)}</span></div></td>
+                        <td>${UI.esc(m.phone||'—')}</td>
+                        <td>${m.birth_month?Utils.monthName(m.birth_month)+' '+(m.birth_day||''):'—'}</td>
+                        <td>
+                            ${m.phone?`<a href="${Utils.whatsappLink(m.phone,'')}" target="_blank" rel="noopener" class="text-green-600 mr-2"><i class="fab fa-whatsapp"></i></a>`:''}
+                            ${m.email?`<a href="${Utils.mailtoLink(m.email,'','',false)}" class="text-blue-600"><i class="fas fa-envelope"></i></a>`:''}
+                        </td>
+                    </tr>`).join('') : '<tr><td colspan="4" class="text-center text-slate-400 py-8">No members in your unit yet. Ask an admin to set members\' unit (or set it yourself on their profile).</td></tr>';
+            } catch (e) { document.getElementById('rows').innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
+        }
+        async function messageUnit() {
+            const text = prompt('Message to send to your unit (posted to each member\'s Inbox):');
+            if (!text) return;
+            try {
+                for (const m of unitMembers) {
+                    if (m.id === me.id) continue;
+                    await DB.sendInternalMessage({ sender_id: me.id, sender_name: me.full_name||me.email, recipient_id: m.id, to_admins:false, subject:'Message from your unit leader', body:text });
+                }
+                UI.toast('Sent to ' + unitMembers.length + ' member(s).', 'success');
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        init();
+    </script>
+</body>
+</html>

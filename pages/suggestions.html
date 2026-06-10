@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suggestion Box | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Submit -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-lightbulb text-yellow-500 mr-2"></i> Share an Idea</h3>
+                <input id="s-title" class="dc-input mb-3" placeholder="Title">
+                <textarea id="s-body" rows="4" class="dc-input mb-3" placeholder="Your suggestion or feedback…"></textarea>
+                <label class="flex items-center gap-2 text-sm text-slate-600 mb-3"><input type="checkbox" id="s-anon"> Submit anonymously</label>
+                <button id="s-send" class="dc-btn dc-btn-primary w-full"><i class="fas fa-paper-plane mr-1"></i> Submit</button>
+            </div>
+
+            <!-- List -->
+            <div class="lg:col-span-2 glass-card p-6 md:p-8 animate-fade-in">
+                <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-inbox text-blue-600 mr-2"></i> <span id="list-title">Suggestions</span></h3>
+                <div id="list" class="space-y-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, isAdmin = false;
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            isAdmin = Auth.isAdmin(me);
+            Layout.renderSidebar('suggestions', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Suggestion Box', 'Your ideas make us better');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('list-title').innerText = isAdmin ? 'All Suggestions' : 'Recent Suggestions';
+            document.getElementById('s-send').onclick = submit;
+            load();
+        }
+        async function submit() {
+            const title = document.getElementById('s-title').value.trim();
+            const body = document.getElementById('s-body').value.trim();
+            const anon = document.getElementById('s-anon').checked;
+            if (!title) { UI.toast('Please add a title.', 'warning'); return; }
+            try {
+                await DB.addSuggestion({ title, body: body || null, anonymous: anon, author_id: anon ? null : me.id, author_name: anon ? null : (me.full_name || me.email), status: 'new' });
+                document.getElementById('s-title').value = ''; document.getElementById('s-body').value = ''; document.getElementById('s-anon').checked = false;
+                UI.toast('Thank you! Your suggestion was submitted.', 'success');
+                load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function load() {
+            const host = document.getElementById('list');
+            try {
+                const items = await DB.getSuggestions();
+                if (!items.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No suggestions yet. Be the first!</p>'; return; }
+                const sc = s => s==='actioned'?'badge-green':s==='reviewed'?'badge-yellow':s==='closed'?'badge-red':'badge-member';
+                host.innerHTML = items.map(s => `
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                        <div class="flex justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-800">${UI.esc(s.title)} <span class="badge ${sc(s.status)} ml-1">${UI.esc(s.status)}</span></p>
+                                ${s.body ? `<p class="text-sm text-slate-600 mt-1">${UI.esc(s.body)}</p>` : ''}
+                                <p class="text-[11px] text-slate-400 mt-1">${s.anonymous ? 'Anonymous' : UI.esc(s.author_name || 'Member')} • ${Utils.formatDateTime(s.created_at)}</p>
+                            </div>
+                            ${isAdmin ? `<div class="flex flex-col gap-1 items-end">
+                                <select class="dc-input py-1 text-xs max-w-[130px]" onchange="setStatus('${s.id}', this.value)">
+                                    ${['new','reviewed','actioned','closed'].map(o => `<option ${s.status===o?'selected':''}>${o}</option>`).join('')}
+                                </select>
+                                <button class="text-red-600 text-[11px] font-bold hover:underline" onclick="del('${s.id}')">Delete</button>
+                            </div>` : ''}
+                        </div>
+                    </div>`).join('');
+            } catch (e) { host.innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        async function setStatus(id, status) { try { await DB.setSuggestionStatus(id, status); UI.toast('Updated.', 'success', 1200); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        async function del(id) { if (!await UI.confirm('Delete this suggestion?')) return; try { await DB.deleteSuggestion(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.setStatus = setStatus; window.del = del;
+        init();
+    </script>
+</body>
+</html>

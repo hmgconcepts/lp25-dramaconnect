@@ -34,6 +34,7 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/db.js"></script>
@@ -66,7 +67,7 @@
             return `
             <div class="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="h-10 w-10 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs font-bold">${UI.esc(Utils.initials(m.full_name))}</div>
+                    ${Utils.avatar(m, 40)}
                     <div class="min-w-0">
                         <p class="font-bold text-slate-800 text-sm truncate">${UI.esc(m.full_name || 'Member')}</p>
                         <p class="text-xs text-slate-400">${Utils.monthName(m.birth_month)} ${m.birth_day}</p>

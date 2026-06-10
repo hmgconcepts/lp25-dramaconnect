@@ -33,6 +33,18 @@
             <!-- Personal details -->
             <div class="glass-card p-6 md:p-8 animate-fade-in">
                 <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-user-circle text-blue-600 mr-2"></i> Personal Details</h3>
+
+                <!-- Profile photo -->
+                <div class="flex items-center gap-4 mb-6">
+                    <div id="avatar-box"></div>
+                    <div>
+                        <input type="file" id="avatar-file" accept="image/*" class="hidden">
+                        <button id="avatar-btn" class="dc-btn dc-btn-primary text-sm py-2"><i class="fas fa-camera mr-1"></i> Upload Photo</button>
+                        <button id="avatar-remove" class="dc-btn bg-slate-100 text-slate-700 text-sm py-2 hidden"><i class="fas fa-trash mr-1"></i> Remove</button>
+                        <p class="text-[11px] text-slate-400 mt-1">JPG/PNG, used on your digital ID card. Max ~2&nbsp;MB.</p>
+                    </div>
+                </div>
+
                 <div class="space-y-4">
                     <div><label class="lbl">Full Name</label><input id="pf-name" class="dc-input"></div>
                     <div>
@@ -63,6 +75,14 @@
                         <div><label class="lbl">Drama Unit</label><input id="pf-unit" class="dc-input" placeholder="e.g. Actors, Choir"></div>
                     </div>
                     <div><label class="lbl">Home Address</label><textarea id="pf-address" rows="2" class="dc-input"></textarea></div>
+                    <div class="pt-2 border-t border-slate-100">
+                        <p class="text-xs font-bold text-slate-500 uppercase mt-3 mb-2"><i class="fas fa-kit-medical text-red-500 mr-1"></i> Emergency / Next of Kin</p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="lbl">Contact Name</label><input id="pf-emname" class="dc-input"></div>
+                            <div><label class="lbl">Contact Phone</label><input id="pf-emphone" class="dc-input"></div>
+                        </div>
+                        <div class="mt-3"><label class="lbl">Relationship</label><input id="pf-emrel" class="dc-input" placeholder="e.g. Spouse, Parent"></div>
+                    </div>
                     <button id="pf-save" class="dc-btn dc-btn-primary">Save Details</button>
                 </div>
             </div>
@@ -100,12 +120,14 @@
     <style>.lbl{display:block;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;}</style>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/db.js"></script>
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/crop.js"></script>
     <script>
         let me = null;
         const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -129,6 +151,7 @@
             set('pf-whatsapp', me.whatsapp); set('pf-bmonth', me.birth_month); set('pf-bday', me.birth_day);
             set('pf-gender', me.gender); set('pf-occupation', me.occupation); set('pf-parish', me.parish);
             set('pf-unit', me.unit); set('pf-address', me.address);
+            set('pf-emname', me.emergency_name); set('pf-emphone', me.emergency_phone); set('pf-emrel', me.emergency_relation);
             set('pf-facebook', me.facebook); set('pf-instagram', me.instagram);
             set('pf-tiktok', me.tiktok); set('pf-twitter', me.twitter);
 
@@ -139,7 +162,44 @@
             document.getElementById('pf-save').onclick = saveDetails;
             document.getElementById('pf-save2').onclick = saveSocial;
             document.getElementById('pw-save').onclick = savePassword;
+            renderAvatar();
+            document.getElementById('avatar-btn').onclick = () => document.getElementById('avatar-file').click();
+            document.getElementById('avatar-file').onchange = uploadAvatar;
+            document.getElementById('avatar-remove').onclick = removeAvatar;
             updateMeter();
+        }
+
+        function renderAvatar() {
+            document.getElementById('avatar-box').innerHTML = Utils.avatar(me, 86);
+            document.getElementById('avatar-remove').classList.toggle('hidden', !me.avatar_url);
+        }
+        async function uploadAvatar(e) {
+            const rawFile = e.target.files[0];
+            e.target.value = ''; // allow re-selecting same file later
+            if (!rawFile) return;
+            // Let the member crop/zoom to a clean square first (free, client-side).
+            let file = rawFile;
+            try {
+                file = await Crop.open(rawFile, 512);
+            } catch (cancel) { return; } // user cancelled the cropper
+            UI.showLoader('Uploading photo…');
+            try {
+                const url = await DB.uploadAvatar(me.id, file);
+                me.avatar_url = url;
+                renderAvatar();
+                UI.hideLoader();
+                UI.toast('Photo updated.', 'success');
+            } catch (err) {
+                UI.hideLoader();
+                if (/bucket|not found|denied|row-level|policy/i.test(err.message)) {
+                    UI.toast('Photo storage not set up yet. Run the latest repair_and_upgrade.sql (it creates the "avatars" bucket). See docs/PHOTO_UPLOADS.md.', 'error', 9000);
+                } else UI.toast(err.message, 'error');
+            }
+        }
+        async function removeAvatar() {
+            if (!await UI.confirm('Remove your profile photo?')) return;
+            try { await DB.removeAvatar(me.id); me.avatar_url = null; renderAvatar(); UI.toast('Photo removed.', 'success'); }
+            catch (e) { UI.toast(e.message, 'error'); }
         }
 
         function updateMeter() {
@@ -157,7 +217,8 @@
                 whatsapp: val('pf-whatsapp') || null,
                 birth_month: intval('pf-bmonth'), birth_day: intval('pf-bday'),
                 gender: val('pf-gender') || null, occupation: val('pf-occupation') || null,
-                parish: val('pf-parish') || null, unit: val('pf-unit') || null, address: val('pf-address') || null
+                parish: val('pf-parish') || null, unit: val('pf-unit') || null, address: val('pf-address') || null,
+                emergency_name: val('pf-emname') || null, emergency_phone: val('pf-emphone') || null, emergency_relation: val('pf-emrel') || null
             };
             try {
                 await DB.updateMember(me.id, updates);

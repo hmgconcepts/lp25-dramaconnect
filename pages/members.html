@@ -7,6 +7,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
     <link rel="stylesheet" href="../assets/css/fallback.css">
@@ -34,9 +35,9 @@
 
         <!-- Bulk create from CSV (admin only) -->
         <div id="bulk-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-green-600">
-            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-users-rectangle text-green-600 mr-2"></i> Bulk Create Logins (CSV)</h3>
-            <p class="text-xs text-slate-500 mb-3">CSV columns: <code>full_name,email,phone,parish</code> (password auto‑generated for each). Creates many accounts at once, then gives you a downloadable credential sheet.</p>
-            <input type="file" id="bulk-file" accept=".csv" class="dc-input mb-3">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-users-rectangle text-green-600 mr-2"></i> Bulk Create Logins (CSV or Excel)</h3>
+            <p class="text-xs text-slate-500 mb-3">Columns: <code>full_name,email,phone,parish</code> — accepts <strong>.csv, .xlsx, .xls</strong> (password auto‑generated for each). Creates many accounts at once, then downloads a credential sheet.</p>
+            <input type="file" id="bulk-file" accept=".csv,.xlsx,.xls" class="dc-input mb-3">
             <button id="bulk-go" class="dc-btn bg-green-600 text-white"><i class="fas fa-upload mr-1"></i> Create Accounts</button>
             <div id="bulk-progress" class="text-sm text-slate-500 mt-3"></div>
         </div>
@@ -62,6 +63,7 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/db.js"></script>
@@ -122,17 +124,18 @@
                 const approved = !m.status || m.status === 'approved';
                 return `
                 <tr>
-                    <td><div class="flex items-center gap-3"><div class="h-9 w-9 rounded-full rccg-blue text-white flex items-center justify-center text-xs font-bold">${UI.esc(Utils.initials(m.full_name))}</div><span class="font-semibold text-slate-800">${UI.esc(m.full_name || '—')}</span></div></td>
+                    <td><div class="flex items-center gap-3">${Utils.avatar(m, 36)}<span class="font-semibold text-slate-800">${UI.esc(m.full_name || '—')}</span></div></td>
                     <td>${UI.esc(m.email || '—')}</td>
                     <td>${UI.esc(m.phone || '—')}</td>
                     <td>${UI.esc(m.parish || '—')}</td>
                     <td><span class="badge ${approved ? 'badge-green' : 'badge-yellow'}">${approved ? 'approved' : 'pending'}</span></td>
-                    <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span></td>
+                    <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span>${m.is_unit_leader ? ' <span class="badge badge-yellow">unit lead</span>' : ''}</td>
                     ${isAdmin ? `<td>
-                        <div class="flex gap-3 items-center">
+                        <div class="flex gap-3 items-center flex-wrap">
                             ${m.phone ? `<a href="${Utils.whatsappLink(m.phone, '')}" target="_blank" rel="noopener" title="WhatsApp" class="text-green-600 hover:opacity-70"><i class="fab fa-whatsapp"></i></a>` : ''}
                             ${m.email ? `<a href="${Utils.mailtoLink(m.email, '', '', false)}" title="Email" class="text-blue-600 hover:opacity-70"><i class="fas fa-envelope"></i></a>` : ''}
                             <button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}','${m.role}')">${m.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
+                            <button class="text-yellow-600 hover:underline text-xs font-bold" onclick="toggleLeader('${m.id}', ${!!m.is_unit_leader})">${m.is_unit_leader ? 'Unset Lead' : 'Unit Lead'}</button>
                             ${m.id !== me.id ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="removeMember('${m.id}','${UI.esc(m.full_name || m.email || '')}')">Remove</button>` : '<span class="text-xs text-slate-300">You</span>'}
                         </div>
                     </td>` : ''}
@@ -240,9 +243,20 @@
             const prog = document.getElementById('bulk-progress');
             let rows;
             try {
-                const text = await Utils.readFileText(file);
-                rows = Utils.parseCSV(text).filter(r => r.email);
-            } catch (e) { UI.toast('Could not read CSV: ' + e.message, 'error'); return; }
+                const name = (file.name || '').toLowerCase();
+                if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+                    if (typeof XLSX === 'undefined') { UI.toast('Excel library not loaded.', 'error'); return; }
+                    const buf = await file.arrayBuffer();
+                    const wb = XLSX.read(buf, { type: 'array' });
+                    const sheet = wb.Sheets[wb.SheetNames[0]];
+                    rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+                        .map(r => { const o = {}; for (const k in r) o[String(k).trim().toLowerCase().replace(/\s+/g, '_')] = r[k]; return o; })
+                        .filter(r => r.email);
+                } else {
+                    const text = await Utils.readFileText(file);
+                    rows = Utils.parseCSV(text).filter(r => r.email);
+                }
+            } catch (e) { UI.toast('Could not read file: ' + e.message, 'error'); return; }
             if (!rows.length) { UI.toast('No valid rows (need an email column).', 'warning'); return; }
             if (!await UI.confirm(`Create ${rows.length} login account(s)? Each gets an auto‑generated password.`)) return;
 
@@ -273,6 +287,17 @@
 
         window.bulkCreate = bulkCreate;
         window.createMember = createMember;
+        async function toggleLeader(id, current) {
+            const next = !current;
+            if (!await UI.confirm(next ? 'Make this member a Unit Leader? They can manage members in their own unit.' : 'Remove Unit Leader status?')) return;
+            try {
+                await DB.setUnitLeader(id, next);
+                await DB.logActivity('unit_leader', `${id} -> ${next}`);
+                UI.toast('Updated.', 'success');
+                await load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.toggleLeader = toggleLeader;
         window.approve = approve; window.reject = reject; window.toggleRole = toggleRole; window.removeMember = removeMember;
         init();
     </script>

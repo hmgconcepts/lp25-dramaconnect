@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directory | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-4 mb-6 flex flex-wrap gap-3 items-center">
+            <input id="search" class="dc-input max-w-xs" placeholder="🔍 Search name, unit, occupation…">
+            <select id="unit-filter" class="dc-input max-w-[200px]"><option value="">All units</option></select>
+            <span id="count" class="text-sm text-slate-400 ml-auto"></span>
+        </div>
+
+        <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"><p class="text-slate-400 text-sm">Loading…</p></div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        let me = null, all = [];
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('directory', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Member Directory', 'Meet the department');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('search').oninput = render;
+            document.getElementById('unit-filter').onchange = render;
+            try {
+                all = (await DB.getMembers()).filter(m => !m.status || m.status === 'approved');
+                const units = [...new Set(all.map(m => m.unit).filter(Boolean))].sort();
+                document.getElementById('unit-filter').innerHTML = '<option value="">All units</option>' +
+                    units.map(u => `<option>${UI.esc(u)}</option>`).join('');
+                render();
+            } catch (e) { document.getElementById('grid').innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        function social(icon, url, color) {
+            if (!url) return '';
+            let href = url;
+            if (!/^https?:/i.test(url)) {
+                const h = url.replace(/^@/, '');
+                if (icon === 'facebook') href = 'https://facebook.com/' + h;
+                else if (icon === 'instagram') href = 'https://instagram.com/' + h;
+                else if (icon === 'tiktok') href = 'https://tiktok.com/@' + h;
+                else if (icon === 'x-twitter') href = 'https://x.com/' + h;
+            }
+            return `<a href="${UI.esc(href)}" target="_blank" rel="noopener" style="color:${color}" title="${icon}"><i class="fab fa-${icon}"></i></a>`;
+        }
+        function render() {
+            const q = (document.getElementById('search').value || '').toLowerCase();
+            const unit = document.getElementById('unit-filter').value;
+            let list = all.filter(m => {
+                const hay = [m.full_name, m.unit, m.occupation, m.parish].map(v => (v||'').toLowerCase()).join(' ');
+                return (!q || hay.includes(q)) && (!unit || m.unit === unit);
+            });
+            document.getElementById('count').innerText = list.length + ' member(s)';
+            const grid = document.getElementById('grid');
+            if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No members match.</p>'; return; }
+            grid.innerHTML = list.map(m => `
+                <div class="glass-card p-5 text-center">
+                    <div class="flex justify-center mb-3">${Utils.avatar(m, 72)}</div>
+                    <h4 class="font-bold text-slate-800">${UI.esc(m.full_name || 'Member')}</h4>
+                    <p class="text-xs text-slate-500">${UI.esc(m.occupation || '—')}${m.unit ? ' • ' + UI.esc(m.unit) : ''}</p>
+                    ${m.role === 'admin' ? '<span class="badge badge-admin mt-1 inline-block">admin</span>' : ''}
+                    <div class="flex justify-center gap-3 mt-3 text-lg">
+                        ${m.phone || m.whatsapp ? `<a href="${Utils.whatsappLink(m.whatsapp||m.phone,'')}" target="_blank" rel="noopener" style="color:#25D366" title="WhatsApp"><i class="fab fa-whatsapp"></i></a>` : ''}
+                        ${m.email ? `<a href="${Utils.mailtoLink(m.email,'','',false)}" style="color:#2563eb" title="Email"><i class="fas fa-envelope"></i></a>` : ''}
+                        ${social('facebook', m.facebook, '#1877f2')}
+                        ${social('instagram', m.instagram, '#e1306c')}
+                        ${social('tiktok', m.tiktok, '#000')}
+                        ${social('x-twitter', m.twitter, '#000')}
+                    </div>
+                </div>`).join('');
+        }
+        init();
+    </script>
+</body>
+</html>

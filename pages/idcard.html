@@ -34,7 +34,7 @@
                 </div>
                 <div class="id-body">
                     <div class="flex items-center gap-4">
-                        <div id="id-avatar" class="id-photo flex items-center justify-center text-2xl font-black text-blue-800">--</div>
+                        <div id="id-avatar"></div>
                         <div class="min-w-0">
                             <p id="id-name" class="font-extrabold text-slate-800 text-lg leading-tight">—</p>
                             <p id="id-role" class="text-xs text-slate-500">—</p>
@@ -62,6 +62,7 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
     <script src="../assets/js/db.js"></script>
@@ -78,7 +79,15 @@
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
 
-            document.getElementById('id-avatar').innerText = Utils.initials(me.full_name);
+            // Photo (or initials) on the ID; force the round ID-photo frame.
+            (function () {
+                const box = document.getElementById('id-avatar');
+                if (me.avatar_url) {
+                    box.innerHTML = `<img src="${UI.esc(me.avatar_url)}" class="id-photo" alt="photo">`;
+                } else {
+                    box.innerHTML = `<div class="id-photo flex items-center justify-center text-2xl font-black text-blue-800">${UI.esc(Utils.initials(me.full_name))}</div>`;
+                }
+            })();
             document.getElementById('id-name').innerText = me.full_name || 'Member';
             document.getElementById('id-role').innerText = (me.role === 'admin' ? 'Administrator' : 'Member') + (me.occupation ? ' • ' + me.occupation : '');
             document.getElementById('id-unit').innerText = me.unit ? ('Unit: ' + me.unit) : '';

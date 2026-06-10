@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Gallery | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div id="upload-card" class="glass-card p-6 mb-6 admin-only">
+            <h3 class="font-bold text-slate-800 mb-3"><i class="fas fa-cloud-arrow-up text-blue-600 mr-2"></i> Add Photo</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input id="g-title" placeholder="Title (optional)" class="dc-input">
+                <input id="g-album" placeholder="Album (e.g. Easter Play 2026)" class="dc-input">
+                <input id="g-caption" placeholder="Caption (optional)" class="dc-input">
+            </div>
+            <input type="file" id="g-file" accept="image/*" class="dc-input mt-3">
+            <button id="g-upload" class="dc-btn dc-btn-primary mt-3"><i class="fas fa-upload mr-1"></i> Upload</button>
+        </div>
+
+        <div class="flex flex-wrap gap-2 mb-4" id="albums"></div>
+        <div id="grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"><p class="text-slate-400 text-sm">Loading…</p></div>
+    </main>
+
+    <div id="lightbox" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="this.classList.add('hidden')">
+        <img id="lb-img" style="max-width:95%;max-height:90%;border-radius:10px;" alt="">
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/crop.js"></script>
+    <script>
+        let me = null, all = [], album = '';
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('gallery', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Photo Gallery', 'Productions, events & memories');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            // Admins and unit leaders can upload.
+            if (Auth.canManage(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+                document.getElementById('g-upload').onclick = upload;
+            }
+            load();
+        }
+        async function upload() {
+            const raw = document.getElementById('g-file').files[0];
+            document.getElementById('g-file').value = '';
+            if (!raw) { UI.toast('Choose an image first.', 'warning'); return; }
+            let file = raw;
+            // Optional crop to a tidy square (cancel keeps original).
+            try { file = await Crop.open(raw, 800); } catch (e) { file = raw; }
+            UI.showLoader('Uploading…');
+            try {
+                await DB.addGalleryPhoto(file, {
+                    title: document.getElementById('g-title').value.trim() || null,
+                    caption: document.getElementById('g-caption').value.trim() || null,
+                    album: document.getElementById('g-album').value.trim() || 'General',
+                    uploaded_by: me.full_name || me.email
+                });
+                await DB.logActivity('gallery_add', document.getElementById('g-title').value || 'photo');
+                ['g-title','g-album','g-caption'].forEach(id => document.getElementById(id).value = '');
+                UI.hideLoader(); UI.toast('Photo added.', 'success'); load();
+            } catch (e) {
+                UI.hideLoader();
+                if (/bucket|not found|denied|row-level|policy/i.test(e.message)) UI.toast('Gallery storage not set up yet. Run the latest repair_and_upgrade.sql.', 'error', 9000);
+                else UI.toast(e.message, 'error');
+            }
+        }
+        async function load() {
+            try { all = await DB.getGallery(); renderAlbums(); render(); }
+            catch (e) { document.getElementById('grid').innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
+        }
+        function renderAlbums() {
+            const albums = ['', ...new Set(all.map(g => g.album).filter(Boolean))];
+            document.getElementById('albums').innerHTML = albums.map(a =>
+                `<button class="text-xs px-3 py-1 rounded-full font-bold ${a===album?'rccg-blue text-white':'bg-slate-100 text-slate-600'}" onclick="setAlbum('${a.replace(/'/g,"\\'")}')">${a ? UI.esc(a) : 'All'}</button>`).join('');
+        }
+        function setAlbum(a) { album = a; renderAlbums(); render(); }
+        function render() {
+            const list = all.filter(g => !album || g.album === album);
+            const grid = document.getElementById('grid');
+            if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No photos yet.</p>'; return; }
+            const canManage = Auth.canManage(me);
+            grid.innerHTML = list.map(g => `
+                <div class="glass-card overflow-hidden">
+                    <img src="${UI.esc(g.image_url)}" alt="${UI.esc(g.title||'')}" loading="lazy" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="lb('${UI.esc(g.image_url)}')">
+                    <div class="p-2">
+                        <p class="text-xs font-bold text-slate-700 truncate">${UI.esc(g.title || 'Untitled')}</p>
+                        <p class="text-[10px] text-slate-400 truncate">${UI.esc(g.album || '')}${g.caption ? ' • ' + UI.esc(g.caption) : ''}</p>
+                        ${canManage ? `<button class="text-red-600 text-[10px] font-bold hover:underline mt-1" onclick="del('${g.id}')">Delete</button>` : ''}
+                    </div>
+                </div>`).join('');
+        }
+        function lb(url) { document.getElementById('lb-img').src = url; document.getElementById('lightbox').classList.remove('hidden'); }
+        async function del(id) { if (!await UI.confirm('Delete this photo?')) return; try { await DB.deleteGalleryPhoto(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
+        window.setAlbum = setAlbum; window.lb = lb; window.del = del;
+        init();
+    </script>
+</body>
+</html>

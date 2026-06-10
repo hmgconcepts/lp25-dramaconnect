@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Help & FAQ | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-6 md:p-8 max-w-3xl mx-auto animate-fade-in">
+            <input id="q" class="dc-input mb-6" placeholder="🔍 Search help topics…">
+            <div id="faq"></div>
+            <div class="mt-8 pt-6 border-t border-slate-100 text-center">
+                <p class="text-sm text-slate-500 mb-3">Still need help? Reach the department leadership inside the app.</p>
+                <a href="inbox.html" class="dc-btn dc-btn-primary"><i class="fas fa-paper-plane mr-1"></i> Message an Admin</a>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script>
+        const FAQ = [
+            ['How do I add my profile photo?', 'Go to My Profile → click "Upload Photo". It appears on your digital ID card and in the directory.'],
+            ['How do I complete my details?', 'My Profile lets you add phone, birthday (month & day), occupation, address, social links and emergency contact. The completion meter tracks your progress.'],
+            ['I was given a login by an admin. What next?', 'Sign in with the email & password you were given, then open My Profile to change your password and complete your details.'],
+            ['How do I get my ID card?', 'Open "My ID Card", then click Print / Save as PDF. It includes your photo and a QR code.'],
+            ['How do I check in to a rehearsal?', 'On the Attendance page, select the rehearsal and enter the check-in code the admin announces.'],
+            ['How do I RSVP to an event?', 'On the Events page, tap Going / Maybe / No on the event card.'],
+            ['How do I message the admin or another member?', 'Open Inbox → New Message → choose the recipient (or "Department Admins") → send. It stays inside the platform.'],
+            ['Will I be reminded of my tasks?', 'Yes — open tasks appear on My Dashboard and in the 🔔 notifications bell.'],
+            ['How are birthdays celebrated?', 'Add your birth month & day in My Profile. On your birthday the system greets you automatically (and admins can also send WhatsApp/Email).'],
+            ['Can I install this like an app?', 'Yes — accept the "Install DramaConnect" banner, or use your browser menu → Add to Home Screen. It works offline for browsing.'],
+            ['I forgot my password.', 'On the sign-in screen click "Forgot password?" to receive a reset link by email.']
+        ];
+        async function init() {
+            const me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('help', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Help & FAQ', 'Answers to common questions');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('q').oninput = render;
+            render();
+        }
+        function render() {
+            const q = (document.getElementById('q').value || '').toLowerCase();
+            const list = FAQ.filter(([qn, an]) => !q || (qn + ' ' + an).toLowerCase().includes(q));
+            const host = document.getElementById('faq');
+            if (!list.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No topics match.</p>'; return; }
+            host.innerHTML = list.map(([qn, an]) => `
+                <details class="border-b border-slate-100 py-3">
+                    <summary class="font-bold text-slate-800 cursor-pointer">${UI.esc(qn)}</summary>
+                    <p class="text-sm text-slate-600 mt-2">${UI.esc(an)}</p>
+                </details>`).join('');
+        }
+        init();
+    </script>
+</body>
+</html>
