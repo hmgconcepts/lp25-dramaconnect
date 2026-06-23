@@ -83,7 +83,7 @@
                 // Transform Drive links if needed
                 const gdMatch = link.match(/\/d\/([a-zA-Z0-9_-]+)/) || link.match(/id=([a-zA-Z0-9_-]+)/);
                 if (gdMatch && !link.includes('youtube')) {
-                    link = `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
+                    link = `https://drive.google.com/thumbnail?id=${gdMatch[1]}&sz=w1000`;
                 }
                 
                 // Save to gallery using Supabase directly

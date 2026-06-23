@@ -192,7 +192,8 @@
                     // Auto-convert google drive links to direct image format
                     const gdMatch = link.match(/\/d\/([a-zA-Z0-9_-]+)/) || link.match(/id=([a-zA-Z0-9_-]+)/);
                     if (gdMatch) {
-                        finalUrl = `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
+                        // drive.google.com/uc is often blocked by browsers now. Using thumbnail endpoint instead.
+                        finalUrl = `https://drive.google.com/thumbnail?id=${gdMatch[1]}&sz=w800`;
                     }
                     await DB.updateMember(me.id, { avatar_url: finalUrl });
                     me.avatar_url = finalUrl;
