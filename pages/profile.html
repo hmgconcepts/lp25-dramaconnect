@@ -194,7 +194,7 @@
                     if (gdMatch) {
                         finalUrl = `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
                     }
-                    await DB.updateProfile(me.id, { avatar_url: finalUrl });
+                    await DB.updateMember(me.id, { avatar_url: finalUrl });
                     me.avatar_url = finalUrl;
                     renderAvatar();
                     UI.hideLoader();
@@ -216,7 +216,7 @@
         async function removeAvatar() {
             if (!await UI.confirm('Remove your profile photo?')) return;
             try { 
-                await DB.updateProfile(me.id, { avatar_url: null });
+                await DB.updateMember(me.id, { avatar_url: null });
                 me.avatar_url = null; 
                 renderAvatar(); 
                 UI.toast('Photo removed.', 'success'); 
