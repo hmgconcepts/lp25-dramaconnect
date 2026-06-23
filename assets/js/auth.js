@@ -13,7 +13,12 @@ const Auth = {
             password,
             options: { data: { full_name: name } }
         });
-        if (error) throw error;
+        if (error) {
+            if (error.message.toLowerCase().includes('rate limit')) {
+                throw new Error("Registration rate limit exceeded. Admin: Please disable 'Confirm Email' in Supabase Auth Settings or wait an hour.");
+            }
+            throw error;
+        }
         return data;
     },
 

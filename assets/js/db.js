@@ -514,6 +514,25 @@ const DB = {
         if (error) throw error;
     },
 
+    /* ======================= INVENTORY ========================= */
+    async getInventory() {
+        const { data, error } = await sb.from('inventory').select('*').order('name', { ascending: true });
+        if (error && !error.message.includes('relation "public.inventory" does not exist')) throw error;
+        return data || [];
+    },
+    async addInventory(payload) {
+        const { error } = await sb.from('inventory').insert([payload]);
+        if (error) throw error;
+    },
+    async updateInventory(id, payload) {
+        const { error } = await sb.from('inventory').update(payload).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteInventory(id) {
+        const { error } = await sb.from('inventory').delete().eq('id', id);
+        if (error) throw error;
+    },
+
     /** Export the entire department dataset (for backup). Read-only. */
     async exportAll() {
         const tables = ['profiles', 'productions', 'cast_list', 'finances', 'budgets',

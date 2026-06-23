@@ -35,6 +35,7 @@ const Layout = {
             { id: 'polls',         href: 'polls.html',         icon: 'fa-square-poll-vertical', label: 'Polls' },
             { id: 'suggestions',   href: 'suggestions.html',   icon: 'fa-lightbulb',      label: 'Suggestion Box' },
             { id: 'resources',     href: 'resources.html',     icon: 'fa-folder-open',    label: 'Resources' },
+            { id: 'inventory',     href: 'inventory.html',     icon: 'fa-boxes-packing',  label: 'Inventory', adminOnly: false },
             { id: 'reports',       href: 'reports.html',       icon: 'fa-file-export',    label: 'Reports' }
         ]},
         { group: 'Administration', items: [
