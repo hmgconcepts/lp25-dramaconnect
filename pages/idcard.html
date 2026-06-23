@@ -50,6 +50,10 @@
                         <div id="qr"></div>
                     </div>
                     <p class="text-[9px] text-slate-400 text-center mt-3">Powered by HMG Concepts · DramaConnect</p>
+                    <div class="mt-4 flex flex-col items-center justify-center border-t border-slate-200 pt-3">
+                        <div id="qrcode" class="p-1 bg-white border border-slate-200 rounded"></div>
+                        <p class="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-widest text-center">Scan to Verify</p>
+                    </div>
                 </div>
             </div>
 
@@ -69,6 +73,7 @@
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         let me = null;
         async function init() {
@@ -96,11 +101,15 @@
             document.getElementById('id-id').innerText = 'ID: ' + (me.id || '').slice(0, 8).toUpperCase();
 
             // QR encodes a verification payload (name + id) — scannable for quick lookup.
-            const payload = JSON.stringify({ n: me.full_name, id: (me.id||'').slice(0,8), org: 'RCCG LP25 Drama' });
+            const payload = "dramaconnect:verify:" + me.id;
             if (window.QRCode) {
+                // Main QR Code
+                new QRCode(document.getElementById('qrcode'), { text: payload, width: 90, height: 90, colorDark : "#1e293b", colorLight : "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+                // Small corner QR
                 new QRCode(document.getElementById('qr'), { text: payload, width: 64, height: 64, correctLevel: QRCode.CorrectLevel.M });
             } else {
                 document.getElementById('qr').innerHTML = '<span class="text-[9px] text-slate-300">QR offline</span>';
+                document.getElementById('qrcode').innerHTML = '<span class="text-[9px] text-slate-300">QR offline</span>';
             }
         }
         init();

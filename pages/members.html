@@ -51,7 +51,10 @@
         <div class="glass-card p-6 md:p-8 animate-fade-in">
             <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
                 <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-users text-blue-600 mr-2"></i> Personnel Directory</h3>
-                <input id="search" class="dc-input max-w-xs" placeholder="🔍 Search name, email, parish…">
+                <div class="flex gap-2">
+                    <input id="search" class="dc-input max-w-xs" placeholder="🔍 Search name, email, parish…">
+                    <button class="dc-btn bg-green-600 text-white admin-only hidden" onclick="exportMembers()"><i class="fas fa-file-excel"></i></button>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="enterprise-table" id="members-table">
@@ -132,6 +135,7 @@
                     <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span>${m.is_unit_leader ? ' <span class="badge badge-yellow">unit lead</span>' : ''}</td>
                     ${isAdmin ? `<td>
                         <div class="flex gap-3 items-center flex-wrap">
+                            <button class="text-indigo-600 hover:underline text-xs font-bold" onclick="viewFullProfile('${m.id}')"><i class="fas fa-id-card"></i> View Profile</button>
                             ${m.phone ? `<a href="${Utils.whatsappLink(m.phone, '')}" target="_blank" rel="noopener" title="WhatsApp" class="text-green-600 hover:opacity-70"><i class="fab fa-whatsapp"></i></a>` : ''}
                             ${m.email ? `<a href="${Utils.mailtoLink(m.email, '', '', false)}" title="Email" class="text-blue-600 hover:opacity-70"><i class="fas fa-envelope"></i></a>` : ''}
                             <button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}','${m.role}')">${m.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
@@ -299,7 +303,76 @@
         }
         window.toggleLeader = toggleLeader;
         window.approve = approve; window.reject = reject; window.toggleRole = toggleRole; window.removeMember = removeMember;
+        
+        function viewFullProfile(id) {
+            const m = all.find(x => x.id === id);
+            if (!m) return;
+            
+            const fields = [
+                { label: 'Full Name', value: m.full_name },
+                { label: 'Email', value: m.email },
+                { label: 'Phone', value: m.phone },
+                { label: 'Parish', value: m.parish },
+                { label: 'Gender', value: m.gender },
+                { label: 'Birth Month', value: m.birth_month },
+                { label: 'Address', value: m.address },
+                { label: 'Occupation', value: m.occupation },
+                { label: 'Skills', value: m.skills },
+                { label: 'T-Shirt Size', value: m.tshirt_size },
+                { label: 'Height', value: m.height },
+                { label: 'Shoe Size', value: m.shoe_size },
+                { label: 'Chest/Bust', value: m.chest },
+                { label: 'Waist', value: m.waist },
+                { label: 'Next of Kin Name', value: m.nok_name },
+                { label: 'Next of Kin Phone', value: m.nok_phone }
+            ];
+
+            const html = `
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    ${Utils.avatar(m, 64)}
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800">${UI.esc(m.full_name || 'Unknown')}</h2>
+                        <p class="text-sm text-slate-500">${UI.esc(m.role || 'Member')} &bull; ${m.status || 'Pending'}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${fields.map(f => `
+                        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            <p class="text-xs text-slate-400 uppercase font-bold mb-1">${f.label}</p>
+                            <p class="text-sm font-medium text-slate-700">${UI.esc(f.value || '—')}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            document.getElementById('profile-modal-content').innerHTML = html;
+            document.getElementById('profile-modal').classList.remove('hidden');
+        }
+        window.viewFullProfile = viewFullProfile;
+        
+        function exportMembers() {
+            const data = all.map(m => ({
+                FullName: m.full_name, Email: m.email, Phone: m.phone, 
+                Parish: m.parish, Role: m.role, Status: m.status, 
+                UnitLeader: m.is_unit_leader ? 'Yes' : 'No', Gender: m.gender || '',
+                Occupation: m.occupation || '', Skills: m.skills || ''
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Members");
+            XLSX.writeFile(wb, "DramaConnect_Members.xlsx");
+        }
+        window.exportMembers = exportMembers;
+        
         init();
     </script>
+    
+    <!-- Full Profile Modal -->
+    <div id="profile-modal" class="hidden fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
+            <button onclick="document.getElementById('profile-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-slate-800"><i class="fas fa-times text-xl"></i></button>
+            <div class="p-6 md:p-8" id="profile-modal-content"></div>
+        </div>
+    </div>
 </body>
 </html>

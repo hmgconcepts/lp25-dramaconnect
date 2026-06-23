@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div id="admin-add" class="glass-card p-6 mb-8 admin-only">
+            <h3 class="font-bold text-slate-800 mb-4"><i class="fas fa-boxes-packing text-blue-600 mr-2"></i> Add Inventory Item</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input id="inv-name" placeholder="Item Name" class="dc-input md:col-span-2">
+                <select id="inv-cat" class="dc-input">
+                    <option value="Prop">Prop</option>
+                    <option value="Costume">Costume</option>
+                    <option value="Equipment">Equipment</option>
+                    <option value="Other">Other</option>
+                </select>
+                <input id="inv-qty" type="number" value="1" min="1" placeholder="Quantity" class="dc-input">
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                <select id="inv-cond" class="dc-input">
+                    <option value="New">New</option>
+                    <option value="Good">Good</option>
+                    <option value="Fair">Fair</option>
+                    <option value="Poor">Poor</option>
+                </select>
+                <input id="inv-loc" placeholder="Storage Location (e.g. Backstage Left)" class="dc-input">
+                <input id="inv-notes" placeholder="Notes (optional)" class="dc-input">
+            </div>
+            <div class="mt-4 flex gap-3">
+                <button id="inv-add" class="dc-btn dc-btn-primary">Add Item</button>
+                <button id="inv-export" class="dc-btn bg-green-600 text-white"><i class="fas fa-file-excel mr-1"></i> Export to Excel</button>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 mb-4" id="filters"></div>
+        <div class="overflow-x-auto glass-card p-6">
+            <table class="enterprise-table w-full text-left" id="inv-table">
+                <thead>
+                    <tr>
+                        <th>Item Name</th>
+                        <th>Category</th>
+                        <th>Qty</th>
+                        <th>Condition</th>
+                        <th>Location</th>
+                        <th>Notes</th>
+                        <th class="admin-only">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inv-body">
+                    <tr><td colspan="7" class="text-center text-slate-400 py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        let me = null, all = [], filter = 'all';
+        const ICONS = { Prop:'fa-chair', Costume:'fa-shirt', Equipment:'fa-microphone', Other:'fa-box' };
+        
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('inventory', me); // Assumes sidebar handles this safely or defaults gracefully
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Inventory Management', 'Props, Costumes & Equipment');
+            Layout.setDate();
+            Layout.loadNotifications(me);
+            if (Auth.canManage(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
+                document.getElementById('inv-add').onclick = add;
+                document.getElementById('inv-export').onclick = exportExcel;
+            }
+            renderFilters();
+            load();
+        }
+        
+        function renderFilters() {
+            const cats = ['all','Prop','Costume','Equipment','Other'];
+            document.getElementById('filters').innerHTML = cats.map(c =>
+                `<button class="text-xs px-3 py-1 rounded-full font-bold ${c===filter?'rccg-blue text-white':'bg-slate-100 text-slate-600'}" onclick="setFilter('${c}')">${c}</button>`).join('');
+        }
+        
+        function setFilter(c) { filter = c; renderFilters(); render(); }
+        
+        async function load() {
+            try { all = await DB.getInventory(); render(); }
+            catch (e) { document.getElementById('inv-body').innerHTML = `<tr><td colspan="7" class="text-red-500 text-sm py-4 text-center">${UI.esc(e.message)}</td></tr>`; }
+        }
+        
+        function render() {
+            const list = all.filter(i => filter === 'all' || i.category === filter);
+            const body = document.getElementById('inv-body');
+            if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="text-slate-400 text-sm py-4 text-center">No inventory items found.</td></tr>'; return; }
+            const isAdmin = Auth.canManage(me);
+            body.innerHTML = list.map(i => `
+                <tr>
+                    <td class="font-bold text-slate-800"><i class="fas ${ICONS[i.category]||'fa-box'} text-slate-400 mr-2"></i>${UI.esc(i.name)}</td>
+                    <td><span class="badge badge-member">${UI.esc(i.category)}</span></td>
+                    <td>${i.quantity}</td>
+                    <td><span class="text-xs">${UI.esc(i.condition)}</span></td>
+                    <td>${UI.esc(i.location || '—')}</td>
+                    <td class="text-xs text-slate-500 max-w-[200px] truncate">${UI.esc(i.notes || '')}</td>
+                    ${isAdmin ? `<td><button class="text-xs text-red-600 font-bold hover:underline" onclick="del('${i.id}')">Delete</button></td>` : ''}
+                </tr>`).join('');
+        }
+        
+        async function add() {
+            const name = document.getElementById('inv-name').value.trim();
+            if (!name) { UI.toast('Item Name is required.', 'warning'); return; }
+            const payload = {
+                name,
+                category: document.getElementById('inv-cat').value,
+                quantity: parseInt(document.getElementById('inv-qty').value) || 1,
+                condition: document.getElementById('inv-cond').value,
+                location: document.getElementById('inv-loc').value.trim() || null,
+                notes: document.getElementById('inv-notes').value.trim() || null,
+                added_by: me.full_name || me.email
+            };
+            try {
+                await DB.addInventory(payload);
+                await DB.logActivity('inventory_add', name);
+                ['inv-name','inv-loc','inv-notes'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('inv-qty').value = '1';
+                UI.toast('Inventory item added.', 'success'); load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        
+        async function del(id) { 
+            if (!await UI.confirm('Delete this inventory item?')) return; 
+            try { await DB.deleteInventory(id); load(); } catch (e) { UI.toast(e.message, 'error'); } 
+        }
+        
+        function exportExcel() {
+            const data = all.map(i => ({
+                Name: i.name, Category: i.category, Quantity: i.quantity,
+                Condition: i.condition, Location: i.location || '', Notes: i.notes || '',
+                AddedBy: i.added_by || ''
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+            XLSX.writeFile(wb, "DramaConnect_Inventory.xlsx");
+        }
+        
+        window.setFilter = setFilter; window.del = del; window.exportExcel = exportExcel;
+        init();
+    </script>
+</body>
+</html>

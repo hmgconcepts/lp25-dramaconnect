@@ -18,14 +18,22 @@
         <div id="page-header"></div>
 
         <div id="upload-card" class="glass-card p-6 mb-6 admin-only">
-            <h3 class="font-bold text-slate-800 mb-3"><i class="fas fa-cloud-arrow-up text-blue-600 mr-2"></i> Add Photo</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <h3 class="font-bold text-slate-800 mb-3"><i class="fas fa-photo-video text-blue-600 mr-2"></i> Add Photo or Video (Link Only)</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                 <input id="g-title" placeholder="Title (optional)" class="dc-input">
                 <input id="g-album" placeholder="Album (e.g. Easter Play 2026)" class="dc-input">
                 <input id="g-caption" placeholder="Caption (optional)" class="dc-input">
             </div>
-            <input type="file" id="g-file" accept="image/*" class="dc-input mt-3">
-            <button id="g-upload" class="dc-btn dc-btn-primary mt-3"><i class="fas fa-upload mr-1"></i> Upload</button>
+            
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div id="div-link">
+                    <label class="lbl text-xs">Media Link (Google Drive or YouTube)</label>
+                    <input id="g-link" placeholder="Paste Google Drive or YouTube Link here..." class="dc-input">
+                    <p class="text-[11px] text-slate-400 mt-1">Direct file uploads are disabled to save server space. For videos, use YouTube. For images, use Google Drive public link.</p>
+                </div>
+            </div>
+            
+            <button id="g-upload" class="dc-btn dc-btn-primary mt-3"><i class="fas fa-plus mr-1"></i> Add to Gallery</button>
         </div>
 
         <div class="flex flex-wrap gap-2 mb-4" id="albums"></div>
@@ -62,27 +70,34 @@
             load();
         }
         async function upload() {
-            const raw = document.getElementById('g-file').files[0];
-            document.getElementById('g-file').value = '';
-            if (!raw) { UI.toast('Choose an image first.', 'warning'); return; }
-            let file = raw;
-            // Optional crop to a tidy square (cancel keeps original).
-            try { file = await Crop.open(raw, 800); } catch (e) { file = raw; }
-            UI.showLoader('Uploading…');
+            const title = document.getElementById('g-title').value.trim() || null;
+            const caption = document.getElementById('g-caption').value.trim() || null;
+            const album = document.getElementById('g-album').value.trim() || 'General';
+            
+            UI.showLoader('Processing…');
+            
             try {
-                await DB.addGalleryPhoto(file, {
-                    title: document.getElementById('g-title').value.trim() || null,
-                    caption: document.getElementById('g-caption').value.trim() || null,
-                    album: document.getElementById('g-album').value.trim() || 'General',
-                    uploaded_by: me.full_name || me.email
+                let link = document.getElementById('g-link').value.trim();
+                if (!link) { UI.hideLoader(); UI.toast('Paste a link first.', 'warning'); return; }
+                
+                // Transform Drive links if needed
+                const gdMatch = link.match(/\/d\/([a-zA-Z0-9_-]+)/) || link.match(/id=([a-zA-Z0-9_-]+)/);
+                if (gdMatch && !link.includes('youtube')) {
+                    link = `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
+                }
+                
+                // Save to gallery using Supabase directly
+                const { error } = await sb.from('gallery').insert({
+                    title, caption, album, image_url: link, uploaded_by: me.full_name || me.email
                 });
-                await DB.logActivity('gallery_add', document.getElementById('g-title').value || 'photo');
-                ['g-title','g-album','g-caption'].forEach(id => document.getElementById(id).value = '');
-                UI.hideLoader(); UI.toast('Photo added.', 'success'); load();
+                if (error) throw error;
+                
+                await DB.logActivity('gallery_add', title || 'media item');
+                ['g-title','g-album','g-caption','g-link'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = ''; });
+                UI.hideLoader(); UI.toast('Media added to gallery.', 'success'); load();
             } catch (e) {
                 UI.hideLoader();
-                if (/bucket|not found|denied|row-level|policy/i.test(e.message)) UI.toast('Gallery storage not set up yet. Run the latest repair_and_upgrade.sql.', 'error', 9000);
-                else UI.toast(e.message, 'error');
+                UI.toast(e.message, 'error');
             }
         }
         async function load() {
@@ -98,17 +113,29 @@
         function render() {
             const list = all.filter(g => !album || g.album === album);
             const grid = document.getElementById('grid');
-            if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No photos yet.</p>'; return; }
+            if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No media yet.</p>'; return; }
             const canManage = Auth.canManage(me);
-            grid.innerHTML = list.map(g => `
+            grid.innerHTML = list.map(g => {
+                const isYT = (g.image_url||'').includes('youtube.com') || (g.image_url||'').includes('youtu.be');
+                let mediaHtml = '';
+                if (isYT) {
+                    let vidId = '';
+                    if (g.image_url.includes('youtu.be/')) vidId = g.image_url.split('youtu.be/')[1].split('?')[0];
+                    else if (g.image_url.includes('v=')) vidId = g.image_url.split('v=')[1].split('&')[0];
+                    mediaHtml = `<iframe src="https://www.youtube.com/embed/${vidId}" style="width:100%;height:150px;object-fit:cover;" frameborder="0" allowfullscreen></iframe>`;
+                } else {
+                    mediaHtml = `<img src="${UI.esc(g.image_url)}" alt="${UI.esc(g.title||'')}" loading="lazy" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="lb('${UI.esc(g.image_url)}')">`;
+                }
+                return `
                 <div class="glass-card overflow-hidden">
-                    <img src="${UI.esc(g.image_url)}" alt="${UI.esc(g.title||'')}" loading="lazy" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="lb('${UI.esc(g.image_url)}')">
+                    ${mediaHtml}
                     <div class="p-2">
                         <p class="text-xs font-bold text-slate-700 truncate">${UI.esc(g.title || 'Untitled')}</p>
                         <p class="text-[10px] text-slate-400 truncate">${UI.esc(g.album || '')}${g.caption ? ' • ' + UI.esc(g.caption) : ''}</p>
                         ${canManage ? `<button class="text-red-600 text-[10px] font-bold hover:underline mt-1" onclick="del('${g.id}')">Delete</button>` : ''}
                     </div>
-                </div>`).join('');
+                </div>`;
+            }).join('');
         }
         function lb(url) { document.getElementById('lb-img').src = url; document.getElementById('lightbox').classList.remove('hidden'); }
         async function del(id) { if (!await UI.confirm('Delete this photo?')) return; try { await DB.deleteGalleryPhoto(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
