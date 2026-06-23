@@ -511,3 +511,35 @@ WHERE email = 'CHANGE_ME@example.com';
 SELECT id, email, full_name, role, status, created_at
 FROM public.profiles
 ORDER BY created_at;
+
+-- ============================================================================
+-- Enterprise Upgrade: Inventory & Props Management
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS inventory (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name        TEXT NOT NULL,
+  category    TEXT DEFAULT 'Prop', -- Prop, Costume, Equipment, Other
+  quantity    INTEGER DEFAULT 1,
+  condition   TEXT DEFAULT 'Good',
+  location    TEXT,
+  notes       TEXT,
+  added_by    TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "inventory_read" ON public.inventory;
+CREATE POLICY "inventory_read" ON public.inventory FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "inventory_write" ON public.inventory;
+CREATE POLICY "inventory_write" ON public.inventory FOR ALL USING (public.is_admin() OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_unit_leader = TRUE)) WITH CHECK (public.is_admin() OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_unit_leader = TRUE));
+
+
+-- ============================================================================
+-- Enterprise Upgrade: Costume Measurements for Profiles
+-- ============================================================================
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS height TEXT,
+ADD COLUMN IF NOT EXISTS shoe_size TEXT,
+ADD COLUMN IF NOT EXISTS chest TEXT,
+ADD COLUMN IF NOT EXISTS waist TEXT;
+
