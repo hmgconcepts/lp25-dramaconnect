@@ -1,138 +1,51 @@
-# 🚀 Deployment Guide - DramaConnect Enterprise v4
+# Deployment Guide (Detailed & Unambiguous)
 
-This guide provides clear, unambiguous steps to take the system from the workspace to a live, professional URL.
+Welcome to DramaConnect Enterprise! Follow these steps closely to set up the system using free tools. No paid AI APIs are needed.
 
-## 🛠️ Prerequisites
-1.  A **GitHub Account** (Free).
-2.  A **Supabase Account** (Free).
-3.  A **Vercel Account** (Free - linked to GitHub).
+## Phase 1: Supabase Backend Setup (Free Tier)
+1. Go to [Supabase](https://supabase.com) and create an account or sign in.
+2. Click **New Project**, choose an organization, and give it a name (e.g. `DramaConnect`). Set a strong database password. Choose the region closest to your users. Click **Create new project**.
+3. **Wait** a few minutes for the project to be provisioned.
+4. **Get your API Keys:**
+   * Go to **Project Settings** (the gear icon at the bottom left).
+   * Click on **API** in the sidebar.
+   * Copy the **Project URL** and the **anon/public** key.
+   * Open `assets/js/config.js` in your source code and paste these values into `SUPABASE_URL` and `SUPABASE_KEY`.
 
----
+## Phase 2: Database Initialization
+1. In Supabase, go to the **SQL Editor** on the left menu.
+2. Click **New query**.
+3. Open `database/schema.sql` from your source code, copy everything inside, and paste it into the SQL Editor.
+4. Click **Run**. This will create all your tables and base security policies.
+5. Click **New query** again, copy the contents of `database/repair_and_upgrade.sql`, and **Run** it. This will apply all enterprise upgrades including Inventory management and fixes.
+6. Check **Table Editor** to ensure tables like `profiles`, `inventory`, `gallery`, etc., exist.
 
-## Step 1: Provisioning the Backend (Supabase)
-1.  Log in to [supabase.com](https://supabase.com/).
-2.  Create a new project named `DramaConnect-v4`.
-3.  Navigate to the **SQL Editor** (Sidebar $\rightarrow$ SQL Editor).
-4.  Create a new query and paste the following schema:
+## Phase 3: Authentication & Bypassing the Rate Limit
+Supabase's free tier has a limit of 30 emails per hour for Auth emails. To avoid the "Rate Exceeded" error when multiple users sign up:
+1. Go to **Authentication** -> **Providers** -> **Email**.
+2. Toggle OFF **Confirm email** and toggle OFF **Secure email change**.
+3. Click **Save**. Now users can sign up instantly without waiting for an email, bypassing the rate limit completely.
+4. Go to **Authentication** -> **URL Configuration**. Add `http://localhost:5500` and your live URL (e.g., `https://my-drama-app.vercel.app`) to the **Site URL** and **Redirect URLs**.
 
-```sql
--- 1. Profiles (Personnel & Roles)
-CREATE TABLE profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  full_name TEXT,
-  email TEXT,
-  phone TEXT,
-  parish TEXT,
-  role TEXT DEFAULT 'member',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+## Phase 4: Deploying to the Web (Vercel)
+We recommend Vercel for free, fast, and secure frontend hosting.
+1. Create a free account at [GitHub](https://github.com) if you don't have one, and upload this entire `dramaconnect` folder to a new repository.
+2. Go to [Vercel](https://vercel.com) and sign up with GitHub.
+3. Click **Add New...** -> **Project**.
+4. Import your GitHub repository.
+5. Leave all build settings as default (Framework Preset: Other).
+6. Click **Deploy**. Vercel will give you a live URL.
 
--- 2. Productions
-CREATE TABLE productions (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  title TEXT NOT NULL,
-  performance_date DATE,
-  director TEXT,
-  script_url TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+## Phase 5: Becoming the First Admin
+1. Open your live app URL and sign up for a new account.
+2. Go back to your Supabase Dashboard -> **Table Editor** -> **profiles**.
+3. Find your row, click on the `role` cell, and change it from `member` to `admin`.
+4. Refresh your live app page. You will now see all Administration tabs and have full control.
 
--- 3. Cast List (The Casting Module)
-CREATE TABLE cast_list (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  production_id UUID REFERENCES productions(id) ON DELETE CASCADE,
-  member_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  character_role TEXT,
-  notes TEXT,
-  UNIQUE(production_id, member_id)
-);
-
--- 4. Finance Ledger
-CREATE TABLE finances (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  date DATE DEFAULT CURRENT_DATE,
-  description TEXT,
-  type TEXT CHECK (type IN ('income', 'expense')),
-  amount DECIMAL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 5. Budgeting
-CREATE TABLE budgets (
-  production_id UUID REFERENCES productions(id) ON DELETE CASCADE PRIMARY KEY,
-  allocated_amount DECIMAL DEFAULT 0,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 6. Rehearsals
-CREATE TABLE rehearsals (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  rehearsal_date DATE NOT NULL,
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 7. Attendance
-CREATE TABLE attendance (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  rehearsal_id UUID REFERENCES rehearsals(id) ON DELETE CASCADE,
-  member_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  status TEXT DEFAULT 'present',
-  marked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(rehearsal_id, member_id)
-);
-
--- SECURITY: Enable Row Level Security
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE productions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cast_list ENABLE ROW LEVEL SECURITY;
-ALTER TABLE finances ENABLE ROW LEVEL SECURITY;
-ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rehearsals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
-
--- POLICY: All Authenticated Users can READ
-CREATE POLICY "Allow read for all auth" ON profiles FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow read for all auth" ON productions FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow read for all auth" ON cast_list FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow read for all auth" ON finances FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow read for all auth" ON budgets FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow read for all auth" ON rehearsals FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow read for all auth" ON attendance FOR SELECT USING (auth.role() = 'authenticated');
-
--- POLICY: Only ADMINS can WRITE
-CREATE POLICY "Admin Full Access" ON profiles FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admin Full Access" ON productions FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admin Full Access" ON cast_list FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admin Full Access" ON finances FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admin Full Access" ON budgets FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admin Full Access" ON rehearsals FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admin Full Access" ON attendance FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-```
-
----
-
-## Step 2: Linking the Application
-1.  In Supabase, go to **Project Settings** $\rightarrow$ **API**.
-2.  Copy the **Project URL** and the **anon public key**.
-3.  Open `v4/assets/js/config.js`.
-4.  Paste the URL into `SUPABASE_URL` and the key into `SUPABASE_KEY`.
-
----
-
-## Step 3: Hosting on Vercel
-1.  Create a new repository on GitHub called `rccg-drama-enterprise`.
-2.  Upload all files within the `v4` folder to this repository.
-3.  Log in to [vercel.com](https://vercel.com/).
-4.  Click **"Add New"** $\rightarrow$ **"Project"** and import your GitHub repository.
-5.  Click **"Deploy"**. 
-6.  Vercel will provide a live URL (e.g., `rccg-drama-enterprise.vercel.app`).
-
----
-
-## Step 4: Initializing the First Administrator
-The system is secure by default; you must manually promote the first user:
-1.  Visit your live URL and **Sign Up** for an account.
-2.  Go to your **Supabase Dashboard** $\rightarrow$ **Table Editor** $\rightarrow$ **profiles**.
-3.  Locate your record and change the `role` column from `member` to `admin`.
-4.  Refresh the application. The Admin panel and Management tools are now unlocked.
+## System Features Included (Enterprise V2)
+*   **Member Directory & Full Control:** View full member profiles by clicking "View Profile". Change roles, unit leaders, and track attendance.
+*   **Strict Media Linking (Saves Database Storage):** Direct file uploads for Profile Pictures and Gallery media are fully disabled. Admins and users can *only* use Google Drive public image links or YouTube video links. This eliminates database bloat and ensures the 500MB free database storage is used exclusively for fast text-based records.
+*   **Costume & Measurement Tracking:** Added essential fields for members such as Height, Shoe Size, Chest/Bust, and Waist sizes directly into the Member profile. These populate in the Full Profile view for the admins.
+*   **Enhanced Verification ID Cards:** Upgraded the personal ID Card feature to auto-generate scannable QR Codes representing the member's account.
+*   **Inventory Management:** Track Props, Costumes, and Equipment quantities and locations.
+*   **Export Data:** Export features to MS Excel (`.xlsx`) on Inventory, Members, and Reports pages.
