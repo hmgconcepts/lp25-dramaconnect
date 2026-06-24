@@ -3,8 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome | DramaConnect Enterprise</title>
-    <meta name="description" content="DramaConnect Enterprise — RCCG LP 25 Drama Department management hub.">
+    <title>DramaConnect Enterprise | Theatre Management Software by HMG Concepts</title>
+    
+    <!-- SEO & Search Engine Tags -->
+    <meta name="description" content="DramaConnect Enterprise — A comprehensive theatre management software for drama departments, actors, and stage crews. Built and optimized by the HMG Concepts Ecosystem.">
+    <meta name="keywords" content="theatre management software, drama department software, acting platform, church drama app, HMG Concepts Ecosystem, cast management, backstage inventory, drama connect, rccg lp25 drama">
+    <meta name="author" content="HMG Concepts">
+    <meta name="robots" content="index, follow">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:title" content="DramaConnect Enterprise | Theatre Management">
+    <meta property="og:description" content="Streamline casting, inventory, attendance, and member profiling for your drama department.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://dramaconnect.vercel.app">
+    <meta property="og:image" content="https://dramaconnect.vercel.app/assets/icons/icon-512.png">
+    
     <meta name="theme-color" content="#003399">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
@@ -102,8 +115,25 @@
                 <div class="flex gap-3 text-[10px] font-bold text-slate-400 uppercase">
                     <span>DataTech</span><span>&bull;</span><span>EdTech</span><span>&bull;</span><span>FaithTech</span>
                 </div>
-                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="mt-2 px-4 py-1 bg-white text-blue-600 border border-blue-200 rounded-full text-[10px] font-bold hover:bg-blue-600 hover:text-white transition shadow-sm">Explore HMG Concepts &rarr;</a>
+                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="mt-2 px-4 py-1 bg-white text-blue-600 border border-blue-200 rounded-full text-[10px] font-bold hover:bg-blue-600 hover:text-white transition shadow-sm">Explore HMG CONCEPTS Ecosystem &rarr;</a>
+                <p class="text-[10px] text-slate-500 mt-2 max-w-[250px]">Looking for custom Theatre Management Software or a Digital Platform? Let's connect.</p>
             </div>
+        </div>
+    </div>
+
+    <!-- Strict PWA Install Overlay Container -->
+    <div id="pwa-strict-overlay" class="hidden fixed inset-0 z-[10000] bg-blue-900 flex flex-col items-center justify-center p-6 text-center text-white">
+        <img src="assets/icons/icon-192.png" alt="Icon" class="w-24 h-24 mb-6 rounded-2xl shadow-2xl">
+        <h2 class="text-3xl font-extrabold mb-3">Install App to Continue</h2>
+        <p class="text-blue-200 mb-8 max-w-sm">For offline access, high security, and the best Theatre Management experience, DramaConnect Enterprise requires installation on your device.</p>
+        
+        <button id="pwa-force-install-btn" class="bg-white text-blue-900 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:bg-blue-50 transition w-full max-w-xs mb-4">
+            <i class="fas fa-download mr-2"></i> Install App Now
+        </button>
+        
+        <div id="pwa-ios-instructions" class="hidden max-w-xs bg-blue-800/50 p-4 rounded-xl border border-blue-700">
+            <p class="text-sm font-bold mb-2">iOS / Safari Users:</p>
+            <p class="text-xs text-blue-200">1. Tap the <i class="fas fa-arrow-up-from-bracket mx-1"></i> Share button below.<br>2. Scroll down and tap <strong>"Add to Home Screen"</strong>.<br>3. Open the app from your home screen.</p>
         </div>
     </div>
 

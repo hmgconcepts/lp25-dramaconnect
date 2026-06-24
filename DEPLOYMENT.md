@@ -42,10 +42,13 @@ We recommend Vercel for free, fast, and secure frontend hosting.
 3. Find your row, click on the `role` cell, and change it from `member` to `admin`.
 4. Refresh your live app page. You will now see all Administration tabs and have full control.
 
-## System Features Included (Enterprise V2)
+## System Features Included (Enterprise V3)
+*   **Live QR Scanner Attendance (NEW):** Admins can now open the Attendance tab and use their phone or laptop camera to scan a member's digital ID Card QR Code. It instantly marks them present without manual searching!
+*   **Enforced App Installation (NEW):** The platform strictly enforces PWA installation for security, offline access, and a better UX. It detects if the user is using the standalone app and aggressively prompts them to install it to the homescreen if they are just on the web.
+*   **SEO & Lead Generation Engine (NEW):** Highly optimized for search engines (added robots.txt, sitemap.xml, Meta Tags) and routes enterprise queries back to the HMG CONCEPTS Ecosystem.
 *   **Member Directory & Full Control:** View full member profiles by clicking "View Profile". Change roles, unit leaders, and track attendance.
-*   **Strict Media Linking (Saves Database Storage):** Direct file uploads for Profile Pictures and Gallery media are fully disabled. Admins and users can *only* use Google Drive public image links or YouTube video links. This eliminates database bloat and ensures the 500MB free database storage is used exclusively for fast text-based records.
-*   **Costume & Measurement Tracking:** Added essential fields for members such as Height, Shoe Size, Chest/Bust, and Waist sizes directly into the Member profile. These populate in the Full Profile view for the admins.
+*   **Strict Media Linking (Saves Database Storage):** Direct file uploads for Profile Pictures and Gallery media are fully disabled. Admins and users can *only* use Google Drive public thumbnail links or YouTube video links. This eliminates database bloat and ensures the 500MB free database storage is used exclusively for fast text-based records.
+*   **Costume & Measurement Tracking:** Added essential fields for members such as Height, Shoe Size, Chest/Bust, and Waist sizes directly into the Member profile. These populate in the Full Profile view for admins.
 *   **Enhanced Verification ID Cards:** Upgraded the personal ID Card feature to auto-generate scannable QR Codes representing the member's account.
 *   **Inventory Management:** Track Props, Costumes, and Equipment quantities and locations.
 *   **Export Data:** Export features to MS Excel (`.xlsx`) on Inventory, Members, and Reports pages.
