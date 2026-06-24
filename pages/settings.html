@@ -18,6 +18,19 @@
         <div id="page-header"></div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- SaaS / White-Label Global Settings -->
+            <div class="glass-card p-6 md:p-8 animate-fade-in admin-only">
+                <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-globe text-blue-600 mr-2"></i> Global App Branding (SaaS)</h3>
+                <p class="text-[11px] text-slate-400 mb-4">Update the application globally for all users. This instantly white-labels the app.</p>
+                <div class="space-y-4">
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Application Name</label><input id="saas-app" class="dc-input" placeholder="DramaConnect Enterprise"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Organization / Province</label><input id="saas-org" class="dc-input" placeholder="RCCG LP 25"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Logo URL</label><input id="saas-logo" class="dc-input" placeholder="../assets/img/rccg_logo.png"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Primary Theme Color (Hex)</label><input id="saas-color" type="color" class="h-10 w-full rounded border-slate-200" value="#003399"></div>
+                    <button id="saas-save" class="dc-btn dc-btn-primary w-full">Apply Branding</button>
+                </div>
+            </div>
+
             <!-- Department info (stored locally on this device) -->
             <div class="glass-card p-6 md:p-8 animate-fade-in">
                 <h3 class="text-lg font-bold text-slate-800 mb-6"><i class="fas fa-church text-blue-600 mr-2"></i> Department Profile</h3>
@@ -98,6 +111,37 @@
                     contact: document.getElementById('d-contact').value.trim()
                 }));
                 UI.toast('Department profile saved.', 'success');
+            };
+            
+            // Load SaaS settings if available
+            try {
+                const ts = await DB.getTenantSettings();
+                if (ts) {
+                    document.getElementById('saas-app').value = ts.app_name || '';
+                    document.getElementById('saas-org').value = ts.org_name || '';
+                    document.getElementById('saas-logo').value = ts.logo_url || '';
+                    document.getElementById('saas-color').value = ts.primary_color || '#003399';
+                }
+            } catch (e) {
+                console.warn('SaaS config not ready', e);
+            }
+            
+            document.getElementById('saas-save').onclick = async () => {
+                UI.showLoader('Updating app branding...');
+                try {
+                    await DB.updateTenantSettings({
+                        app_name: document.getElementById('saas-app').value.trim() || 'DramaConnect',
+                        org_name: document.getElementById('saas-org').value.trim() || 'Church Dept',
+                        logo_url: document.getElementById('saas-logo').value.trim() || '../assets/img/rccg_logo.png',
+                        primary_color: document.getElementById('saas-color').value.trim() || '#003399'
+                    });
+                    UI.hideLoader();
+                    UI.toast('Branding updated globally. Reloading...', 'success');
+                    setTimeout(() => window.location.reload(), 1500);
+                } catch (e) {
+                    UI.hideLoader();
+                    UI.toast(e.message, 'error');
+                }
             };
 
             document.getElementById('backup-btn').onclick = backup;

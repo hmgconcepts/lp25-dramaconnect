@@ -89,6 +89,7 @@
             document.getElementById('page-header').innerHTML =
                 Layout.renderHeader('Enterprise Dashboard', `Welcome back, <span class="font-bold text-blue-600">${UI.esc(user.full_name || 'Member')}</span>`);
             Layout.setDate();
+            if (Layout.loadSaaSBranding) Layout.loadSaaSBranding();
             if (Layout.loadNotifications) Layout.loadNotifications(user);
 
             try {
