@@ -35,6 +35,10 @@
             
             overlay.classList.remove('hidden');
             
+            // Wire up the bypass fallback
+            const bypass = document.getElementById('pwa-bypass-btn');
+            if (bypass) bypass.onclick = () => overlay.classList.add('hidden');
+            
             if (isIos()) {
                 document.getElementById('pwa-ios-instructions').classList.remove('hidden');
                 document.getElementById('pwa-force-install-btn').classList.add('hidden');

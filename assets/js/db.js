@@ -546,6 +546,18 @@ const DB = {
             out.data[t] = data || [];
         }
         return out;
+    },
+
+    /* ======================= SAAS / TENANT SETTINGS ========================= */
+    async getTenantSettings() {
+        const { data, error } = await sb.from('tenant_settings').select('*').eq('id', 1).maybeSingle();
+        if (error && !error.message.includes('relation')) throw error; // Graceful fail if V4 SQL not yet run
+        return data;
+    },
+    async updateTenantSettings(payload) {
+        payload.updated_at = new Date().toISOString();
+        const { error } = await sb.from('tenant_settings').update(payload).eq('id', 1);
+        if (error) throw error;
     }
 };
 window.DB = DB;

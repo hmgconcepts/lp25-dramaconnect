@@ -179,9 +179,9 @@ const Layout = {
                 </div>
                 <div class="text-right hidden sm:block">
                     <p id="current-date" class="text-sm font-bold text-slate-700 dark-text"></p>
-                    <p class="text-xs text-slate-400 uppercase tracking-widest">Province ${CONFIG.PROVINCE}</p>
+                    <p class="text-xs text-slate-400 uppercase tracking-widest app-org-name">Province ${CONFIG.PROVINCE}</p>
                 </div>
-                <img src="../assets/img/rccg_logo.png" alt="Logo" class="h-11 w-11 rounded-full border-2 border-white shadow-md bg-white">
+                <img src="../assets/img/rccg_logo.png" alt="Logo" class="h-11 w-11 rounded-full border-2 border-white shadow-md bg-white app-logo-img">
             </div>
         </header>`;
     },
@@ -209,6 +209,30 @@ const Layout = {
     setDate() {
         const el = document.getElementById('current-date');
         if (el) el.innerText = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    },
+
+    async loadSaaSBranding() {
+        if (!window.DB || !DB.getTenantSettings) return;
+        try {
+            const tenant = await DB.getTenantSettings();
+            if (tenant) {
+                if (tenant.app_name) {
+                    document.title = document.title.replace('DramaConnect Enterprise', tenant.app_name).replace('DramaConnect', tenant.app_name);
+                    document.querySelectorAll('.app-brand-name').forEach(el => el.innerText = tenant.app_name);
+                }
+                if (tenant.org_name) {
+                    document.querySelectorAll('.app-org-name').forEach(el => el.innerText = tenant.org_name);
+                }
+                if (tenant.logo_url) {
+                    document.querySelectorAll('.app-logo-img').forEach(el => el.src = tenant.logo_url);
+                }
+                if (tenant.primary_color) {
+                    const style = document.createElement('style');
+                    style.innerHTML = `:root { --rccg-blue: ${tenant.primary_color}; } .rccg-blue { background-color: ${tenant.primary_color} !important; }`;
+                    document.head.appendChild(style);
+                }
+            }
+        } catch(e) {}
     },
 
     /** Standard admin-only banner for read-only viewers. */
