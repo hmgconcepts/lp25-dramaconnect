@@ -19,7 +19,20 @@
 
         <div class="glass-card p-6 mb-6">
             <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Select Rehearsal</label>
-            <select id="reh-select" class="dc-input max-w-md"><option value="">— Choose —</option></select>
+            <div class="flex flex-wrap gap-4 items-center">
+                <select id="reh-select" class="dc-input flex-1 max-w-md"><option value="">— Choose —</option></select>
+                <button id="qr-scan-btn" class="dc-btn bg-indigo-600 text-white admin-only hidden whitespace-nowrap"><i class="fas fa-qrcode mr-2"></i> Scan ID Card</button>
+            </div>
+        </div>
+        
+        <!-- QR Scanner Container -->
+        <div id="qr-reader-container" class="hidden glass-card p-6 mb-6 admin-only text-center border-l-4 border-indigo-600">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-camera text-indigo-600 mr-2"></i> QR Check-In Scanner</h3>
+                <button id="qr-close-btn" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div id="qr-reader" class="mx-auto overflow-hidden rounded-xl border border-slate-200" style="max-width: 400px;"></div>
+            <p class="text-xs text-slate-500 mt-3">Point the camera at a member's digital ID Card to instantly check them in.</p>
         </div>
 
         <!-- Member self check-in -->
@@ -65,8 +78,11 @@
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <script>
         let me = null, members = [], current = null, rehearsalsCache = [];
+        let html5QrcodeScanner = null;
+
         async function init() {
             me = await Auth.checkSession();
             if (!me) return;
@@ -78,6 +94,10 @@
             if (isAdmin) {
                 document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
                 document.getElementById('all-present').onclick = markAll;
+                
+                // QR Scanner Init
+                document.getElementById('qr-scan-btn').onclick = startScanner;
+                document.getElementById('qr-close-btn').onclick = stopScanner;
                 document.getElementById('open-code').onclick = () => setCode(true);
                 document.getElementById('close-code').onclick = () => setCode(false);
                 document.getElementById('gen-code').onclick = () => {
@@ -182,6 +202,64 @@
                 UI.hideLoader(); UI.toast('All marked present.', 'success'); loadAtt(current);
             } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
         }
+
+        // QR Scanner Logic
+        function startScanner() {
+            if (!current) { UI.toast('Please select a rehearsal first.', 'warning'); return; }
+            document.getElementById('qr-reader-container').classList.remove('hidden');
+            
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "qr-reader",
+                { fps: 10, qrbox: {width: 250, height: 250} },
+                /* verbose= */ false
+            );
+            
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        }
+
+        async function onScanSuccess(decodedText, decodedResult) {
+            // decodedText should be: "dramaconnect:verify:UUID"
+            if (!decodedText.startsWith("dramaconnect:verify:")) {
+                UI.toast('Invalid QR code format.', 'warning');
+                return;
+            }
+            
+            const scannedId = decodedText.split(':')[2];
+            const member = members.find(m => m.id === scannedId);
+            
+            if (member) {
+                // Pause scanner temporarily to avoid spam
+                html5QrcodeScanner.pause();
+                try {
+                    await DB.markAttendance(current, member.id, 'present');
+                    UI.toast(`${member.full_name} marked PRESENT! ✅`, 'success', 3000);
+                    // visually update the UI without full reload
+                    const select = document.getElementById(`att-${member.id}`);
+                    if (select) select.value = 'present';
+                    
+                    // Resume after 2 seconds
+                    setTimeout(() => { html5QrcodeScanner.resume(); }, 2000);
+                } catch (e) {
+                    UI.toast(e.message, 'error');
+                    html5QrcodeScanner.resume();
+                }
+            } else {
+                UI.toast('Member not found in directory.', 'error');
+            }
+        }
+
+        function onScanFailure(error) { /* handle quietly */ }
+
+        function stopScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear().then(() => {
+                    document.getElementById('qr-reader-container').classList.add('hidden');
+                });
+            } else {
+                document.getElementById('qr-reader-container').classList.add('hidden');
+            }
+        }
+
         window.mark = mark;
         init();
     </script>
