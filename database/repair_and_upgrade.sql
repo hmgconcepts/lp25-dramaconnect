@@ -543,3 +543,49 @@ ADD COLUMN IF NOT EXISTS shoe_size TEXT,
 ADD COLUMN IF NOT EXISTS chest TEXT,
 ADD COLUMN IF NOT EXISTS waist TEXT;
 
+
+-- ============================================================================
+-- Enterprise Upgrade V4: True SaaS / Multi-tenant Global Settings 
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS tenant_settings (
+  id          INT PRIMARY KEY DEFAULT 1,
+  app_name    TEXT DEFAULT 'DramaConnect Enterprise',
+  org_name    TEXT DEFAULT 'RCCG LP 25',
+  logo_url    TEXT DEFAULT '../assets/img/rccg_logo.png',
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed defaults so we never error on reading
+INSERT INTO tenant_settings (id, app_name, org_name) 
+VALUES (1, 'DramaConnect Enterprise', 'RCCG LP 25') 
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE tenant_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "tenant_settings_read" ON public.tenant_settings;
+CREATE POLICY "tenant_settings_read" ON public.tenant_settings FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "tenant_settings_write" ON public.tenant_settings;
+CREATE POLICY "tenant_settings_write" ON public.tenant_settings FOR UPDATE USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ============================================================================
+-- Enterprise Upgrade V4: Fullstack Backend Audit Triggers
+-- Automates security logs in the database directly, bypassing frontend reliance.
+-- ============================================================================
+CREATE OR REPLACE FUNCTION log_critical_admin_actions() 
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+      IF NEW.role <> OLD.role THEN
+          INSERT INTO public.activity_log (action, details, user_id) 
+          VALUES ('role_change', 'Changed role from ' || COALESCE(OLD.role, 'member') || ' to ' || COALESCE(NEW.role, 'member') || ' for ' || NEW.id, NEW.id);
+      END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_critical_admin_actions ON public.profiles;
+CREATE TRIGGER trg_critical_admin_actions 
+AFTER UPDATE ON public.profiles 
+FOR EACH ROW EXECUTE FUNCTION log_critical_admin_actions();
+
