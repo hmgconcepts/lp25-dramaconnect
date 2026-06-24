@@ -3,7 +3,7 @@
  * Strategy: cache-first for static assets, network-first for everything else.
  * Supabase API calls always go to the network (never cached).
  */
-const CACHE = 'dramaconnect-v15';
+const CACHE = 'dramaconnect-v16';
 const ASSETS = [
   './',
   './index.html',
@@ -23,7 +23,13 @@ const ASSETS = [
   './assets/img/developer.jpg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
-  './manifest.json'
+  './manifest.json',
+  'https://cdn.tailwindcss.com',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+  'https://unpkg.com/html5-qrcode'
 ];
 
 self.addEventListener('install', e => {

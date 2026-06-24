@@ -135,6 +135,11 @@
             <p class="text-sm font-bold mb-2">iOS / Safari Users:</p>
             <p class="text-xs text-blue-200">1. Tap the <i class="fas fa-arrow-up-from-bracket mx-1"></i> Share button below.<br>2. Scroll down and tap <strong>"Add to Home Screen"</strong>.<br>3. Open the app from your home screen.</p>
         </div>
+        
+        <!-- Bug Fix: Fallback for desktops or incompatible browsers to prevent locking out users entirely -->
+        <button id="pwa-bypass-btn" class="mt-6 text-[11px] text-blue-300 hover:text-white underline decoration-blue-400/50 transition">
+            Continue to Web Version (Not Recommended)
+        </button>
     </div>
 
     <script src="assets/js/config.js"></script>
