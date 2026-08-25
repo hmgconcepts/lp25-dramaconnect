@@ -1,0 +1,66 @@
+name: Supabase resilience heartbeat
+
+on:
+  schedule:
+    - cron: '17 6 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dramaconnect-keep-alive
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate required secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_URL" || { echo 'Missing SUPABASE_URL repository secret.' >&2; exit 1; }
+          test -n "$SUPABASE_ANON_KEY" || { echo 'Missing SUPABASE_ANON_KEY repository secret.' >&2; exit 1; }
+          case "$SUPABASE_URL" in https://*.supabase.co) ;; *) echo 'SUPABASE_URL must be an https://*.supabase.co project URL.' >&2; exit 1;; esac
+
+      - name: Send and verify database heartbeat
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors --connect-timeout 10 --max-time 25 \
+            -X POST "$SUPABASE_URL/rest/v1/rpc/dc_keep_alive" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            --data '{"p_source":"github-actions"}')"
+          printf '%s' "$response" | jq -e '.ok == true and (.status == "written" or .status == "throttled")' >/dev/null
+          echo 'Verified Supabase heartbeat response.'
+
+      - name: Preserve scheduled workflow activity
+        if: github.event_name == 'schedule'
+        run: |
+          set -euo pipefail
+          now="$(date +%s)"
+          last="$(git log -1 --format=%ct)"
+          age_days="$(( (now - last) / 86400 ))"
+          if [ "$age_days" -lt 30 ]; then
+            echo "Repository activity is ${age_days} day(s) old; no preservation commit needed."
+            exit 0
+          fi
+          printf 'Last scheduled preservation: %s\n' "$(date -u +%FT%TZ)" > .github/.keepalive
+          git config user.name 'dramaconnect-resilience-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/.keepalive
+          git commit -m 'chore: preserve scheduled resilience workflow'
+          git push

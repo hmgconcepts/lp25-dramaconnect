@@ -1,0 +1,65 @@
+name: Supabase paused-project recovery watchdog
+
+on:
+  schedule:
+    - cron: '29 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dramaconnect-auto-restore
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Inspect and restore project when inactive
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_ANON_KEY; do
+            test -n "${!name:-}" || { echo "Missing required secret: $name" >&2; exit 1; }
+          done
+
+          api="https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF"
+          project="$(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$api")"
+          status="$(printf '%s' "$project" | jq -r '.status // empty')"
+          echo "Supabase project status: ${status:-unknown}"
+
+          case "$status" in
+            ACTIVE_HEALTHY|ACTIVE_UNHEALTHY)
+              echo 'Project is active; no restoration requested.'
+              ;;
+            INACTIVE)
+              echo 'Project is inactive; requesting official Management API restore.'
+              curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+                -X POST -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+                -H 'Content-Type: application/json' "$api/restore" >/dev/null
+              ;;
+            COMING_UP|RESTORING|UPGRADING|PAUSING)
+              echo 'Project is already transitioning; leaving it untouched.'
+              ;;
+            *)
+              echo "Unknown or empty project status: $status" >&2
+              exit 1
+              ;;
+          esac
+
+          # If the data API is already reachable, record this watchdog layer.
+          # Failure here is non-fatal when a newly restored project is still booting.
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 25 \
+            -X POST "$SUPABASE_URL/rest/v1/rpc/dc_keep_alive" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            --data '{"p_source":"auto-restore"}' >/dev/null \
+            || echo 'Project API is not ready yet; the next watchdog run will verify it.'

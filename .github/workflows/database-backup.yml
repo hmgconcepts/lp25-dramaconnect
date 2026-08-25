@@ -1,0 +1,139 @@
+name: Encrypted unattended database, Auth and Storage backup
+
+on:
+  schedule:
+    - cron: '53 2 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dramaconnect-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate backup secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_DB_URL RCLONE_CONFIG_BASE64 BACKUP_PASSPHRASE SUPABASE_URL SUPABASE_ANON_KEY; do
+            test -n "${!name:-}" || { echo "Missing required secret: $name" >&2; exit 1; }
+          done
+          test "${#BACKUP_PASSPHRASE}" -ge 20 || { echo 'BACKUP_PASSPHRASE must contain at least 20 characters.' >&2; exit 1; }
+
+      - name: Install connection, encryption and transfer clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client rclone gnupg
+
+      - name: Create, encrypt, upload and remotely verify backups
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          BACKUP_RETENTION_DAYS: ${{ secrets.BACKUP_RETENTION_DAYS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          config="$work/rclone.conf"
+          passfile="$work/passphrase"
+          printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
+          printf '%s' "$BACKUP_PASSPHRASE" > "$passfile"
+
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          public_plain="$work/dramaconnect-public-$stamp.dump"
+          auth_plain="$work/dramaconnect-auth-$stamp.data.dump"
+          remote="${RCLONE_REMOTE_NAME:-gdrive}"
+          retention="${BACKUP_RETENTION_DAYS:-180}"
+          [[ "$retention" =~ ^[0-9]+$ ]] || { echo 'BACKUP_RETENTION_DAYS must be numeric.' >&2; exit 1; }
+
+          # Match pg_dump to the server major version so a future Supabase
+          # Postgres upgrade does not silently break the scheduled backup.
+          server_num="$(psql "$SUPABASE_DB_URL" -XAtc 'show server_version_num')"
+          major="$((server_num / 10000))"
+          [[ "$major" -ge 13 && "$major" -le 18 ]] || { echo "Unexpected PostgreSQL major version: $major" >&2; exit 1; }
+          docker pull "postgres:$major"
+
+          # Separate catalogs prevent a recovery from dropping Supabase-managed
+          # Auth objects: public is a full schema dump; Auth is data-only and
+          # deliberately excludes sessions, refresh tokens and transient codes.
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e DATABASE_URL="$SUPABASE_DB_URL" -v "$work:/backup" "postgres:$major" \
+            sh -eu -c 'pg_dump "$DATABASE_URL" --format=custom --schema=public --no-owner --no-acl --file="/backup/$1"' sh "$(basename "$public_plain")"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e DATABASE_URL="$SUPABASE_DB_URL" -v "$work:/backup" "postgres:$major" \
+            sh -eu -c 'pg_dump "$DATABASE_URL" --format=custom --data-only --table=auth.users --table=auth.identities --no-owner --no-acl --file="/backup/$1"' sh "$(basename "$auth_plain")"
+          for dump in "$public_plain" "$auth_plain"; do
+            docker run --rm --user "$(id -u):$(id -g)" -v "$work:/backup:ro" "postgres:$major" \
+              pg_restore --list "/backup/$(basename "$dump")" >/dev/null
+          done
+
+          include_args=()
+          for plain in "$public_plain" "$auth_plain"; do
+            encrypted="$plain.gpg"
+            checksum="$encrypted.sha256"
+            gpg --batch --yes --pinentry-mode loopback --passphrase-file "$passfile" \
+              --symmetric --cipher-algo AES256 --output "$encrypted" "$plain"
+            rm -f "$plain"
+            (cd "$work" && sha256sum "$(basename "$encrypted")" > "$(basename "$checksum")")
+            include_args+=(--include "$(basename "$encrypted")" --include "$(basename "$checksum")")
+          done
+
+          # Optional but recommended: back up actual Storage bytes (avatars and
+          # gallery), not only their database metadata. The archive-vault bucket
+          # is deliberately excluded to avoid recursive backups.
+          if [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            storage_dir="$work/storage"
+            node scripts/export-storage.mjs "$storage_dir"
+            storage_tar="$work/dramaconnect-storage-$stamp.tar"
+            storage_encrypted="$storage_tar.gpg"
+            storage_checksum="$storage_encrypted.sha256"
+            tar -C "$storage_dir" -cf "$storage_tar" .
+            gpg --batch --yes --pinentry-mode loopback --passphrase-file "$passfile" \
+              --symmetric --cipher-algo AES256 --output "$storage_encrypted" "$storage_tar"
+            rm -rf "$storage_tar" "$storage_dir"
+            (cd "$work" && sha256sum "$(basename "$storage_encrypted")" > "$(basename "$storage_checksum")")
+            include_args+=(--include "$(basename "$storage_encrypted")" --include "$(basename "$storage_checksum")")
+          else
+            echo 'SUPABASE_SERVICE_ROLE_KEY is not configured; Storage object bytes were not included.' >&2
+          fi
+          rm -f "$passfile"
+
+          destination="$remote:DramaConnect Backups/Unattended Encrypted"
+          rclone --config "$config" mkdir "$destination"
+          rclone --config "$config" copy "$work" "$destination" --checksum "${include_args[@]}"
+          rclone --config "$config" check "$work" "$destination" --one-way "${include_args[@]}"
+
+          # Retention runs only after every new encrypted file and checksum has
+          # been independently compared with the remote destination.
+          rclone --config "$config" delete "$destination" --min-age "${retention}d" \
+            --include 'dramaconnect-public-*.dump.gpg' --include 'dramaconnect-public-*.dump.gpg.sha256' \
+            --include 'dramaconnect-auth-*.data.dump.gpg' --include 'dramaconnect-auth-*.data.dump.gpg.sha256' \
+            --include 'dramaconnect-storage-*.tar.gpg' --include 'dramaconnect-storage-*.tar.gpg.sha256'
+
+          response="$(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 25 \
+            -X POST "$SUPABASE_URL/rest/v1/rpc/dc_keep_alive" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' \
+            --data '{"p_source":"database-backup"}')"
+          printf '%s' "$response" | jq -e '.ok == true' >/dev/null
+          echo "Encrypted unattended backup set uploaded and remotely verified at $stamp."
