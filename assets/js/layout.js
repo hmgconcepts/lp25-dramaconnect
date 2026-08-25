@@ -52,16 +52,21 @@ const Layout = {
     ],
 
     _buildNav(active, isAdmin, isLeader) {
+        const safeToken = value => /^[a-z0-9_-]+$/i.test(String(value || '')) ? String(value) : '';
+        const safePage = value => /^[a-z0-9_-]+\.html$/i.test(String(value || '')) ? String(value) : 'home.html';
         return this.nav.map(g => {
             const items = g.items.filter(i => (!i.adminOnly || isAdmin) && (!i.leaderOnly || isLeader || isAdmin));
             if (!items.length) return '';
             return `
             <div class="pt-1">
-                <p class="text-[10px] text-slate-500 uppercase font-bold px-4 mb-2 mt-4">${g.group}</p>
-                ${items.map(i => `
-                    <a href="${i.href}" class="sidebar-link ${i.id === active ? 'active' : ''} ${i.accent ? 'accent' : ''}">
-                        <i class="fas ${i.icon} w-5 text-center"></i> ${i.label}
-                    </a>`).join('')}
+                <p class="text-[10px] text-slate-500 uppercase font-bold px-4 mb-2 mt-4">${UI.esc(g.group)}</p>
+                ${items.map(i => {
+                    const id = safeToken(i.id), icon = safeToken(i.icon), href = safePage(i.href);
+                    return `
+                    <a href="${href}" class="sidebar-link ${id === active ? 'active' : ''} ${i.accent ? 'accent' : ''}">
+                        <i class="fas ${icon} w-5 text-center"></i> ${UI.esc(i.label)}
+                    </a>`;
+                }).join('')}
             </div>`;
         }).join('');
     },
@@ -73,10 +78,10 @@ const Layout = {
 
         const sidebarInner = `
             <div class="p-6 flex items-center gap-3 border-b border-slate-800">
-                <img src="../assets/img/rccg_logo.png" alt="RCCG Logo" class="h-10 w-10 bg-white rounded-full p-1">
+                <img src="../assets/img/rccg_logo.png" alt="RCCG Logo" class="h-10 w-10 bg-white rounded-full p-1 app-logo-img">
                 <div>
-                    <span class="font-bold text-base tracking-tight block leading-tight">DramaConnect</span>
-                    <span class="text-[10px] text-slate-400 uppercase tracking-widest">${CONFIG.PROVINCE} • Drama</span>
+                    <span class="font-bold text-base tracking-tight block leading-tight app-brand-name">DramaConnect</span>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-widest app-org-name">${UI.esc(CONFIG.PROVINCE)} • Drama</span>
                 </div>
             </div>
             <nav class="flex-1 p-4 space-y-1 overflow-y-auto">${navHtml}</nav>
@@ -103,7 +108,7 @@ const Layout = {
         <!-- Mobile / tablet drawer (driven by local CSS, not the Tailwind CDN) -->
         <div id="mobile-drawer" class="app-drawer no-print">
             <div id="drawer-overlay" class="app-drawer-overlay"></div>
-            <aside class="app-drawer-panel animate-fade-in">${sidebarInner.replace(/id="theme-btn"/, 'id="theme-btn-m"').replace(/id="theme-label"/, 'id="theme-label-m"').replace(/id="logout-btn"/, 'id="logout-btn-m"')}</aside>
+            <aside class="app-drawer-panel animate-fade-in">${sidebarInner.replace(/id="lang-sel"/, 'id="lang-sel-m"').replace(/id="theme-btn"/, 'id="theme-btn-m"').replace(/id="theme-label"/, 'id="theme-label-m"').replace(/id="logout-btn"/, 'id="logout-btn-m"')}</aside>
         </div>`;
 
         const mount = document.getElementById('app-sidebar');
@@ -126,11 +131,18 @@ const Layout = {
         };
         wireTheme('theme-btn', 'theme-label'); wireTheme('theme-btn-m', 'theme-label-m');
 
-        // Language selector (if i18n is loaded)
-        const ls = document.getElementById('lang-sel');
-        if (ls && window.I18n) {
-            ls.value = I18n.lang;
-            ls.onchange = () => { I18n.set(ls.value); };
+        // Language selectors (desktop and mobile drawer).
+        if (window.I18n) {
+            ['lang-sel', 'lang-sel-m'].forEach(id => {
+                const ls = document.getElementById(id);
+                if (!ls) return;
+                ls.value = I18n.lang;
+                ls.onchange = () => {
+                    I18n.set(ls.value);
+                    const other = document.getElementById(id === 'lang-sel' ? 'lang-sel-m' : 'lang-sel');
+                    if (other) other.value = ls.value;
+                };
+            });
             I18n.apply();
         }
 
@@ -157,13 +169,16 @@ const Layout = {
     closeDrawer() { const d = document.getElementById('mobile-drawer'); if (d) d.classList.remove('open'); },
 
     renderHeader(title, subtitle) {
+        const safeTitle = UI.esc(title || '');
+        const safeSubtitle = UI.esc(subtitle || '');
+        const safeProvince = UI.esc(CONFIG.PROVINCE || '');
         return `
         <header class="flex justify-between items-center mb-8 no-print gap-4">
             <div class="flex items-center gap-3">
                 <button class="nav-toggle" onclick="Layout.openDrawer()" aria-label="Open menu">&#9776;</button>
                 <div>
-                    <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 dark-text">${title}</h1>
-                    <p class="text-slate-500 text-sm">${subtitle || ''}</p>
+                    <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 dark-text">${safeTitle}</h1>
+                    <p class="text-slate-500 text-sm">${safeSubtitle}</p>
                 </div>
             </div>
             <div class="flex items-center gap-4">
@@ -179,7 +194,7 @@ const Layout = {
                 </div>
                 <div class="text-right hidden sm:block">
                     <p id="current-date" class="text-sm font-bold text-slate-700 dark-text"></p>
-                    <p class="text-xs text-slate-400 uppercase tracking-widest app-org-name">Province ${CONFIG.PROVINCE}</p>
+                    <p class="text-xs text-slate-400 uppercase tracking-widest app-org-name">Province ${safeProvince}</p>
                 </div>
                 <img src="../assets/img/rccg_logo.png" alt="Logo" class="h-11 w-11 rounded-full border-2 border-white shadow-md bg-white app-logo-img">
             </div>
@@ -196,10 +211,13 @@ const Layout = {
             const list = document.getElementById('notif-list');
             if (!list) return;
             if (!items.length) { list.innerHTML = '<p class="text-slate-400 text-sm" style="padding:12px;">You\'re all caught up. 🎉</p>'; return; }
-            const esc = (window.UI && UI.esc) ? UI.esc : (s => s);
+            const esc = (window.UI && UI.esc) ? UI.esc : (s => String(s || '').replace(/[&<>"']/g, ''));
+            const safePage = value => /^[a-z0-9_-]+\.html$/i.test(String(value || '')) ? String(value) : 'home.html';
+            const safeIcon = value => /^[a-z0-9_-]+$/i.test(String(value || '')) ? String(value) : 'fa-bell';
+            const safeColor = value => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#64748b';
             list.innerHTML = items.map(n => `
-                <a href="${n.href}" style="display:flex;gap:10px;padding:10px 12px;border-radius:10px;text-decoration:none;" class="hover:bg-slate-50">
-                    <i class="fas ${n.icon}" style="color:${n.color};margin-top:3px;"></i>
+                <a href="${safePage(n.href)}" style="display:flex;gap:10px;padding:10px 12px;border-radius:10px;text-decoration:none;" class="hover:bg-slate-50">
+                    <i class="fas ${safeIcon(n.icon)}" style="color:${safeColor(n.color)};margin-top:3px;"></i>
                     <span class="text-slate-700 dark-text" style="font-size:13px;flex:1;">${esc(n.text)}</span>
                 </a>`).join('');
         } catch (e) {}
@@ -224,11 +242,13 @@ const Layout = {
                     document.querySelectorAll('.app-org-name').forEach(el => el.innerText = tenant.org_name);
                 }
                 if (tenant.logo_url) {
-                    document.querySelectorAll('.app-logo-img').forEach(el => el.src = tenant.logo_url);
+                    const logoUrl = Utils.safeImageUrl(tenant.logo_url);
+                    if (logoUrl) document.querySelectorAll('.app-logo-img').forEach(el => { el.src = logoUrl; });
                 }
-                if (tenant.primary_color) {
+                if (tenant.primary_color && Utils.isHexColor(tenant.primary_color)) {
+                    const color = tenant.primary_color;
                     const style = document.createElement('style');
-                    style.innerHTML = `:root { --rccg-blue: ${tenant.primary_color}; } .rccg-blue { background-color: ${tenant.primary_color} !important; }`;
+                    style.textContent = `:root { --rccg-blue: ${color}; } .rccg-blue { background-color: ${color} !important; }`;
                     document.head.appendChild(style);
                 }
             }

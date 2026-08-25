@@ -46,6 +46,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -83,7 +86,7 @@
                     <tr>
                         <td>${Utils.formatDate(t.date)}</td>
                         <td class="font-semibold text-slate-800">${UI.esc(t.description || '—')}</td>
-                        <td><span class="badge ${t.type === 'income' ? 'badge-green' : 'badge-red'}">${t.type}</span></td>
+                        <td><span class="badge ${t.type === 'income' ? 'badge-green' : 'badge-red'}">${UI.esc(t.type === 'income' ? 'income' : 'expense')}</span></td>
                         <td class="font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}">${Utils.formatCurrency(t.amount)}</td>
                         ${isAdmin ? `<td><button class="text-red-600 text-xs font-bold hover:underline" onclick="del('${t.id}')">Delete</button></td>` : ''}
                     </tr>`).join('');

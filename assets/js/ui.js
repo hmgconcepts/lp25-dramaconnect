@@ -1,114 +1,132 @@
-/**
- * ============================================================================
- * UI Toolkit — toasts, modals, loaders, confirm dialogs, dark mode.
- * Pure vanilla JS + Tailwind classes. No external UI dependencies.
- * ============================================================================
- */
 const UI = {
-    /* ---- Toast notifications (replaces native alert) ---- */
-    toast(message, type = 'info', duration = 4000) {
-        let host = document.getElementById('toast-host');
-        if (!host) {
-            host = document.createElement('div');
-            host.id = 'toast-host';
-            host.className = 'fixed top-5 right-5 z-[9999] space-y-3 max-w-sm';
-            document.body.appendChild(host);
+    showLoader(text = 'Working…') {
+        let el = document.getElementById('global-loader');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'global-loader';
+            el.className = 'fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center';
+            el.innerHTML = `
+                <div class="bg-white rounded-2xl p-7 flex flex-col items-center gap-4 shadow-2xl">
+                    <div class="spinner"></div>
+                    <p class="text-slate-600 font-semibold" data-loader-text></p>
+                </div>`;
+            document.body.appendChild(el);
         }
+        const label = el.querySelector('[data-loader-text]');
+        if (label) label.textContent = String(text);
+        el.classList.remove('hidden');
+    },
+
+    hideLoader() {
+        const el = document.getElementById('global-loader');
+        if (el) el.classList.add('hidden');
+    },
+
+    /**
+     * Text-only notification. User/database values are never interpreted as HTML.
+     * Use modal() only for intentionally-authored, trusted application markup.
+     */
+    toast(message, type = 'success', duration = 3500) {
         const colors = {
             success: 'bg-green-600',
             error: 'bg-red-600',
-            warning: 'bg-yellow-500',
+            warning: 'bg-amber-500',
             info: 'bg-blue-600'
         };
         const icons = {
-            success: 'fa-circle-check',
-            error: 'fa-circle-exclamation',
-            warning: 'fa-triangle-exclamation',
-            info: 'fa-circle-info'
+            success: 'fa-check-circle', error: 'fa-exclamation-circle',
+            warning: 'fa-triangle-exclamation', info: 'fa-circle-info'
         };
-        const el = document.createElement('div');
-        el.className = `toast-item ${colors[type] || colors.info} text-white px-4 py-3 rounded-xl shadow-lg flex items-start gap-3 animate-fade-in`;
-        el.innerHTML = `<i class="fas ${icons[type] || icons.info} mt-0.5"></i><span class="text-sm font-semibold flex-1">${message}</span>`;
-        host.appendChild(el);
-        setTimeout(() => {
-            el.style.transition = 'opacity .3s, transform .3s';
-            el.style.opacity = '0';
-            el.style.transform = 'translateX(20px)';
-            setTimeout(() => el.remove(), 300);
-        }, duration);
-    },
-
-    /* ---- Full-screen blocking loader ---- */
-    showLoader(text = 'Loading…') {
-        let l = document.getElementById('global-loader');
-        if (!l) {
-            l = document.createElement('div');
-            l.id = 'global-loader';
-            l.className = 'fixed inset-0 z-[9998] bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4';
-            l.innerHTML = `<div class="h-12 w-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                           <p id="global-loader-text" class="text-slate-600 font-semibold"></p>`;
-            document.body.appendChild(l);
+        let box = document.getElementById('toast-container');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'toast-container';
+            box.className = 'fixed top-5 right-5 z-[10000] space-y-3 w-[min(92vw,380px)]';
+            box.setAttribute('aria-live', 'polite');
+            document.body.appendChild(box);
         }
-        document.getElementById('global-loader-text').innerText = text;
-        l.style.display = 'flex';
-    },
-    hideLoader() {
-        const l = document.getElementById('global-loader');
-        if (l) l.style.display = 'none';
+        const item = document.createElement('div');
+        item.className = `${colors[type] || colors.info} text-white px-5 py-4 rounded-xl shadow-xl flex items-start gap-3 animate-slide-in`;
+        item.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+        const icon = document.createElement('i');
+        icon.className = `fas ${icons[type] || icons.info} mt-0.5`;
+        icon.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        text.className = 'text-sm font-medium flex-1';
+        text.textContent = String(message == null ? '' : message);
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'ml-auto opacity-80 hover:opacity-100';
+        close.setAttribute('aria-label', 'Dismiss notification');
+        close.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
+        close.addEventListener('click', () => item.remove());
+
+        item.append(icon, text, close);
+        box.appendChild(item);
+        setTimeout(() => item.remove(), duration);
     },
 
-    /* ---- Promise-based confirm dialog ---- */
-    confirm(message, title = 'Please Confirm') {
-        return new Promise(resolve => {
-            const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4 animate-fade-in';
-            overlay.innerHTML = `
-                <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6">
-                    <h3 class="text-lg font-bold text-slate-800 mb-2">${title}</h3>
-                    <p class="text-slate-600 text-sm mb-6">${message}</p>
-                    <div class="flex gap-3 justify-end">
-                        <button data-x="0" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200">Cancel</button>
-                        <button data-x="1" class="px-4 py-2 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700">Confirm</button>
-                    </div>
-                </div>`;
-            overlay.querySelectorAll('button').forEach(b => b.onclick = () => {
-                resolve(b.dataset.x === '1');
-                overlay.remove();
-            });
-            document.body.appendChild(overlay);
-        });
+    /** Safely escape text for the limited legacy template-string renderers. */
+    esc(v) {
+        if (v === null || v === undefined) return '';
+        return String(v).replace(/[&<>'"]/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[c]));
     },
 
-    /* ---- Generic modal (returns the overlay element) ---- */
-    modal(innerHtml, maxWidth = 'max-w-lg') {
+    /**
+     * Application-owned trusted markup modal. Do not pass raw user/database values
+     * unless each value has first been escaped with UI.esc().
+     */
+    modal(html, maxWidth = 'max-w-lg') {
         const overlay = document.createElement('div');
-        overlay.className = 'fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4 animate-fade-in';
-        overlay.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl ${maxWidth} w-full max-h-[90vh] overflow-y-auto">${innerHtml}</div>`;
+        overlay.className = 'fixed inset-0 z-[9998] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4';
+        overlay.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full ${maxWidth} animate-fade-in max-h-[90vh] overflow-y-auto">${html}</div>`;
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
         document.body.appendChild(overlay);
         return overlay;
     },
 
-    /* ---- Dark mode (persisted in localStorage) ---- */
-    initTheme() {
-        const saved = localStorage.getItem('dc-theme');
-        if (saved === 'dark') document.documentElement.classList.add('dark');
-    },
-    toggleTheme() {
-        const isDark = document.documentElement.classList.toggle('dark');
-        localStorage.setItem('dc-theme', isDark ? 'dark' : 'light');
-        return isDark;
+    /** Text-safe confirm dialog. */
+    confirm(message, title = 'Confirm Action') {
+        return new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4';
+
+            const panel = document.createElement('div');
+            panel.className = 'bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-fade-in';
+            const heading = document.createElement('h3');
+            heading.className = 'text-lg font-bold text-slate-800 mb-2';
+            heading.textContent = String(title);
+            const body = document.createElement('p');
+            body.className = 'text-slate-500 text-sm mb-6';
+            body.textContent = String(message);
+            const actions = document.createElement('div');
+            actions.className = 'flex justify-end gap-3';
+            const cancel = document.createElement('button');
+            cancel.type = 'button'; cancel.className = 'dc-btn bg-slate-100 text-slate-700'; cancel.textContent = 'Cancel';
+            const ok = document.createElement('button');
+            ok.type = 'button'; ok.className = 'dc-btn dc-btn-danger'; ok.textContent = 'Confirm';
+            actions.append(cancel, ok); panel.append(heading, body, actions); overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+
+            const finish = value => { overlay.remove(); resolve(value); };
+            cancel.addEventListener('click', () => finish(false));
+            ok.addEventListener('click', () => finish(true));
+            overlay.addEventListener('click', e => { if (e.target === overlay) finish(false); });
+            ok.focus();
+        });
     },
 
-    /* ---- Escape user-supplied strings before injecting into HTML ---- */
-    esc(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    applyStoredTheme() {
+        if (localStorage.getItem('dc_theme') === 'dark') document.documentElement.classList.add('dark');
+    },
+
+    toggleTheme() {
+        document.documentElement.classList.toggle('dark');
+        localStorage.setItem('dc_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
     }
 };
-
-// Apply theme as early as possible.
-UI.initTheme();
+UI.applyStoredTheme();
 window.UI = UI;

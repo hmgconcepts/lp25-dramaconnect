@@ -1,82 +1,94 @@
-# 🎂 Automatic Birthday Greetings (Free)
+# 🎂 Optional Automatic Birthday Greetings
 
-DramaConnect can **automatically celebrate members on their birthday**. Members
-enter only their **birth month + day** (no year, for privacy) on their Profile.
+Members store only birth month and day. The Birthdays page always supports
+manual WhatsApp/email greetings. The optional `birthday-bot` Edge Function posts
+personal and department Inbox greetings and can also send email through Resend.
 
-There are two layers — use either or both:
+## Security and duplicate protection
 
-1. **In-app (works immediately, no setup):** the **Birthdays** page shows today's
-   celebrants and the month list. Admins can one-tap **WhatsApp** or **Email** a
-   greeting. (WhatsApp can't be auto-sent for free — Meta charges for that — so
-   one-tap is the free way.)
-2. **Fully automatic (optional, free):** the `birthday-bot` Edge Function runs
-   every morning and automatically posts a greeting to each celebrant's
-   **in-platform Inbox**, posts a **department-wide** celebration, and (if you
-   add a free Resend key) **emails** them. It marks each as done so it never
-   double-sends.
+The function uses the service role and therefore accepts **POST only** with an
+`X-Cron-Secret` matching `CRON_SECRET`. It conditionally claims each member/day
+before sending, so overlapping scheduler runs do not duplicate a greeting. If
+Inbox delivery fails, it restores the previous claim. Only `approved` profiles
+are targeted.
 
----
+## 1. Set secrets
 
-## Deploy the automatic bot
-
-### Step 1 — CLI (one time)
 ```bash
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
+supabase secrets set CRON_SECRET='YOUR_LONG_RANDOM_SECRET'
+
+# Optional email delivery:
+supabase secrets set RESEND_API_KEY='re_xxx' FROM_EMAIL='you@yourdomain.com'
 ```
 
-### Step 2 — Deploy
-Deploy from the **Supabase Dashboard → Edge Functions → Create a function**
-(name it `birthday-bot`, paste the code from
-`supabase/functions/birthday-bot/index.ts`, Deploy) — or via CLI:
+Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to its deployed
+functions. Never store the service-role value in frontend code or the repository.
+
+## 2. Deploy
+
+The scheduler has no user JWT, so disable only the gateway JWT check. The
+function's own strong-secret check remains mandatory:
+
 ```bash
 supabase functions deploy birthday-bot --no-verify-jwt
 ```
-> **No service_role key to set** — Supabase auto-provides it to the function
-> (`SUPABASE_SERVICE_ROLE_KEY`). It never goes in your repo or the browser.
->
-> OPTIONAL — only if you also want email delivery (free Resend account):
-> ```bash
-> supabase secrets set RESEND_API_KEY=re_xxx FROM_EMAIL=you@yourdomain.com
-> ```
-> (These are the *only* secrets you'd ever set, and they're for email, not the
-> service_role key.)
 
-### Step 3 — Schedule it daily (e.g. 06:00)
-In Supabase → SQL Editor:
+## 3. Schedule daily
+
+Use Supabase Vault rather than embedding the plaintext cron secret in stored SQL.
+If you already created `dramaconnect_cron_secret` while configuring reminders,
+reuse it and skip `vault.create_secret`.
+
 ```sql
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
+create extension if not exists vault;
+
+select vault.create_secret('YOUR_LONG_RANDOM_SECRET', 'dramaconnect_cron_secret');
 
 select cron.schedule(
   'birthday-bot',
-  '0 6 * * *',                         -- every day at 06:00 (server time)
+  '0 6 * * *',
   $$
-    select net.http_post(
-      url := 'https://YOUR_PROJECT_REF.functions.supabase.co/birthday-bot',
-      headers := '{"Content-Type":"application/json"}'::jsonb
-    );
+  select net.http_post(
+    url := 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/birthday-bot',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'X-Cron-Secret', (
+        select decrypted_secret
+        from vault.decrypted_secrets
+        where name = 'dramaconnect_cron_secret'
+      )
+    ),
+    body := '{}'::jsonb
+  );
   $$
 );
 ```
 
-### Step 4 — Test now
+The function evaluates birthdays in **UTC**. If a Lagos-morning run must always
+reflect a particular local date around midnight, choose an appropriate UTC cron
+time or adapt the function to a named timezone.
+
+## 4. Test
+
 ```bash
-curl -X POST https://YOUR_PROJECT_REF.functions.supabase.co/birthday-bot
+curl -i -X POST \
+  -H 'X-Cron-Secret: YOUR_LONG_RANDOM_SECRET' \
+  https://YOUR_PROJECT_REF.supabase.co/functions/v1/birthday-bot
 ```
-Set a test member's birth month/day to today, run the curl, then check their
-Inbox (and email if configured). Logs: `supabase functions logs birthday-bot`.
 
----
-
-## How members provide their birthday
-**My Profile → Birthday — Month / Day.** Only month and day are stored; there is
-no birth-year field.
+A wrong/missing secret must return `401`; GET must return `405`. Check the Inbox,
+`bday_last_sent`, optional email, and function logs.
 
 ## Troubleshooting
-| Problem | Fix |
+
+| Problem | Resolution |
 | :-- | :-- |
-| No greetings | Confirm a member's `birth_month`/`birth_day` equal today; check function logs. |
-| Sends twice | It shouldn't — `bday_last_sent` guards per day. Ensure the column exists (re-run `repair_and_upgrade.sql`). |
-| No emails | Set `RESEND_API_KEY` + verified `FROM_EMAIL`; emails are optional. |
-| WhatsApp not automatic | Correct — use the one-tap WhatsApp buttons on the Birthdays page (free). |
+| No greetings | Confirm the profile is approved and its birth month/day match the function's current UTC date. |
+| `401 Unauthorized` | Make the scheduler header match the Edge Function `CRON_SECRET`. |
+| `500 CRON_SECRET is not configured` | Set the secret in Supabase and retry. |
+| No email | Verify `RESEND_API_KEY`, `FROM_EMAIL`, and the sender domain; Inbox delivery works without email. |
+| WhatsApp not automatic | Expected: use the one-tap WhatsApp action; the bot does not call the WhatsApp API. |

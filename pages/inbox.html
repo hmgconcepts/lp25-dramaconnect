@@ -44,6 +44,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -122,7 +125,7 @@
                     const who = tab === 'sent'
                         ? (m.to_admins ? 'To: Admins' : (m.recipient_id ? 'To: ' + recipientName(m.recipient_id) : 'To: All members'))
                         : 'From: ' + UI.esc(m.sender_name || 'Member');
-                    const unread = tab === 'in' && !m.read_at;
+                    const unread = tab === 'in' && m.recipient_id === me.id && !m.read_at;
                     return `
                     <div class="p-4 rounded-xl border ${unread ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-transparent'}">
                         <div class="flex justify-between items-start gap-3">

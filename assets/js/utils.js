@@ -99,18 +99,70 @@ const Utils = {
     },
 
     /**
-     * Render an avatar: the member's photo if present, else a coloured initials
-     * circle. `size` is px. Returns an HTML string. (UI.esc must exist.)
+     * Return a normalised URL only when it uses an explicitly allowed protocol.
+     * Relative same-origin paths may be enabled for application-owned assets.
+     */
+    safeUrl(value, protocols = ['https:', 'http:'], allowRelative = false) {
+        if (!value) return '';
+        const raw = String(value).trim();
+        if (allowRelative && /^(?:\.\.?\/|\/)(?!\/)/.test(raw)) return raw;
+        try {
+            const parsed = new URL(raw, window.location.origin);
+            if (!protocols.includes(parsed.protocol)) return '';
+            if (!allowRelative && parsed.origin === window.location.origin && !/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
+            return parsed.href;
+        } catch (_e) { return ''; }
+    },
+
+    safeImageUrl(value, allowRelative = true) {
+        return this.safeUrl(value, ['https:', 'http:'], allowRelative);
+    },
+
+    /** Accept only a six-digit CSS hex colour. */
+    isHexColor(value) {
+        return /^#[0-9a-fA-F]{6}$/.test(String(value || '').trim());
+    },
+
+    safeColor(value, fallback = '#003399') {
+        const color = String(value || '').trim();
+        return this.isHexColor(color) ? color : fallback;
+    },
+
+    /** Parse supported YouTube URL forms and return a strict 11-char video id. */
+    youtubeVideoId(value) {
+        const raw = String(value || '').trim();
+        if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+        try {
+            const u = new URL(raw);
+            const host = u.hostname.toLowerCase().replace(/^www\./, '');
+            let id = '';
+            if (host === 'youtu.be') id = u.pathname.split('/').filter(Boolean)[0] || '';
+            else if (host === 'youtube.com' || host === 'm.youtube.com') {
+                if (u.pathname === '/watch') id = u.searchParams.get('v') || '';
+                else {
+                    const parts = u.pathname.split('/').filter(Boolean);
+                    if (['embed', 'shorts', 'live'].includes(parts[0])) id = parts[1] || '';
+                }
+            }
+            return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : '';
+        } catch (_e) { return ''; }
+    },
+
+    /**
+     * Render an avatar: only an HTTP(S)/same-origin photo URL is accepted;
+     * otherwise render a coloured initials circle.
      */
     avatar(member, size = 40) {
-        const s = size + 'px';
+        const safeSize = Math.max(16, Math.min(256, Number(size) || 40));
+        const s = safeSize + 'px';
         const name = member && (member.full_name || member.email) || '';
-        if (member && member.avatar_url) {
-            return `<img src="${(window.UI?UI.esc:String)(member.avatar_url)}" alt="${(window.UI?UI.esc:String)(name)}" style="width:${s};height:${s};border-radius:9999px;object-fit:cover;" loading="lazy">`;
+        const imageUrl = member && this.safeImageUrl(member.avatar_url);
+        if (imageUrl) {
+            return `<img src="${UI.esc(imageUrl)}" alt="${UI.esc(name)}" style="width:${s};height:${s};border-radius:9999px;object-fit:cover;" loading="lazy" referrerpolicy="no-referrer">`;
         }
         const init = this.initials(name);
-        const fs = Math.round(size * 0.4) + 'px';
-        return `<div style="width:${s};height:${s};border-radius:9999px;background:var(--rccg-blue,#003399);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${fs};">${(window.UI?UI.esc:String)(init)}</div>`;
+        const fs = Math.round(safeSize * 0.4) + 'px';
+        return `<div style="width:${s};height:${s};border-radius:9999px;background:var(--rccg-blue,#003399);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${fs};">${UI.esc(init)}</div>`;
     },
 
     /** Minimal CSV parser → array of objects keyed by the header row. */

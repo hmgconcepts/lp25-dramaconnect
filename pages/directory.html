@@ -27,6 +27,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -53,17 +56,29 @@
                 render();
             } catch (e) { document.getElementById('grid').innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
         }
-        function social(icon, url, color) {
-            if (!url) return '';
-            let href = url;
-            if (!/^https?:/i.test(url)) {
-                const h = url.replace(/^@/, '');
-                if (icon === 'facebook') href = 'https://facebook.com/' + h;
-                else if (icon === 'instagram') href = 'https://instagram.com/' + h;
-                else if (icon === 'tiktok') href = 'https://tiktok.com/@' + h;
-                else if (icon === 'x-twitter') href = 'https://x.com/' + h;
+        function social(icon, value, color) {
+            if (!value) return '';
+            const hosts = {
+                facebook: ['facebook.com'], instagram: ['instagram.com'],
+                tiktok: ['tiktok.com'], 'x-twitter': ['x.com', 'twitter.com']
+            };
+            const bases = {
+                facebook: 'https://facebook.com/', instagram: 'https://instagram.com/',
+                tiktok: 'https://tiktok.com/@', 'x-twitter': 'https://x.com/'
+            };
+            let href = '';
+            if (/^https?:/i.test(value)) {
+                const safe = Utils.safeUrl(value, ['https:']);
+                try {
+                    const host = new URL(safe).hostname.toLowerCase().replace(/^www\./, '');
+                    if ((hosts[icon] || []).some(h => host === h || host.endsWith('.' + h))) href = safe;
+                } catch (_e) {}
+            } else {
+                const handle = String(value).replace(/^@/, '').trim();
+                if (/^[A-Za-z0-9._-]{1,64}$/.test(handle)) href = bases[icon] + encodeURIComponent(handle);
             }
-            return `<a href="${UI.esc(href)}" target="_blank" rel="noopener" style="color:${color}" title="${icon}"><i class="fab fa-${icon}"></i></a>`;
+            if (!href) return '';
+            return `<a href="${UI.esc(href)}" target="_blank" rel="noopener noreferrer" style="color:${color}" title="${icon}"><i class="fab fa-${icon}"></i></a>`;
         }
         function render() {
             const q = (document.getElementById('search').value || '').toLowerCase();

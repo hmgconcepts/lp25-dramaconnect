@@ -29,8 +29,8 @@ const Auth = {
     },
 
     async resetPassword(email) {
-        const redirectTo = window.location.origin +
-            window.location.pathname.replace(/[^/]*$/, '') + 'reset.html';
+        // Recovery page is under /pages; resolve from either `/` or `/index.html`.
+        const redirectTo = new URL('pages/reset.html', window.location.origin + '/').href;
         const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
         if (error) throw error;
     },
@@ -55,23 +55,29 @@ const Auth = {
             .from('profiles').select('*').eq('id', user.id).maybeSingle();
 
         if (error) {
-            console.warn('[DramaConnect] Could not load profile:', error.message);
-            this._cachedUser = user;
-            return user;
+            console.error('[DramaConnect] Could not verify profile:', error.message);
+            throw new Error('Your account profile could not be verified. Please try again.');
         }
-        this._cachedUser = { ...user, ...(profile || {}) };
+        if (!profile) throw new Error('No DramaConnect profile is linked to this account. Contact an administrator.');
+        this._cachedUser = { ...user, ...profile };
         return this._cachedUser;
     },
 
     /** Guards a page; redirects to login if not signed in OR not approved. */
     async checkSession() {
-        const user = await this.getCurrentUser();
+        let user;
+        try { user = await this.getCurrentUser(); }
+        catch (error) {
+            UI.toast(error.message || 'Unable to verify your account.', 'error', 7000);
+            window.location.href = Auth.indexUrl();
+            return null;
+        }
         if (!user) {
             window.location.href = Auth.indexUrl();
             return null;
         }
-        // Approval gate: admins are always allowed; everyone else must be approved.
-        if (user.role !== 'admin' && user.status && user.status !== 'approved') {
+        // Approval is required for every account, including administrators.
+        if (user.status !== 'approved') {
             try { sessionStorage.setItem('dc-pending', '1'); } catch (e) {}
             await sb.auth.signOut();
             window.location.href = Auth.indexUrl();
@@ -82,7 +88,7 @@ const Auth = {
 
     /** Returns true if the account is allowed onto the platform. */
     isApproved(user) {
-        return !!(user && (user.role === 'admin' || user.status === 'approved' || !user.status));
+        return !!(user && user.status === 'approved');
     },
 
     /** Guards admin-only pages. */
@@ -98,12 +104,12 @@ const Auth = {
     },
 
     isAdmin(user) {
-        return !!(user && user.role === 'admin');
+        return !!(user && user.status === 'approved' && user.role === 'admin');
     },
 
-    /** True for unit leaders (and admins, who outrank leaders). */
+    /** True for approved unit leaders (and approved admins, who outrank leaders). */
     isUnitLeader(user) {
-        return !!(user && (user.role === 'admin' || user.is_unit_leader === true));
+        return !!(user && user.status === 'approved' && (user.role === 'admin' || user.is_unit_leader === true));
     },
 
     /** Elevated = admin OR unit leader (can do some management). */

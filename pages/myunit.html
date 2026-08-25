@@ -44,6 +44,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -99,7 +102,7 @@
                             ${m.phone?`<a href="${Utils.whatsappLink(m.phone,'')}" target="_blank" rel="noopener" class="text-green-600 mr-2"><i class="fab fa-whatsapp"></i></a>`:''}
                             ${m.email?`<a href="${Utils.mailtoLink(m.email,'','',false)}" class="text-blue-600"><i class="fas fa-envelope"></i></a>`:''}
                         </td>
-                    </tr>`).join('') : '<tr><td colspan="4" class="text-center text-slate-400 py-8">No members in your unit yet. Ask an admin to set members\' unit (or set it yourself on their profile).</td></tr>';
+                    </tr>`).join('') : '<tr><td colspan="4" class="text-center text-slate-400 py-8">No members in your unit yet. Ask an administrator to assign members to your unit.</td></tr>';
             } catch (e) { document.getElementById('rows').innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
         }
         async function messageUnit() {

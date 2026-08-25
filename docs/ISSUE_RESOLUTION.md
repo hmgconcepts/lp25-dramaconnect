@@ -1,28 +1,70 @@
-# Troubleshooting & Issue Resolution
+# Troubleshooting and Issue Resolution
 
-## 1. "Rate Exceeded" During Member Registration
-**Issue:** You encounter a "Rate Exceeded" error when trying to register new members, or some users cannot sign up on certain days.
-**Cause:** You are using the Supabase Free Tier, which enforces a strict limit of 30 emails per hour for Auth emails (like signup confirmations or password resets) to prevent spam.
-**Is there a member limit?** The Supabase free tier allows up to **50,000 Monthly Active Users (MAUs)**. The limit is *not* on the number of members, but on the *rate of sending emails* without a custom SMTP provider.
+## 1. Registration or password-reset rate limits
 
-### Solution 1: Disable Email Confirmations (Fastest for Internal Tools)
-Since DramaConnect is often used as an internal platform where admins verify users manually (or users know the admins), you can turn off the email confirmation requirement. 
-1. Go to your **Supabase Dashboard** -> **Authentication** -> **Providers**.
-2. Click on **Email**.
-3. Toggle OFF **Confirm email** and **Secure email change**.
-4. Save the settings. 
-*Result:* Members can now sign up instantly without waiting for an email, and the 30/hour rate limit will no longer block registrations.
+**Symptom:** Supabase Auth returns a rate-limit error or confirmation/reset mail
+is delayed.
 
-### Solution 2: Use a Free Custom SMTP Provider (Best for Production)
-If you want to keep email verifications enabled without rate limits:
-1. Sign up for a free transactional email service like **Resend** (3,000 free emails/month) or **SendGrid**.
-2. Generate SMTP credentials (Host, Port, Username, Password).
-3. Go to **Supabase Dashboard** -> **Project Settings** -> **Authentication** -> **SMTP Settings**.
-4. Enable Custom SMTP and enter the credentials. 
-*Result:* Supabase will route emails through your provider, bypassing the strict 30/hour limit.
+**Cause:** Hosted Auth email quotas and SMTP limits vary by Supabase plan and may
+change. Check the current project dashboard and official Supabase limits rather
+than relying on a hard-coded number in this repository.
 
-## 2. Using External Media Links (Google Drive & YouTube)
-To save storage space on your 500MB free tier, we have added features to use external links for photos and videos instead of direct file uploads. 
-*   **Profile Pictures:** Members can paste a Google Drive view link into their Profile page.
-*   **Gallery:** Admins can paste Google Drive links (for photos) or YouTube links (for videos) directly into the Photo Gallery.
+### Internal rollout option
 
+In **Authentication → Providers → Email**, administrators may turn **Confirm
+email** off if their governance process permits it. DramaConnect's separate
+approval gate still applies: new profiles stay `pending` and cannot enter the
+application until approved. Keep secure email-change confirmation enabled unless
+you have consciously accepted the account-takeover risk of disabling it.
+
+### Production option
+
+Configure a verified custom SMTP provider under the current Supabase Auth SMTP
+settings. Protect credentials in the provider/dashboard; never put them in this
+repository or browser code. Check provider quotas, sender-domain verification,
+spam placement, and function/Auth logs.
+
+## 2. Pending and rejected registrations
+
+- `pending`: appears in the administrator approval queue and remains blocked.
+- `rejected`: retained and blocked, but can be approved later.
+- **Remove**: permanent approved-administrator Edge Function operation that
+  deletes the Supabase Auth account, profile, and cascade-linked records. It
+  blocks self-deletion and cannot be replaced with a browser profile delete.
+
+If an account authenticates but returns to the sign-in page, inspect its profile
+status and confirm all three database migrations were run in order.
+
+## 3. Profile photos and external gallery media
+
+- **Profile photo:** use **My Profile → Upload Photo**. The image is cropped and
+  uploaded to the public `avatars/<auth-user-id>/...` path. The owner must be an
+  approved account.
+- **Gallery:** administrators and approved unit leaders may upload validated
+  image media; gallery rendering also validates supported Drive/YouTube/HTTP(S)
+  values before creating links or embeds.
+- Do not upload private/sensitive imagery to public-read buckets.
+
+If an upload is denied by RLS, run `database/repair_and_upgrade.sql` and then
+`database/security_hardening.sql`, verify approval status, and check that the
+storage path begins with the caller's Auth user ID.
+
+## 4. Edge Function authorization failures
+
+| Function | Required caller proof |
+| :-- | :-- |
+| `admin-create-member` | Valid bearer JWT for an approved administrator; keep gateway JWT verification enabled. |
+| `notify-approval` | Approved-admin bearer JWT **or** `X-Webhook-Secret` matching `NOTIFY_WEBHOOK_SECRET`. |
+| `birthday-bot` | POST plus `X-Cron-Secret` matching `CRON_SECRET`. |
+| `run-reminders` | POST plus `X-Cron-Secret` matching `CRON_SECRET`. |
+
+Never solve `401` by removing the function's own checks or exposing the service
+role. Follow the dedicated function guides to configure secrets and deployment
+JWT modes.
+
+## 5. Stale installed application shell
+
+The v13.2 service worker uses cache `dramaconnect-v13.2`, network-first
+navigation, and network-only handling for cross-origin/backend requests. Deploy
+`sw.js` with the rest of the release, then hard-refresh once. For a later app
+release, change the cache identifier to that release version.

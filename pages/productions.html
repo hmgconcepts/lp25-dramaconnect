@@ -32,6 +32,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -62,6 +65,7 @@
                 const isAdmin = Auth.isAdmin(me);
                 grid.innerHTML = plays.map(p => {
                     const days = Utils.daysUntil(p.performance_date);
+                    const scriptUrl = Utils.safeUrl(p.script_url, ['https:', 'http:']);
                     const status = days === null ? '' : days < 0 ? '<span class="badge badge-member">Completed</span>' : days <= 14 ? '<span class="badge badge-red">Soon</span>' : '<span class="badge badge-green">Upcoming</span>';
                     return `
                     <div class="glass-card p-6 animate-fade-in">
@@ -73,7 +77,7 @@
                         <p class="text-sm text-slate-500 mt-1"><i class="fas fa-calendar mr-1"></i> ${Utils.formatDate(p.performance_date)} ${days !== null ? '• ' + Utils.relativeTime(p.performance_date) : ''}</p>
                         <p class="text-sm text-slate-500"><i class="fas fa-user-tie mr-1"></i> ${UI.esc(p.director || '—')}</p>
                         <div class="flex gap-3 mt-3">
-                            ${p.script_url ? `<a href="${UI.esc(p.script_url)}" target="_blank" rel="noopener" class="text-sm text-blue-600 font-bold hover:underline"><i class="fas fa-file-alt mr-1"></i> Script</a>` : ''}
+                            ${scriptUrl ? `<a href="${UI.esc(scriptUrl)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-600 font-bold hover:underline"><i class="fas fa-file-alt mr-1"></i> Script</a>` : (p.script_url ? '<span class="text-xs text-red-500">Invalid script link</span>' : '')}
                             ${isAdmin ? `<button class="text-sm text-red-600 font-bold hover:underline" onclick="del('${p.id}')"><i class="fas fa-trash mr-1"></i> Delete</button>` : ''}
                         </div>
                     </div>`;
@@ -84,11 +88,14 @@
             const title = document.getElementById('p-title').value.trim();
             if (!title) { UI.toast('Title is required.', 'warning'); return; }
             try {
+                const rawScriptUrl = document.getElementById('p-script').value.trim();
+                const scriptUrl = rawScriptUrl ? Utils.safeUrl(rawScriptUrl, ['https:', 'http:']) : null;
+                if (rawScriptUrl && !scriptUrl) throw new Error('Use a valid HTTP or HTTPS script URL.');
                 await DB.addProduction({
                     title,
                     performance_date: document.getElementById('p-date').value || null,
                     director: document.getElementById('p-director').value.trim() || null,
-                    script_url: document.getElementById('p-script').value.trim() || null
+                    script_url: scriptUrl
                 });
                 await DB.logActivity('production_add', title);
                 ['p-title', 'p-date', 'p-director', 'p-script'].forEach(id => document.getElementById(id).value = '');

@@ -41,6 +41,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -80,24 +83,29 @@
             const grid = document.getElementById('res-grid');
             if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No resources.</p>'; return; }
             const isAdmin = Auth.isAdmin(me);
-            grid.innerHTML = list.map(r => `
+            grid.innerHTML = list.map(r => {
+                const safeUrl = Utils.safeUrl(r.url, ['https:', 'http:']);
+                return `
                 <div class="glass-card p-5">
                     <div class="flex items-center justify-between mb-2">
-                        <span class="p-2 bg-blue-50 text-blue-600 rounded-xl"><i class="fas ${ICONS[r.category]||'fa-file'}"></i></span>
+                        <span class="p-2 bg-blue-50 text-blue-600 rounded-xl"><i class="fas ${Object.prototype.hasOwnProperty.call(ICONS, r.category) ? ICONS[r.category] : 'fa-file'}"></i></span>
                         <span class="badge badge-member">${UI.esc(r.category)}</span>
                     </div>
                     <h4 class="font-bold text-slate-800">${UI.esc(r.title)}</h4>
                     ${r.description ? `<p class="text-xs text-slate-500 mt-1">${UI.esc(r.description)}</p>` : ''}
                     <div class="flex gap-3 mt-3">
-                        <a href="${UI.esc(r.url)}" target="_blank" rel="noopener" class="text-sm text-blue-600 font-bold hover:underline"><i class="fas fa-arrow-up-right-from-square mr-1"></i> Open</a>
+                        ${safeUrl ? `<a href="${UI.esc(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-600 font-bold hover:underline"><i class="fas fa-arrow-up-right-from-square mr-1"></i> Open</a>` : '<span class="text-xs text-red-500">Invalid link</span>'}
                         ${isAdmin ? `<button class="text-sm text-red-600 font-bold hover:underline" onclick="del('${r.id}')">Delete</button>` : ''}
                     </div>
-                </div>`).join('');
+                </div>`;
+            }).join('');
         }
         async function add() {
             const title = document.getElementById('r-title').value.trim();
-            const url = document.getElementById('r-url').value.trim();
-            if (!title || !url) { UI.toast('Title and URL are required.', 'warning'); return; }
+            const rawUrl = document.getElementById('r-url').value.trim();
+            const url = Utils.safeUrl(rawUrl, ['https:', 'http:']);
+            if (!title || !rawUrl) { UI.toast('Title and URL are required.', 'warning'); return; }
+            if (!url) { UI.toast('Use a valid HTTP or HTTPS resource URL.', 'warning'); return; }
             try {
                 await DB.addResource({ title, url, category: document.getElementById('r-cat').value, description: document.getElementById('r-desc').value.trim() || null, added_by: me.full_name || me.email });
                 await DB.logActivity('resource_add', title);

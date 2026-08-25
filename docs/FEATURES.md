@@ -1,4 +1,4 @@
-# 📖 DramaConnect Enterprise v5 — Detailed Feature Guide
+# 📖 DramaConnect Enterprise v13.2 — Detailed Feature Guide
 
 This document explains **every feature** in the system: what it does, who can use
 it, where to find it, and how it works under the hood. All features run on
@@ -17,7 +17,9 @@ it, where to find it, and how it works under the hood. All features run on
 - **Where:** landing page → "Request Access".
 - **What:** creates a Supabase auth user with the member's full name. A database
   trigger (`handle_new_user`) automatically creates a matching `profiles` row
-  with role `member` and status **`pending`**.
+  with role `member` and status **`pending`**. Rejected requests are retained with status
+  **`rejected`** so they remain blocked but can be approved later; only permanent
+  removal deletes the Auth account/profile and cascade-linked data.
 - **Approval gate:** a newly registered user **cannot access the platform** until
   an admin approves them. If a pending user tries to sign in, they are shown
   *"Your account is awaiting admin approval"* and are signed out. Admins approve
@@ -62,9 +64,9 @@ it, where to find it, and how it works under the hood. All features run on
     request with one click. Promoting a pending user to admin auto-approves them.
   - **Role management (admin):** one click to make a member an admin or demote
     back to member.
-  - **Remove members (admin):** delete a member's profile from the platform
-    (you cannot remove your own account). Every action is recorded in the
-    Activity Log.
+  - **Remove members (admin):** permanently delete the member's Supabase Auth
+    account, profile, and cascade-linked dependent records through the secured
+    Edge Function. Self-deletion is blocked and the server attempts the audit log.
 
 ---
 
@@ -178,8 +180,9 @@ it, where to find it, and how it works under the hood. All features run on
 ## 14. My Profile
 
 - **Where:** `pages/profile.html` · **Access:** all members.
-- **What:** edit your own full name, phone, and parish; change your password; and
-  view your current role badge. Email is read‑only (it's your login identity).
+- **What:** edit permitted personal fields and change the password. Email changes
+  go through Supabase Auth and are synchronized back to the profile. Role,
+  approval status, Drama Unit, and unit-leader state are administrator-managed.
 
 ---
 
@@ -202,7 +205,8 @@ it, where to find it, and how it works under the hood. All features run on
   sees a friendly banner inviting them to **install the app**. On
   Chrome/Edge/Android it triggers the native install dialog; on iOS Safari it
   shows "Tap Share → Add to Home Screen". The prompt is dismissible and won't
-  reappear for 14 days, and never shows once the app is already installed.
+  reappear for **seven days**, and never shows once installed. Installation is
+  optional: **Continue in browser** always keeps the web app usable.
 
 ### 15.4 Responsive & Mobile
 - Collapsible **mobile drawer** navigation; layouts adapt from phone to desktop.
@@ -237,19 +241,32 @@ it, where to find it, and how it works under the hood. All features run on
   notice: *"Running in low‑bandwidth mode — some styling is simplified, but all
   features work."* The core experience never breaks.
 
-## 16. Settings & Backup (NEW in v6, admin only)
+## 16. Settings, Resilience & Backup (expanded in v13.2, admin only)
 
-- **Where:** `pages/settings.html` · **Access:** admin only.
-- **Department Profile:** store the department name, province, leader, and
-  contact (saved on the device for quick reference and report headers).
-- **Full Data Backup:** one click downloads a complete **JSON snapshot** of every
-  table (`DB.exportAll()`) — your free, portable disaster‑recovery copy.
-- **Bulk Member CSV:** parse a roster spreadsheet
-  (`full_name,email,phone,parish`). Because a login profile is tied to a Supabase
-  auth user, members still sign up with those emails (their profile is then
-  auto‑created); the importer prepares and validates the roster.
-- **Appearance:** dark/light toggle. **System Information:** app, version,
-  backend, your role, and whether the app is installed as a PWA.
+- **Where:** `pages/settings.html` · **Access:** approved administrators only,
+  enforced in the UI and by database/Storage authorization.
+- **Department Profile:** administrators store validated tenant branding and
+  contact settings in Supabase; approved members can read permitted settings.
+- **Resilience health:** source-aware browser, GitHub, Edge, Vercel, Apps Script,
+  external and optional `pg_cron` heartbeats; administrators can inspect source
+  freshness and send a verified manual test.
+- **Portable archive:** stable pagination exports all 22 application/configuration
+  tables with counts, primary-key metadata, per-table SHA-256 digests and a full
+  seal. Independent verification is available in `scripts/verify-portable-archive.mjs`.
+- **Safe restore:** a database-backed lease prevents overlapping runs; merge or
+  degraded recovery verifies first and reports attempted/restored/skipped rows.
+- **Google Drive:** Google Identity Services token flow with least-privilege
+  `drive.file`, dedicated folder, verified upload/download, retention and a
+  visit-triggered schedule that never opens an unsolicited OAuth popup.
+- **Private vault:** administrator-only Supabase Storage copies for convenience;
+  the vault is not an off-site backup.
+- **Unattended recovery:** GitHub creates encrypted public-schema and Auth data
+  dumps and optionally exports actual Storage bytes to rclone/Drive with remote
+  verification and post-verification retention.
+- **Limit:** portable archives exclude Auth credentials/sessions and Storage
+  object bytes; use the encrypted recovery set for full incident recovery.
+- **Bulk Member CSV and appearance:** roster import and dark/light system
+  information remain available through their existing administrative surfaces.
 
 ---
 
@@ -325,10 +342,10 @@ it, where to find it, and how it works under the hood. All features run on
 - When a reminder is **due**, a **"Send now"** button posts it to everyone's
   in‑platform Inbox and **auto‑reschedules** the next run (or deactivates a
   "once" reminder).
-- **Why this design (free & no server):** truly automatic server‑side scheduling
-  would need a paid cron/always‑on worker. This approach keeps the system at
-  **₦0/month** while still giving one‑click recurring reminders. *(Optional: you
-  can later wire a free Supabase scheduled Edge Function to fully automate it.)*
+- **Manual versus automatic:** the one-click **Send now** workflow requires no
+  scheduler. Optional automation uses the included secret-protected Supabase
+  scheduled Edge Function. Availability and quotas depend on the current project
+  plan; check the Supabase dashboard before relying on it operationally.
 
 ## 22. Brand Embedding — HMG Concepts
 
@@ -366,14 +383,16 @@ it, where to find it, and how it works under the hood. All features run on
 
 - **Where:** `pages/polls.html` · **Create/close:** admin · **Vote:** all.
 - Admins create a poll with 2+ options; members vote (one vote each, changeable)
-  and see **live result bars** with percentages. Admins can close/reopen or
+  and see aggregate **live result bars** plus their own selected choice. Other
+  voter identities are not returned to ordinary members. Admins can close/reopen or
   delete polls. Great for picking rehearsal dates, roles, themes, etc.
 
 ## 27. Fully-Automatic Reminders (NEW in v9 — optional)
 
 - The included **scheduled** Edge Function `supabase/functions/run-reminders`
   (with Supabase Cron) posts **due** reminders to everyone's Inbox automatically
-  and reschedules them — **no admin action**. All on free tiers.
+  and reschedules them — **no admin action** after secure deployment. Hosting and
+  execution remain subject to the current Supabase plan and quotas.
 - Full steps: `docs/SCHEDULED_REMINDERS.md`. The manual **"Send now"** button on
   the Reminders page keeps working with or without this function.
 
@@ -406,7 +425,8 @@ it, where to find it, and how it works under the hood. All features run on
 
 - **Where:** `pages/events.html`.
 - **Members** RSVP to each upcoming event: **Going / Maybe / No** (one response,
-  changeable). Each card shows live **going/maybe counts**.
+  changeable). Each card uses an aggregate RPC for counts plus only the caller's
+  own choice; other member identities are not returned.
 - **Admins** can **View RSVPs** to see exactly who responded in each category —
   useful for planning logistics and follow-up.
 
@@ -420,7 +440,8 @@ it, where to find it, and how it works under the hood. All features run on
   links** (Facebook, Instagram, TikTok, X/Twitter).
 - **Self-completion flow:** when an admin creates an account (with just name +
   email), the member signs in and **completes the rest themselves** — including
-  adding/*changing their email*, occupation, address, socials, etc.
+  changing email through Supabase Auth, plus occupation, address and social links.
+  Drama Unit remains administrator-managed and read-only to the member.
 - A **Profile Completion meter** shows progress and encourages members to finish.
 
 ## 32. Automatic Birthday Celebrations (NEW in v11)
@@ -458,7 +479,8 @@ it, where to find it, and how it works under the hood. All features run on
 
 - **Where:** `pages/profile.html` → "Upload Photo" · **Access:** all members.
 - Photos are stored free in **Supabase Storage** (a public `avatars` bucket
-  created automatically by `repair_and_upgrade.sql`). Each member can upload,
+  created by `repair_and_upgrade.sql`, with final least-privilege policies from
+  `security_hardening.sql`). Each approved member can upload,
   replace or remove **only their own** photo (enforced by storage RLS, scoped to
   `avatars/<user-id>/…`).
 - The photo appears automatically on the **digital ID card**, the **Member
@@ -468,8 +490,10 @@ it, where to find it, and how it works under the hood. All features run on
 
 ## 37. Member Directory (NEW in v12)
 
-- **Where:** `pages/directory.html` · **Access:** all members.
-- A photo-rich, searchable card grid of the department: search by name, unit or
+- **Where:** `pages/directory.html` · **Access:** approved members.
+- Uses the restricted `member_directory` projection: home address, emergency
+  contacts, costume measurements and other private profile fields are omitted.
+  A photo-rich, searchable card grid supports search by name, unit or
   occupation, filter by **drama unit**, and reach anyone via one-tap **WhatsApp,
   Email**, or their **social links** (Facebook, Instagram, TikTok, X).
 
@@ -497,13 +521,12 @@ it, where to find it, and how it works under the hood. All features run on
 ## 41. Unit-Leader Permissions (NEW in v13)
 
 - **Where:** Members page → "Unit Lead" button (admin only) sets/clears the role.
-- **Unit Leaders** are trusted members who can:
-  - **update profiles of members in their own unit** (e.g. fix details, set unit),
-  - **upload to the Photo Gallery**.
-- They **cannot** grant admin rights or manage other units. Enforced at the
-  database with a `is_unit_leader_of(unit)` security‑definer function and RLS, so
-  the limits hold even outside the UI. This delegates day‑to‑day coordination
-  without giving away full admin access.
+- **Unit Leaders** are approved members who can upload Photo Gallery media and
+  delete only their own uploads.
+- Profile edits, unit assignment, approval, role/leader changes, and account
+  deletion remain administrator-only (apart from each member editing permitted
+  fields on their own profile). The scope is enforced by RLS/storage ownership,
+  not merely by hidden controls.
 
 ## 42. Org-Wide Photo Gallery (NEW in v13)
 
@@ -525,7 +548,7 @@ it, where to find it, and how it works under the hood. All features run on
 
 ## Free‑Tools / No‑AI Commitment
 
-Every capability above is delivered with **free, open tooling** and **no paid AI
-API**. Charts, exports, PDF generation, and offline support all run **client‑side
-in the browser**, so there is **no server compute cost**. Supabase's free tier
-handles the database and authentication.
+The application uses no paid AI API. Charts, exports, PDF generation, and the
+limited offline shell run client-side; authentication, data, Storage, and optional
+automation use Supabase server resources. The project may fit within free
+allowances at modest usage, but provider quotas and pricing must be verified.

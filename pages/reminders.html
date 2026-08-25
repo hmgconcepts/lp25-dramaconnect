@@ -39,6 +39,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -95,11 +98,12 @@
                 if (!items.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No reminders scheduled.</p>'; return; }
                 host.innerHTML = items.map(r => {
                     const due = r.next_run && Utils.daysUntil(r.next_run) <= 0;
+                    const frequency = ['once', 'daily', 'weekly', 'monthly'].includes(r.frequency) ? r.frequency : 'once';
                     return `
                     <div class="p-4 rounded-xl ${due ? 'bg-yellow-50 border border-yellow-200' : 'bg-slate-50'}">
                         <div class="flex flex-wrap justify-between items-start gap-3">
                             <div class="min-w-0">
-                                <p class="font-bold text-slate-800">${UI.esc(r.title)} <span class="badge badge-member ml-1">${r.frequency}</span> <span class="badge ${r.active?'badge-green':'badge-red'} ml-1">${r.active?'active':'paused'}</span></p>
+                                <p class="font-bold text-slate-800">${UI.esc(r.title)} <span class="badge badge-member ml-1">${UI.esc(frequency)}</span> <span class="badge ${r.active?'badge-green':'badge-red'} ml-1">${r.active?'active':'paused'}</span></p>
                                 ${r.body ? `<p class="text-sm text-slate-600 mt-1">${UI.esc(r.body)}</p>` : ''}
                                 <p class="text-xs text-slate-400 mt-1">Audience: ${UI.esc(r.audience)} • Next: ${Utils.formatDateTime(r.next_run)} ${due ? '<span class="text-yellow-700 font-bold">(due now)</span>' : '• ' + Utils.relativeTime(r.next_run)}</p>
                             </div>

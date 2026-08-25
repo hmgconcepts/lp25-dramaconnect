@@ -66,6 +66,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -100,7 +103,7 @@
         }
         function renderPending() {
             if (!Auth.isAdmin(me)) return;
-            const pending = all.filter(m => m.status && m.status !== 'approved' && m.role !== 'admin');
+            const pending = all.filter(m => !m.status || m.status === 'pending');
             document.getElementById('pending-count').textContent = pending.length;
             const host = document.getElementById('pending-body');
             if (!pending.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No pending requests. 🎉</p>'; return; }
@@ -124,23 +127,25 @@
             const body = document.getElementById('members-body');
             if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-8">No members found.</td></tr>'; return; }
             body.innerHTML = list.map(m => {
-                const approved = !m.status || m.status === 'approved';
+                const memberStatus = ['pending', 'approved', 'rejected'].includes(m.status) ? m.status : 'pending';
+                const statusBadge = memberStatus === 'approved' ? 'badge-green' : memberStatus === 'rejected' ? 'badge-red' : 'badge-yellow';
                 return `
                 <tr>
                     <td><div class="flex items-center gap-3">${Utils.avatar(m, 36)}<span class="font-semibold text-slate-800">${UI.esc(m.full_name || '—')}</span></div></td>
                     <td>${UI.esc(m.email || '—')}</td>
                     <td>${UI.esc(m.phone || '—')}</td>
                     <td>${UI.esc(m.parish || '—')}</td>
-                    <td><span class="badge ${approved ? 'badge-green' : 'badge-yellow'}">${approved ? 'approved' : 'pending'}</span></td>
+                    <td><span class="badge ${statusBadge}">${memberStatus}</span></td>
                     <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span>${m.is_unit_leader ? ' <span class="badge badge-yellow">unit lead</span>' : ''}</td>
                     ${isAdmin ? `<td>
                         <div class="flex gap-3 items-center flex-wrap">
                             <button class="text-indigo-600 hover:underline text-xs font-bold" onclick="viewFullProfile('${m.id}')"><i class="fas fa-id-card"></i> View Profile</button>
                             ${m.phone ? `<a href="${Utils.whatsappLink(m.phone, '')}" target="_blank" rel="noopener" title="WhatsApp" class="text-green-600 hover:opacity-70"><i class="fab fa-whatsapp"></i></a>` : ''}
                             ${m.email ? `<a href="${Utils.mailtoLink(m.email, '', '', false)}" title="Email" class="text-blue-600 hover:opacity-70"><i class="fas fa-envelope"></i></a>` : ''}
-                            <button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}','${m.role}')">${m.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
-                            <button class="text-yellow-600 hover:underline text-xs font-bold" onclick="toggleLeader('${m.id}', ${!!m.is_unit_leader})">${m.is_unit_leader ? 'Unset Lead' : 'Unit Lead'}</button>
-                            ${m.id !== me.id ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="removeMember('${m.id}','${UI.esc(m.full_name || m.email || '')}')">Remove</button>` : '<span class="text-xs text-slate-300">You</span>'}
+                            <button class="text-blue-600 hover:underline text-xs font-bold" onclick="toggleRole('${m.id}')">${m.role === 'admin' ? 'Demote' : 'Make Admin'}</button>
+                            <button class="text-purple-600 hover:underline text-xs font-bold" onclick="assignUnit('${m.id}')">${m.unit ? 'Change Unit' : 'Assign Unit'}</button>
+                            <button class="text-yellow-600 hover:underline text-xs font-bold" onclick="toggleLeader('${m.id}')">${m.is_unit_leader ? 'Unset Lead' : 'Unit Lead'}</button>
+                            ${m.id !== me.id ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="removeMember('${m.id}')">Remove</button>` : '<span class="text-xs text-slate-300">You</span>'}
                         </div>
                     </td>` : ''}
                 </tr>`;
@@ -172,12 +177,14 @@
                 </div>`, 'max-w-md');
         }
         async function reject(id) {
-            if (!await UI.confirm('Reject and remove this access request?')) return;
-            try { await DB.deleteMember(id); await DB.logActivity('member_reject', id); UI.toast('Request rejected.', 'success'); await load(); }
+            if (!await UI.confirm('Reject this access request? The account will remain blocked and can be approved later.')) return;
+            try { await DB.setMemberStatus(id, 'rejected'); await DB.logActivity('member_reject', id); UI.toast('Request rejected.', 'success'); await load(); }
             catch (e) { UI.toast(e.message, 'error'); }
         }
-        async function toggleRole(id, current) {
-            const next = current === 'admin' ? 'member' : 'admin';
+        async function toggleRole(id) {
+            const member = all.find(m => m.id === id);
+            if (!member) return;
+            const next = member.role === 'admin' ? 'member' : 'admin';
             if (!await UI.confirm(`Change this member's role to "${next}"?`)) return;
             try {
                 // Promoting to admin also approves them.
@@ -188,9 +195,11 @@
                 await load();
             } catch (e) { UI.toast(e.message, 'error'); }
         }
-        async function removeMember(id, name) {
-            if (!await UI.confirm(`Remove ${name || 'this member'} from the platform? This deletes their profile.`)) return;
-            try { await DB.deleteMember(id); await DB.logActivity('member_remove', name || id); UI.toast('Member removed.', 'success'); await load(); }
+        async function removeMember(id) {
+            const member = all.find(m => m.id === id);
+            const name = member && (member.full_name || member.email);
+            if (!await UI.confirm(`Permanently remove ${name || 'this member'}? This deletes their login account, profile, and dependent records and cannot be undone.`)) return;
+            try { await DB.deleteMember(id); UI.toast('Member account removed.', 'success'); await load(); }
             catch (e) { UI.toast(e.message, 'error'); }
         }
         async function createMember() {
@@ -223,7 +232,7 @@
         function showCredentials(res, name, phone) {
             const loginUrl = location.origin + location.pathname.replace(/pages\/.*$/, 'index.html');
             const msg = `Hello ${name||''}, your DramaConnect account is ready.\nLogin: ${loginUrl}\nEmail: ${res.email}\nPassword: ${res.password}\nPlease change your password after first login. God bless you.`;
-            UI.modal(`
+            const overlay = UI.modal(`
                 <div class="p-6">
                     <h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-circle-check text-green-600 mr-1"></i> Account Created</h3>
                     <p class="text-sm text-slate-500 mb-3">Hand these credentials to the member (they can change the password later):</p>
@@ -233,12 +242,17 @@
                         <p><strong>Role:</strong> ${UI.esc(res.role)}</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <button class="dc-btn dc-btn-primary" onclick="navigator.clipboard.writeText(${JSON.stringify(msg)}).then(()=>UI.toast('Copied.','success'))"><i class="fas fa-copy mr-1"></i> Copy</button>
+                        <button type="button" data-copy-credentials class="dc-btn dc-btn-primary"><i class="fas fa-copy mr-1"></i> Copy</button>
                         ${phone ? `<a class="dc-btn text-white" style="background:#25D366" target="_blank" rel="noopener" href="${Utils.whatsappLink(phone, msg)}"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</a>` : ''}
                         <a class="dc-btn bg-blue-600 text-white" href="${Utils.mailtoLink(res.email, 'Your DramaConnect login', msg, false)}"><i class="fas fa-envelope mr-1"></i> Email</a>
-                        <button class="dc-btn bg-slate-100 text-slate-700" onclick="this.closest('.fixed').remove()">Close</button>
+                        <button type="button" data-close-credentials class="dc-btn bg-slate-100 text-slate-700">Close</button>
                     </div>
                 </div>`, 'max-w-md');
+            overlay.querySelector('[data-copy-credentials]').addEventListener('click', async () => {
+                try { await navigator.clipboard.writeText(msg); UI.toast('Copied.', 'success'); }
+                catch (_error) { UI.toast('Could not copy automatically. Select the credentials manually.', 'warning'); }
+            });
+            overlay.querySelector('[data-close-credentials]').addEventListener('click', () => overlay.remove());
         }
 
         async function bulkCreate() {
@@ -291,9 +305,26 @@
 
         window.bulkCreate = bulkCreate;
         window.createMember = createMember;
-        async function toggleLeader(id, current) {
-            const next = !current;
-            if (!await UI.confirm(next ? 'Make this member a Unit Leader? They can manage members in their own unit.' : 'Remove Unit Leader status?')) return;
+        async function assignUnit(id) {
+            const member = all.find(m => m.id === id);
+            if (!member) return;
+            const value = window.prompt('Enter the member’s drama unit. Leave blank to clear the assignment.', member.unit || '');
+            if (value === null) return;
+            const unit = value.trim();
+            if (unit.length > 80) { UI.toast('Unit names must be 80 characters or fewer.', 'warning'); return; }
+            try {
+                await DB.setMemberUnit(id, unit);
+                await DB.logActivity('unit_assignment', `${id} -> ${unit || '(cleared)'}`);
+                UI.toast(unit ? 'Unit assigned.' : 'Unit assignment cleared.', 'success');
+                await load();
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+        window.assignUnit = assignUnit;
+        async function toggleLeader(id) {
+            const member = all.find(m => m.id === id);
+            if (!member) return;
+            const next = !member.is_unit_leader;
+            if (!await UI.confirm(next ? 'Make this member a Unit Leader? They can coordinate their unit and manage their own gallery uploads.' : 'Remove Unit Leader status?')) return;
             try {
                 await DB.setUnitLeader(id, next);
                 await DB.logActivity('unit_leader', `${id} -> ${next}`);
@@ -314,17 +345,17 @@
                 { label: 'Phone', value: m.phone },
                 { label: 'Parish', value: m.parish },
                 { label: 'Gender', value: m.gender },
-                { label: 'Birth Month', value: m.birth_month },
+                { label: 'Birthday', value: m.birth_month ? `${Utils.monthName(m.birth_month)} ${m.birth_day || ''}` : null },
+                { label: 'Drama Unit', value: m.unit },
                 { label: 'Address', value: m.address },
                 { label: 'Occupation', value: m.occupation },
-                { label: 'Skills', value: m.skills },
-                { label: 'T-Shirt Size', value: m.tshirt_size },
                 { label: 'Height', value: m.height },
                 { label: 'Shoe Size', value: m.shoe_size },
                 { label: 'Chest/Bust', value: m.chest },
                 { label: 'Waist', value: m.waist },
-                { label: 'Next of Kin Name', value: m.nok_name },
-                { label: 'Next of Kin Phone', value: m.nok_phone }
+                { label: 'Emergency Contact', value: m.emergency_name },
+                { label: 'Emergency Phone', value: m.emergency_phone },
+                { label: 'Emergency Relationship', value: m.emergency_relation }
             ];
 
             const html = `
@@ -332,13 +363,13 @@
                     ${Utils.avatar(m, 64)}
                     <div>
                         <h2 class="text-2xl font-bold text-slate-800">${UI.esc(m.full_name || 'Unknown')}</h2>
-                        <p class="text-sm text-slate-500">${UI.esc(m.role || 'Member')} &bull; ${m.status || 'Pending'}</p>
+                        <p class="text-sm text-slate-500">${UI.esc(m.role || 'Member')} &bull; ${UI.esc(m.status || 'Pending')}</p>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     ${fields.map(f => `
                         <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                            <p class="text-xs text-slate-400 uppercase font-bold mb-1">${f.label}</p>
+                            <p class="text-xs text-slate-400 uppercase font-bold mb-1">${UI.esc(f.label)}</p>
                             <p class="text-sm font-medium text-slate-700">${UI.esc(f.value || '—')}</p>
                         </div>
                     `).join('')}
@@ -353,9 +384,12 @@
         function exportMembers() {
             const data = all.map(m => ({
                 FullName: m.full_name, Email: m.email, Phone: m.phone, 
-                Parish: m.parish, Role: m.role, Status: m.status, 
-                UnitLeader: m.is_unit_leader ? 'Yes' : 'No', Gender: m.gender || '',
-                Occupation: m.occupation || '', Skills: m.skills || ''
+                Parish: m.parish, Role: m.role, Status: m.status,
+                Unit: m.unit || '', UnitLeader: m.is_unit_leader ? 'Yes' : 'No', Gender: m.gender || '',
+                Occupation: m.occupation || '', BirthMonth: m.birth_month || '', BirthDay: m.birth_day || '',
+                Height: m.height || '', ShoeSize: m.shoe_size || '', ChestBust: m.chest || '', Waist: m.waist || '',
+                EmergencyContact: m.emergency_name || '', EmergencyPhone: m.emergency_phone || '',
+                EmergencyRelationship: m.emergency_relation || ''
             }));
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();

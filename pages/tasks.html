@@ -50,6 +50,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -102,7 +105,7 @@
                 <div class="p-4 bg-slate-50 rounded-xl">
                     <div class="flex flex-wrap justify-between items-start gap-3">
                         <div class="min-w-0">
-                            <p class="font-bold text-slate-800">${UI.esc(t.title)} <span class="badge ${pc} ml-1">${t.priority}</span> <span class="badge ${sc} ml-1">${t.status.replace('_',' ')}</span></p>
+                            <p class="font-bold text-slate-800">${UI.esc(t.title)} <span class="badge ${pc} ml-1">${UI.esc(t.priority)}</span> <span class="badge ${sc} ml-1">${UI.esc(String(t.status || '').replace('_',' '))}</span></p>
                             ${t.detail ? `<p class="text-sm text-slate-600 mt-1">${UI.esc(t.detail)}</p>` : ''}
                             <p class="text-xs text-slate-400 mt-1">
                                 ${isAdmin && who ? 'Assigned to ' + UI.esc(who) + ' • ' : ''}

@@ -40,11 +40,14 @@
         <div id="grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"><p class="text-slate-400 text-sm">Loading…</p></div>
     </main>
 
-    <div id="lightbox" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;" onclick="this.classList.add('hidden')">
+    <div id="lightbox" class="hidden" style="position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;" role="dialog" aria-modal="true" aria-label="Gallery image preview">
         <img id="lb-img" style="max-width:95%;max-height:90%;border-radius:10px;" alt="">
     </div>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -55,6 +58,7 @@
     <script src="../assets/js/crop.js"></script>
     <script>
         let me = null, all = [], album = '';
+
         async function init() {
             me = await Auth.checkSession();
             if (!me) return;
@@ -62,84 +66,167 @@
             document.getElementById('page-header').innerHTML = Layout.renderHeader('Photo Gallery', 'Productions, events & memories');
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
-            // Admins and unit leaders can upload.
             if (Auth.canManage(me)) {
                 document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
-                document.getElementById('g-upload').onclick = upload;
+                document.getElementById('g-upload').addEventListener('click', upload);
             }
-            load();
+            document.getElementById('lightbox').addEventListener('click', closeLightbox);
+            await load();
         }
+
+        function normaliseMediaLink(raw) {
+            const videoId = Utils.youtubeVideoId(raw);
+            if (videoId) return { type: 'youtube', url: `https://www.youtube.com/watch?v=${videoId}`, videoId };
+
+            let parsed;
+            try { parsed = new URL(String(raw || '').trim()); }
+            catch (_e) { throw new Error('Enter a valid Google Drive or YouTube HTTPS link.'); }
+            if (parsed.protocol !== 'https:' || !/(^|\.)drive\.google\.com$/i.test(parsed.hostname))
+                throw new Error('Images must use a public Google Drive HTTPS link; videos must use YouTube.');
+            const match = parsed.pathname.match(/\/d\/([A-Za-z0-9_-]+)/) || parsed.search.match(/[?&]id=([A-Za-z0-9_-]+)/);
+            if (!match) throw new Error('Could not find a Google Drive file ID in that link.');
+            return {
+                type: 'image',
+                url: `https://drive.google.com/thumbnail?id=${encodeURIComponent(match[1])}&sz=w1000`
+            };
+        }
+
         async function upload() {
             const title = document.getElementById('g-title').value.trim() || null;
             const caption = document.getElementById('g-caption').value.trim() || null;
-            const album = document.getElementById('g-album').value.trim() || 'General';
-            
+            const selectedAlbum = document.getElementById('g-album').value.trim() || 'General';
+            const rawLink = document.getElementById('g-link').value.trim();
+            if (!rawLink) { UI.toast('Paste a link first.', 'warning'); return; }
             UI.showLoader('Processing…');
-            
             try {
-                let link = document.getElementById('g-link').value.trim();
-                if (!link) { UI.hideLoader(); UI.toast('Paste a link first.', 'warning'); return; }
-                
-                // Transform Drive links if needed
-                const gdMatch = link.match(/\/d\/([a-zA-Z0-9_-]+)/) || link.match(/id=([a-zA-Z0-9_-]+)/);
-                if (gdMatch && !link.includes('youtube')) {
-                    link = `https://drive.google.com/thumbnail?id=${gdMatch[1]}&sz=w1000`;
-                }
-                
-                // Save to gallery using Supabase directly
+                const media = normaliseMediaLink(rawLink);
                 const { error } = await sb.from('gallery').insert({
-                    title, caption, album, image_url: link, uploaded_by: me.full_name || me.email
+                    title, caption, album: selectedAlbum, image_url: media.url,
+                    uploaded_by: me.full_name || me.email, uploaded_by_id: me.id
                 });
                 if (error) throw error;
-                
                 await DB.logActivity('gallery_add', title || 'media item');
-                ['g-title','g-album','g-caption','g-link'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = ''; });
-                UI.hideLoader(); UI.toast('Media added to gallery.', 'success'); load();
-            } catch (e) {
-                UI.hideLoader();
-                UI.toast(e.message, 'error');
+                ['g-title','g-album','g-caption','g-link'].forEach(id => { document.getElementById(id).value = ''; });
+                UI.toast('Media added to gallery.', 'success');
+                await load();
+            } catch (error) { UI.toast(error.message, 'error'); }
+            finally { UI.hideLoader(); }
+        }
+
+        async function load() {
+            const grid = document.getElementById('grid');
+            try {
+                all = await DB.getGallery();
+                renderAlbums();
+                render();
+            } catch (error) {
+                grid.replaceChildren();
+                const p = document.createElement('p');
+                p.className = 'text-red-500 text-sm';
+                p.textContent = error.message;
+                grid.appendChild(p);
             }
         }
-        async function load() {
-            try { all = await DB.getGallery(); renderAlbums(); render(); }
-            catch (e) { document.getElementById('grid').innerHTML = `<p class="text-red-500 text-sm">${UI.esc(e.message)}</p>`; }
-        }
+
         function renderAlbums() {
-            const albums = ['', ...new Set(all.map(g => g.album).filter(Boolean))];
-            document.getElementById('albums').innerHTML = albums.map(a =>
-                `<button class="text-xs px-3 py-1 rounded-full font-bold ${a===album?'rccg-blue text-white':'bg-slate-100 text-slate-600'}" onclick="setAlbum('${a.replace(/'/g,"\\'")}')">${a ? UI.esc(a) : 'All'}</button>`).join('');
+            const values = ['', ...new Set(all.map(g => g.album).filter(Boolean))];
+            const host = document.getElementById('albums');
+            host.replaceChildren();
+            values.forEach(value => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `text-xs px-3 py-1 rounded-full font-bold ${value === album ? 'rccg-blue text-white' : 'bg-slate-100 text-slate-600'}`;
+                button.textContent = value || 'All';
+                button.addEventListener('click', () => { album = value; renderAlbums(); render(); });
+                host.appendChild(button);
+            });
         }
-        function setAlbum(a) { album = a; renderAlbums(); render(); }
+
         function render() {
             const list = all.filter(g => !album || g.album === album);
             const grid = document.getElementById('grid');
-            if (!list.length) { grid.innerHTML = '<p class="text-slate-400 text-sm">No media yet.</p>'; return; }
-            const canManage = Auth.canManage(me);
-            grid.innerHTML = list.map(g => {
-                const isYT = (g.image_url||'').includes('youtube.com') || (g.image_url||'').includes('youtu.be');
-                let mediaHtml = '';
-                if (isYT) {
-                    let vidId = '';
-                    if (g.image_url.includes('youtu.be/')) vidId = g.image_url.split('youtu.be/')[1].split('?')[0];
-                    else if (g.image_url.includes('v=')) vidId = g.image_url.split('v=')[1].split('&')[0];
-                    mediaHtml = `<iframe src="https://www.youtube.com/embed/${vidId}" style="width:100%;height:150px;object-fit:cover;" frameborder="0" allowfullscreen></iframe>`;
+            grid.replaceChildren();
+            if (!list.length) {
+                const empty = document.createElement('p');
+                empty.className = 'text-slate-400 text-sm';
+                empty.textContent = 'No media yet.';
+                grid.appendChild(empty);
+                return;
+            }
+
+            list.forEach(g => {
+                const card = document.createElement('div');
+                card.className = 'glass-card overflow-hidden';
+                const videoId = Utils.youtubeVideoId(g.image_url);
+                const imageUrl = videoId ? '' : Utils.safeImageUrl(g.image_url, false);
+
+                if (videoId) {
+                    const frame = document.createElement('iframe');
+                    frame.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
+                    frame.title = String(g.title || 'Gallery video');
+                    frame.style.cssText = 'width:100%;height:150px;object-fit:cover;border:0;';
+                    frame.loading = 'lazy';
+                    frame.referrerPolicy = 'strict-origin-when-cross-origin';
+                    frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+                    frame.allowFullscreen = true;
+                    card.appendChild(frame);
+                } else if (imageUrl) {
+                    const image = document.createElement('img');
+                    image.src = imageUrl;
+                    image.alt = String(g.title || '');
+                    image.loading = 'lazy';
+                    image.referrerPolicy = 'no-referrer';
+                    image.style.cssText = 'width:100%;height:150px;object-fit:cover;cursor:pointer;';
+                    image.addEventListener('click', () => openLightbox(imageUrl, image.alt));
+                    card.appendChild(image);
                 } else {
-                    mediaHtml = `<img src="${UI.esc(g.image_url)}" alt="${UI.esc(g.title||'')}" loading="lazy" style="width:100%;height:150px;object-fit:cover;cursor:pointer;" onclick="lb('${UI.esc(g.image_url)}')">`;
+                    const invalid = document.createElement('div');
+                    invalid.className = 'h-[150px] bg-slate-100 text-slate-400 flex items-center justify-center text-xs p-3 text-center';
+                    invalid.textContent = 'This media link is invalid or unsupported.';
+                    card.appendChild(invalid);
                 }
-                return `
-                <div class="glass-card overflow-hidden">
-                    ${mediaHtml}
-                    <div class="p-2">
-                        <p class="text-xs font-bold text-slate-700 truncate">${UI.esc(g.title || 'Untitled')}</p>
-                        <p class="text-[10px] text-slate-400 truncate">${UI.esc(g.album || '')}${g.caption ? ' • ' + UI.esc(g.caption) : ''}</p>
-                        ${canManage ? `<button class="text-red-600 text-[10px] font-bold hover:underline mt-1" onclick="del('${g.id}')">Delete</button>` : ''}
-                    </div>
-                </div>`;
-            }).join('');
+
+                const details = document.createElement('div');
+                details.className = 'p-2';
+                const title = document.createElement('p');
+                title.className = 'text-xs font-bold text-slate-700 truncate';
+                title.textContent = String(g.title || 'Untitled');
+                const meta = document.createElement('p');
+                meta.className = 'text-[10px] text-slate-400 truncate';
+                meta.textContent = `${g.album || ''}${g.caption ? ' • ' + g.caption : ''}`;
+                details.append(title, meta);
+
+                const mayDelete = Auth.isAdmin(me) || (Auth.isUnitLeader(me) && g.uploaded_by_id === me.id);
+                if (mayDelete) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-red-600 text-[10px] font-bold hover:underline mt-1';
+                    button.textContent = 'Delete';
+                    button.addEventListener('click', () => deleteItem(g.id));
+                    details.appendChild(button);
+                }
+                card.appendChild(details);
+                grid.appendChild(card);
+            });
         }
-        function lb(url) { document.getElementById('lb-img').src = url; document.getElementById('lightbox').classList.remove('hidden'); }
-        async function del(id) { if (!await UI.confirm('Delete this photo?')) return; try { await DB.deleteGalleryPhoto(id); load(); } catch (e) { UI.toast(e.message, 'error'); } }
-        window.setAlbum = setAlbum; window.lb = lb; window.del = del;
+
+        function openLightbox(url, alt) {
+            const image = document.getElementById('lb-img');
+            image.src = url;
+            image.alt = alt || '';
+            document.getElementById('lightbox').classList.remove('hidden');
+        }
+        function closeLightbox(event) {
+            if (event.target !== event.currentTarget) return;
+            event.currentTarget.classList.add('hidden');
+            document.getElementById('lb-img').removeAttribute('src');
+        }
+        async function deleteItem(id) {
+            if (!await UI.confirm('Delete this media item?')) return;
+            try { await DB.deleteGalleryPhoto(id); await load(); }
+            catch (error) { UI.toast(error.message, 'error'); }
+        }
+
         init();
     </script>
 </body>

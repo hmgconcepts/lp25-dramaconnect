@@ -1,179 +1,179 @@
-# 🚀 Deployment Guide — DramaConnect Enterprise v5
+# 🚀 Deployment Guide — DramaConnect Enterprise v13.2
 
-This guide gives **clear, unambiguous, step‑by‑step** instructions to take
-DramaConnect from these files to a **live, free URL**. Everything here uses
-**free‑tier tools only**. Total time: ~15 minutes.
+This guide deploys the static application and its required Supabase database controls. Resilience, Google Drive and unattended recovery are separate operational stages; do not claim production readiness until they are configured and tested.
 
-You will complete **4 stages**:
-1. Set up the backend (Supabase) — free
-2. Connect the app to your backend
-3. Publish the site (choose ONE free host)
-4. Create the first administrator
+## Prerequisites
 
----
+- Organization-controlled Supabase and GitHub accounts.
+- A static host: GitHub Pages, Cloudflare Pages or Vercel.
+- Two named administrators/recovery custodians and a password manager.
+- Optional Google Cloud/Drive account for browser and unattended backups.
 
-## ✅ Prerequisites (all free)
+The app itself needs no build step. Supabase CLI, Node, PostgreSQL clients, GnuPG and rclone are needed only for optional functions/testing/recovery.
 
-- A **GitHub** account → https://github.com/signup
-- A **Supabase** account → https://supabase.com
-- (Optional) A **Cloudflare** or **Vercel** account if you prefer them over
-  GitHub Pages.
+## Stage 1 — Create and migrate Supabase
 
-You do **not** need to install anything on your computer.
+1. Create the project in the nearest suitable region.
+2. Generate a strong database password and store it in the organization password manager.
+3. In **SQL Editor → New query**, run the complete files in this exact order:
+   1. `database/repair_and_upgrade.sql`
+   2. `database/security_hardening.sql`
+   3. `database/resilience_and_backup.sql`
+4. Do not concatenate, reorder or ignore errors. All are intended to be safely rerunnable in order.
 
----
+The first file supplies/repairs the application schema. The second replaces permissive authorization with least-privilege RLS, safe projections, guards and server-authoritative RPCs. The third adds source-aware heartbeats, backup settings, concurrency leases, run history, administrator RSVP restore access and the private archive vault.
 
-## STAGE 1 — Set Up the Backend (Supabase)
+Optional `pg_cron`: enable the extension in Supabase, rerun the third migration and check:
 
-### 1.1 Create the project
-1. Go to https://supabase.com and **Sign in**.
-2. Click **New project**.
-3. Fill in:
-   - **Name:** `dramaconnect`
-   - **Database Password:** choose a strong one and **save it somewhere safe**.
-   - **Region:** pick the one closest to your members (e.g. `West EU` or
-     `Africa` if available).
-4. Click **Create new project** and wait ~2 minutes for it to provision.
+```sql
+select jobid, jobname, schedule, active
+from cron.job
+where jobname = 'dramaconnect-internal-heartbeat';
+```
 
-### 1.2 Create all tables, security, and triggers (one click)
-1. In the left sidebar, click **SQL Editor**.
-2. Click **+ New query**.
-3. Open the file **`database/repair_and_upgrade.sql`** from this project, **copy ALL of it**,
-   and paste it into the editor.
-4. Click **Run** (or press `Ctrl/Cmd + Enter`).
-5. You should see **"Success. No rows returned"**. This created all 10 tables,
-   Row Level Security, the admin helper, and the auto‑profile trigger.
+An internal cron is not a wake-up mechanism for an already paused project.
 
-> ℹ️ The script is **safe to re‑run** — it uses `IF NOT EXISTS` / `CREATE OR
-> REPLACE` / `DROP ... IF EXISTS`.
+### Email confirmation
 
-### 1.3 (Recommended) Email confirmation setting
-- Go to **Authentication → Providers → Email**.
-- For a quick internal launch you may turn **"Confirm email" OFF** so members can
-  log in immediately after signing up. For a stricter setup, leave it ON
-  (members must click the confirmation email first).
+Under **Authentication → Providers → Email**, keep confirmation ON for stricter identity verification or turn it OFF for a controlled internal rollout. This never bypasses DramaConnect approval: every new profile remains `pending` until an administrator approves it.
 
----
+## Stage 2 — Connect the browser app
 
-## STAGE 2 — Connect the App to Your Backend
+From **Project Settings → API**, copy only:
 
-1. In Supabase, go to **Project Settings** (gear icon) → **API**.
-2. Copy these two values:
-   - **Project URL** (e.g. `https://abcd1234.supabase.co`)
-   - **anon public** key (a long token under *Project API keys*)
-3. Open **`assets/js/config.js`** in this project and replace the placeholders:
+- Project URL, e.g. `https://PROJECT_REF.supabase.co`;
+- anon/publishable key.
 
-   ```js
-   const CONFIG = {
-       SUPABASE_URL: 'https://YOUR-PROJECT.supabase.co',   // ← paste Project URL
-       SUPABASE_KEY: 'YOUR-ANON-PUBLIC-KEY',               // ← paste anon key
-       ...
-   };
+Set them in `assets/js/config.js`:
+
+```js
+const CONFIG = {
+  SUPABASE_URL: 'https://PROJECT_REF.supabase.co',
+  SUPABASE_KEY: 'ANON_OR_PUBLISHABLE_KEY',
+  // ...
+};
+```
+
+The anon key is designed for browser use and is constrained by RLS. Never place a database password, service-role key, Management API token, backup passphrase, rclone configuration, `PING_SECRET`, `CRON_SECRET` or Google client secret in static files.
+
+Before publish, confirm `APP_VERSION: 'v13.2'` and service-worker cache `dramaconnect-v13.2`.
+
+## Stage 3 — Publish the static site
+
+`index.html` must be at the deployment root. Relative links and the path-aware routing support a repository subpath.
+
+### GitHub Pages
+
+1. Put the project **contents** at repository root.
+2. In **Settings → Pages**, deploy `main` and `/ (root)`.
+3. Wait for the HTTPS URL and open it.
+
+### Cloudflare Pages
+
+1. Connect the repository or use Direct Upload.
+2. Framework preset: **None**; build command: blank; output: repository root.
+3. Deploy and open the `pages.dev`/custom HTTPS URL.
+
+### Vercel
+
+1. Import the repository.
+2. Framework preset: **Other**; no build/output override is required.
+3. Deploy.
+4. If using the included Cron, configure protected Production environment values `SUPABASE_URL`, `SUPABASE_ANON_KEY` and a high-entropy `CRON_SECRET`, then redeploy. Follow `SUPABASE_FREE_TIER_PROTECTION.md` and current Vercel plan limits.
+
+Hard-refresh after each release. The v13.2 service worker uses network-first navigation, independent same-origin shell caching and never caches Supabase/API/CDN traffic.
+
+## Stage 4 — Bootstrap the first administrator
+
+1. Open the live site, select **Request Access** and sign up. Confirm email if enabled.
+2. In the trusted SQL Editor, run once with the exact email:
+
+```sql
+update public.profiles
+set role = 'admin', status = 'approved'
+where email = 'you@example.com';
+```
+
+3. Require one affected row. If no row changed, correct the email; do not insert an orphan profile manually.
+4. Sign in. Confirm Settings, Activity Log, member administration and Messaging are available.
+
+Do not put bootstrap promotion in browser code. Later role/status changes belong in the administrator UI and remain subject to database guards. New users appear under **Members → Pending Approvals**; rejection blocks but retains an account, while permanent removal uses the approved-admin Edge Function and is a distinct destructive action.
+
+## Stage 5 — Configure resilience
+
+Follow `docs/SUPABASE_FREE_TIER_PROTECTION.md` completely.
+
+Minimum production setup:
+
+1. Confirm `site-visit` and administrator `manual-button` heartbeat rows.
+2. Add GitHub Actions secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY`; manually run **Supabase resilience heartbeat**.
+3. Deploy the secret-protected `ping` Edge Function and configure at least one daily external monitor with HTTP/body validation.
+4. Add `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF`; manually test the recovery watchdog while the project is healthy.
+5. Optional: configure Vercel Cron, Apps Script and `pg_cron` as additional independent sources.
+
+A heartbeat reduces inactivity risk but is not a backup, SLA or guarantee against provider pause/outage.
+
+## Stage 6 — Configure backup and recovery
+
+Follow `docs/BACKUP_AND_RECOVERY.md`.
+
+1. Download a 22-table portable archive in Settings and verify it with:
+
+   ```bash
+   node scripts/verify-portable-archive.mjs ARCHIVE.json
    ```
 
-4. **Save** the file.
+2. Enable Google Drive API, create an OAuth Web client with the exact production JavaScript origin, save only the public client ID, connect with `drive.file` and create a backup.
+3. Require the Drive upload → download → full verification cycle to complete.
+4. Configure the weekly encrypted GitHub workflow with database, rclone and encryption secrets. Add the service-role key only as a protected Actions secret if actual Storage bytes must be included.
+5. Download a matching timestamp set, verify every sidecar and rehearse the guarded restore in a non-production project.
+6. Fill in the owners/contacts in the private copy of `RESILIENCE_RUNBOOK.md` and calendar monthly checks plus quarterly recovery drills.
 
-> 🔐 The **anon public** key is meant to be used in the browser — it is safe to
-> publish. **Never** paste the `service_role` key here.
+## Stage 7 — Optional Edge Functions
 
----
+- `admin-create-member`: deploy with normal gateway JWT verification; see `ADMIN_CREATE_MEMBER.md`.
+- `notify-approval`: set its documented webhook/admin authorization and email-provider secrets.
+- `birthday-bot` and `run-reminders`: set a strong shared/dedicated `CRON_SECRET` and configure the scheduler's matching header.
+- `ping`: intentionally deploy with `--no-verify-jwt`, but only after setting high-entropy `PING_SECRET`; the function performs its own narrow authorization.
 
-## STAGE 3 — Publish the Website (pick ONE)
+Never make service-role automations publicly invocable without their documented function-level check.
 
-> Whichever host you choose, the **`index.html` must be at the root** of what you
-> upload. The `enterprise` folder already has it at the root.
+## Post-deployment verification
 
-### Option A — GitHub Pages (simplest, 100% free)
+- [ ] Landing page and all navigation paths load over HTTPS with no console exceptions.
+- [ ] New signup creates a pending profile; pending/rejected sessions cannot read operational data.
+- [ ] Approved member can use member features but cannot read full private profiles or administrator backup settings.
+- [ ] Approved administrator can configure backup, inspect heartbeats and create a verified archive.
+- [ ] Direct RLS tests cover anonymous, pending, member, unit leader and administrator—not just UI visibility.
+- [ ] Production/event/finance/attendance/RSVP/task/poll/message paths work.
+- [ ] Reports export; phone/tablet menu works; optional install can be declined.
+- [ ] Current service-worker cache is `dramaconnect-v13.2`.
+- [ ] Daily external heartbeat and manually dispatched watchdog both pass.
+- [ ] A complete encrypted backup set exists remotely and one recovery rehearsal passed.
 
-1. Create a new GitHub repository, e.g. `dramaconnect-enterprise` (Public).
-2. Upload **the contents of the `enterprise v8` folder** (not the folder itself)
-   so that `index.html` sits at the repository root.
-   - Easiest: on the repo page click **"Add file → Upload files"**, drag in
-     everything, then **Commit**.
-3. Go to **Settings → Pages**.
-4. Under **"Build and deployment" → Source**, choose **"Deploy from a branch"**.
-5. Branch: **`main`**, Folder: **`/ (root)`** → **Save**.
-6. Wait ~1 minute. Your live URL appears at the top, e.g.
-   `https://YOUR-USERNAME.github.io/dramaconnect-enterprise/`.
-
-> ✅ This project already uses **relative paths** and a path‑aware redirect, so it
-> works correctly under the `/dramaconnect-enterprise/` sub‑path on GitHub Pages.
-
-### Option B — Cloudflare Pages (free, custom domains easy)
-
-1. Go to https://dash.cloudflare.com → **Workers & Pages → Create → Pages**.
-2. **Connect to Git** and select your repository (or use **Direct Upload** and
-   drag the folder contents).
-3. **Build settings:** Framework preset = **None**, Build command = *(leave
-   blank)*, Build output directory = **`/`**.
-4. Click **Save and Deploy**. You get a `*.pages.dev` URL.
-
-### Option C — Vercel (free)
-
-1. Go to https://vercel.com → **Add New → Project**.
-2. Import your GitHub repository.
-3. **Framework Preset:** *Other*. Leave build/output settings empty (it's static).
-4. Click **Deploy**. You get a `*.vercel.app` URL.
-
----
-
-## STAGE 4 — Create the First Administrator
-
-The system is **secure by default**: new users are created as `member` with
-status `pending` and **cannot sign in until an admin approves them**. Set up the
-first admin once (the admin can approve everyone else from inside the app):
-
-1. Open your **live URL** and click **"Request Access"** to **sign up**.
-   (If email confirmation is ON, click the link in your inbox first.)
-2. Go to **Supabase → SQL Editor** and run (with your email):
-   ```sql
-   UPDATE profiles SET role = 'admin', status = 'approved'
-   WHERE email = 'you@example.com';
-   ```
-   *(Or use the all-in-one `database/repair_and_upgrade.sql`, which also does
-   this — just edit the email line.)*
-3. **Refresh** the app and sign in. All management tools (add/edit/delete,
-   Activity Log, role management, and the **Members → Pending Approvals** panel)
-   are now unlocked.
-
-> 🔑 **Approving future members:** as admin, go to **Members**. New sign‑ups
-> appear under **"Pending Approvals"** — click **Approve** (or **Reject**). You
-> can also **Make Admin** or **Remove** any member from the directory.
-
----
-
-## 🧪 Post‑Deployment Checklist
-
-- [ ] Landing page loads with the RCCG logo and no console errors.
-- [ ] You can **sign up**, and a row appears in `profiles` automatically.
-- [ ] After promoting to admin, the **Activity Log** link appears in the sidebar.
-- [ ] You can add a **production**, a **finance** entry, and an **event**.
-- [ ] Dashboard KPIs and charts update.
-- [ ] **Reports** exports an Excel/PDF/CSV file.
-- [ ] On a phone, the browser offers **"Add to Home Screen"** (PWA).
-
----
-
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 | Symptom | Cause | Fix |
-| :-- | :-- | :-- |
-| `supabase is not defined` | Library script missing or wrong order | Every page already loads `@supabase/supabase-js@2` **before** `config.js`. Don't remove or reorder these tags. |
-| `Failed to fetch` / nothing loads | Wrong URL/key in `config.js` | Re‑copy the **Project URL** and **anon** key exactly. |
-| `infinite recursion detected in policy` | Old RLS policies | Re‑run `database/repair_and_upgrade.sql` (it uses the recursion‑safe `is_admin()` helper). |
-| Dashboard empty after signup | Missing profile trigger | Re‑run `database/repair_and_upgrade.sql` — it creates `handle_new_user`. |
-| **Registered user not in `profiles` table** (can't make them admin) | Trigger didn't run, OR signup happened before the trigger existed | Run **`database/repair_and_upgrade.sql`** — it re‑installs a hardened trigger AND backfills profiles for users who already signed up. Edit the email line to promote your admin. |
-| Can't see admin buttons | You're still a `member` | Complete **Stage 4** to set your role to `admin`. |
-| Login email never arrives | Email confirmation ON + slow SMTP | Turn confirmation OFF for internal use (Stage 1.3) or check spam. |
-| **Can't reach the menu / sub‑pages on a tablet or phone** | Older builds tied the menu to the Tailwind CDN, which can fail on weak connections | **Fixed in v6:** navigation now uses local CSS and always shows a ☰ button below 1024px width. Make sure you deployed this `enterprise` build and (for PWA users) the new `sw.js` (cache `dramaconnect-v7`). Hard‑refresh once. |
-| Styling looks plain + a yellow "low‑bandwidth mode" bar appears | The Tailwind CDN failed to load on that device/connection | This is the safety net working — all features still function. It clears automatically when the CDN loads on a better connection. |
+|---|---|---|
+| `supabase is not defined` | Supabase JS missing/wrong order | Load `@supabase/supabase-js@2` before `config.js`; preserve shared-script order. |
+| RPC/table 404 in resilience settings | Third migration missing/schema cache stale | Run all three migrations in order; reload PostgREST schema if needed. |
+| `infinite recursion detected in policy` | Legacy/incomplete hardening | Rerun repair, security and resilience migrations in order. |
+| Dashboard empty after signup | Trigger/profile/approval issue | Verify profile exists and status is exactly `approved`; rerun migrations. |
+| Admin settings hidden | Caller is not approved admin | Complete bootstrap; inspect authoritative profile row. |
+| Drive Connect fails | Wrong OAuth type/origin/test user | Use Web application client, exact HTTPS origin, Drive API and consent test user. |
+| Drive schedule says overdue | No still-valid memory token | Administrator explicitly reconnects and runs a verified backup; automatic code never opens OAuth. |
+| Edge ping 401 | Missing/stale `PING_SECRET` | Update function secret/monitor and rotate if disclosed. |
+| Vercel endpoint 401 | Cron secret missing/mismatch | Configure protected Production `CRON_SECRET` and redeploy. |
+| Weekly dump cannot connect | Paused project/wrong DB URL/pool mode/password | Activate project; use direct/session URL, URL-encoded password and SSL. |
+| Archive verifier fails | Truncated/modified/corrupt copy | Do not restore; download again or choose another fully verified backup. |
+| Styling is plain + low-bandwidth warning | Tailwind CDN unavailable | Local safety CSS keeps features usable; retry on a better connection. |
+| Old UI persists | Older service worker/cache | Deploy matching v13.2 `sw.js`, close tabs, hard-refresh/unregister stale worker if needed. |
 
----
+## Updating later
 
-## 🔄 Updating the App Later
-
-1. Edit the files locally.
-2. Re‑upload / push to your host (GitHub/Cloudflare/Vercel auto‑redeploy).
-3. If you changed the database, re‑run the relevant part of `schema.sql`.
-4. For PWA users, bump the `CACHE` name in `sw.js` (e.g. `dramaconnect-v6`) so
-   browsers fetch the new files.
+1. Create and independently verify a pre-change backup.
+2. Review/apply any new migration after the existing three, in release order.
+3. Deploy static files and increment `CONFIG.APP_VERSION` plus the `CACHE` name together.
+4. Rerun static, RLS, browser-role and backup verification.
+5. Manually run heartbeat and unattended backup after deployment.
+6. Record release, migration and recovery evidence in the change register.

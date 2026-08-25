@@ -1,73 +1,85 @@
-# 📧 Optional: Automated Approval Emails (Free)
+# 📧 Optional Automated Approval Emails
 
-The app **already** lets admins notify members for free (a WhatsApp/email popup
-appears when you approve someone). This guide is **only** if you want the
-**server to send approval emails automatically** — no admin action needed.
+DramaConnect already offers a zero-setup WhatsApp/email handoff after an
+administrator approves a member. This optional Edge Function sends an approval
+email through Resend.
 
-It uses two free tools:
-- **Supabase Edge Functions** (free tier) — runs the code.
-- **Resend** (https://resend.com, free tier, no card) — sends the email.
+## Authorization model
 
-> ⚠️ This is optional and a bit technical. If you're happy with the in-app
-> "Notify member" popup, you can skip this entire file.
+`notify-approval` accepts POST requests only and authorizes either:
 
----
+1. a bearer token belonging to an **approved administrator**, or
+2. `X-Webhook-Secret` matching the Supabase secret
+   `NOTIFY_WEBHOOK_SECRET`.
 
-## Step 1 — Get a free email provider key (Resend)
-1. Sign up at https://resend.com (free).
-2. Verify a sender address (or use their test sender `onboarding@resend.dev`).
-3. **API Keys → Create API Key** → copy it (starts with `re_...`).
+A public unauthenticated call is rejected. Database webhooks have no end-user
+JWT, so the webhook path must use the strong secret. The function also ignores
+webhook updates that do not transition a profile to `approved`.
 
-## Step 2 — Install the Supabase CLI (one time)
-- Guide: https://supabase.com/docs/guides/cli
-- Then log in and link your project:
-  ```bash
-  supabase login
-  supabase link --project-ref YOUR_PROJECT_REF
-  ```
-  (Find `YOUR_PROJECT_REF` in Supabase → Project Settings → General.)
+## 1. Configure email and application secrets
 
-## Step 3 — Deploy the function
-The function lives in `supabase/functions/notify-approval/index.ts` (included).
+Create and verify a sender in Resend, then run:
+
+```bash
+supabase login
+supabase link --project-ref YOUR_PROJECT_REF
+supabase secrets set \
+  RESEND_API_KEY='re_your_key' \
+  FROM_EMAIL='DramaConnect <you@yourdomain.com>' \
+  APP_URL='https://YOUR_PUBLIC_DRAMACONNECT_URL/' \
+  NOTIFY_WEBHOOK_SECRET='YOUR_LONG_RANDOM_SECRET'
+```
+
+Optionally set `APP_ORIGIN` to the exact browser origin if the function will be
+called from browser code. Do not put any of these secrets in `config.js` or the
+repository.
+
+## 2. Deploy
+
+For the database-webhook option, deploy with gateway JWT verification disabled;
+the function's own admin-token/webhook-secret authorization remains active:
+
 ```bash
 supabase functions deploy notify-approval --no-verify-jwt
-supabase secrets set RESEND_API_KEY=re_your_key FROM_EMAIL=you@yourdomain.com
 ```
 
-## Step 4 — Call it automatically when a member is approved
-Pick **ONE** of these:
+## 3. Configure the database webhook
 
-### Option A (simplest): call it from the app
-In `pages/members.html`, inside the `approve()` function, after the member is
-approved, add a `fetch` to your function URL:
-```js
-fetch('https://YOUR_PROJECT_REF.functions.supabase.co/notify-approval', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: m.email,
-    full_name: m.full_name,
-    app_url: location.origin + location.pathname.replace(/pages\/.*$/, 'index.html')
-  })
-}).catch(() => {});
-```
+In **Supabase → Database → Webhooks**:
 
-### Option B (fully automatic): Database Webhook
-1. Supabase → **Database → Webhooks → Create a new hook**.
-2. Table: `profiles`, Events: **Update**.
-3. Type: **HTTP Request** → URL = your function URL above.
-4. (Advanced) add a condition so it only fires when `status` becomes `approved`.
+- table: `public.profiles`
+- event: `UPDATE`
+- method: `POST`
+- URL: `https://YOUR_PROJECT_REF.supabase.co/functions/v1/notify-approval`
+- headers:
+  - `Content-Type: application/json`
+  - `X-Webhook-Secret: YOUR_LONG_RANDOM_SECRET`
 
-## Step 5 — Test
-Approve a member (or update a row's `status` to `approved`). Check the recipient's
-inbox. Logs: `supabase functions logs notify-approval`.
+The standard Supabase update payload (`record` and `old_record`) is supported.
+The function sends only when `record.status` is `approved` and the previous
+status was not already `approved`. Store/provision the header secret through the
+secure dashboard; do not commit an exported webhook configuration containing it.
 
----
+Alternatively, trusted app code may invoke the same function with the current
+administrator's bearer token and a direct body containing `email`, `full_name`,
+and optionally `app_url`. No such call is required for the built-in manual
+notification flow.
+
+## 4. Test
+
+Approve a pending or rejected test profile and inspect the recipient Inbox and
+`supabase functions logs notify-approval`. Also verify:
+
+- a request with no authorization returns `401`;
+- a webhook update that leaves an already-approved profile approved is ignored;
+- invalid email/application URLs are rejected;
+- provider failures return a sanitized message while details stay in server logs.
 
 ## Troubleshooting
-| Problem | Fix |
+
+| Problem | Resolution |
 | :-- | :-- |
-| No email arrives | Check `supabase functions logs notify-approval`; verify `RESEND_API_KEY` and that the sender is verified in Resend. |
-| 401/JWT error | Re-deploy with `--no-verify-jwt`. |
-| CORS error from app | The function already returns `Access-Control-Allow-Origin: *`. |
-| Don't want to code | Just use the built-in **Notify member** popup — no setup needed. |
+| `401 Unauthorized` | Match `X-Webhook-Secret` to `NOTIFY_WEBHOOK_SECRET`, or use an approved-admin JWT. |
+| `APP_URL ... required` | Set a valid HTTP(S) `APP_URL` Edge Function secret. |
+| No email | Verify Resend key, verified sender/domain, webhook logs, and that status actually transitioned to `approved`. |
+| Browser CORS issue | Set `APP_ORIGIN` to the deployed site origin and redeploy. |

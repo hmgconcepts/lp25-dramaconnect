@@ -13,10 +13,11 @@ system. No technical knowledge needed.
 3. Enter your **full name**, **email**, and a **password** (at least 6 characters).
 4. Click **Submit Application**. If asked, check your email and click the
    confirmation link.
-5. Return to the app and **Sign In**.
+5. Return to the app and **Sign In** after an administrator approves the request.
 
-> New accounts start as **Members**. A department admin can upgrade you to admin
-> if you need management rights.
+> New accounts start as pending Members. Pending and rejected requests are
+> blocked. A rejected request is retained and may be approved later; permanent
+> removal is a separate administrator action.
 
 ### Forgot your password?
 - On the sign‑in screen, click **"Forgot password?"**, enter your email, and
@@ -66,12 +67,13 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
   and give you an email + temporary password. Sign in, then change it under
   My Profile.
 - **My Profile:** complete your full details — phone, WhatsApp, **birthday
-  (month & day)**, gender, occupation, parish, drama unit, home address and
+  (month & day)**, gender, occupation, parish, home address and
   **social links** — plus change your email and password. A completion meter
   shows your progress. *(If an admin created your account, sign in with the
-  credentials they gave you and fill in the rest here.)*
-- **Birthdays:** see whose birthday it is; the system celebrates members
-  automatically on their day.
+  credentials they gave you and fill in the rest here.)* Your Drama Unit, role,
+  approval status and unit-leader assignment are administrator-managed.
+- **Birthdays:** see whose birthday it is. Automated Inbox/email greetings occur
+  only if administrators deploy and secure the optional birthday bot.
 - **My ID Card:** view and print your branded membership card (with photo & QR code).
 - **Profile photo:** in My Profile, tap **Upload Photo** — it shows on your ID
   card and in the directory.
@@ -82,8 +84,9 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
 - **Photo Gallery:** browse department albums (productions, events). Admins and
   unit leaders can upload.
 - **Suggestion Box:** share ideas or feedback (you may post anonymously).
-- **Unit Leaders:** if an admin makes you a unit leader, you can help manage
-  members in your own unit and upload gallery photos.
+- **Unit Leaders:** if an administrator makes you a unit leader, you can upload
+  gallery photos and delete your own uploads. This does not grant profile, unit,
+  role, approval or account-management rights.
 
 ---
 
@@ -91,7 +94,8 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
 
 Admins see **add / edit / delete** controls across the app:
 
-- **Members:** promote/demote roles.
+- **Members:** approve/reject requests, set role/unit/leader state, and
+  permanently remove accounts (except their own administrator account).
 - **Productions:** add and delete plays and script links.
 - **Casting:** assign members to character roles.
 - **Rehearsals:** create sessions; **Attendance:** mark present/absent/excused
@@ -104,8 +108,10 @@ Admins see **add / edit / delete** controls across the app:
 
 ## Handy Tips
 
-- **Install it like an app:** on your phone's browser menu choose **"Add to Home
-  Screen"**. It opens full‑screen and the interface works even offline.
+- **Optional installation:** use the invitation or browser menu to add the app
+  to your home screen, or choose **Continue in browser**. A dismissal is remembered
+  for seven days. Cached shell pages may open offline, but authentication and live
+  data actions still require the network.
 - **Dark mode:** tap the moon/sun button in the sidebar — your choice is
   remembered.
 - **Search members:** use the search box on the Members page.

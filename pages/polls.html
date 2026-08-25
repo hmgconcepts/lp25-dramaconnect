@@ -32,6 +32,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -78,9 +81,9 @@
                 if (!polls.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No polls yet.</p>'; return; }
                 const isAdmin = Auth.isAdmin(me);
                 host.innerHTML = polls.map(p => {
-                    const votes = p.poll_votes || [];
-                    const total = votes.length;
-                    const myVote = votes.find(v => v.voter_id === me.id);
+                    const summary = p.vote_summary || [];
+                    const total = summary.reduce((sum, row) => sum + Number(row.vote_count || 0), 0);
+                    const myVote = summary.find(row => row.is_mine);
                     const opts = Array.isArray(p.options) ? p.options : [];
                     return `
                     <div class="glass-card p-6">
@@ -90,9 +93,10 @@
                         </div>
                         <div class="space-y-2">
                             ${opts.map((o, idx) => {
-                                const c = votes.filter(v => v.option_index === idx).length;
+                                const result = summary.find(row => Number(row.option_index) === idx);
+                                const c = Number(result && result.vote_count || 0);
                                 const pct = total ? Math.round(c/total*100) : 0;
-                                const mine = myVote && myVote.option_index === idx;
+                                const mine = myVote && Number(myVote.option_index) === idx;
                                 return `
                                 <div>
                                     <div class="flex justify-between text-sm mb-1">

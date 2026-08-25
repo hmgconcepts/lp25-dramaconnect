@@ -67,6 +67,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -86,7 +89,7 @@
             document.getElementById('page-header').innerHTML = Layout.renderHeader('Inventory Management', 'Props, Costumes & Equipment');
             Layout.setDate();
             Layout.loadNotifications(me);
-            if (Auth.canManage(me)) {
+            if (Auth.isAdmin(me)) {
                 document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
                 document.getElementById('inv-add').onclick = add;
                 document.getElementById('inv-export').onclick = exportExcel;
@@ -112,12 +115,12 @@
             const list = all.filter(i => filter === 'all' || i.category === filter);
             const body = document.getElementById('inv-body');
             if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="text-slate-400 text-sm py-4 text-center">No inventory items found.</td></tr>'; return; }
-            const isAdmin = Auth.canManage(me);
+            const isAdmin = Auth.isAdmin(me);
             body.innerHTML = list.map(i => `
                 <tr>
-                    <td class="font-bold text-slate-800"><i class="fas ${ICONS[i.category]||'fa-box'} text-slate-400 mr-2"></i>${UI.esc(i.name)}</td>
+                    <td class="font-bold text-slate-800"><i class="fas ${Object.prototype.hasOwnProperty.call(ICONS, i.category) ? ICONS[i.category] : 'fa-box'} text-slate-400 mr-2"></i>${UI.esc(i.name)}</td>
                     <td><span class="badge badge-member">${UI.esc(i.category)}</span></td>
-                    <td>${i.quantity}</td>
+                    <td>${Number.isFinite(Number(i.quantity)) ? Number(i.quantity) : 0}</td>
                     <td><span class="text-xs">${UI.esc(i.condition)}</span></td>
                     <td>${UI.esc(i.location || '—')}</td>
                     <td class="text-xs text-slate-500 max-w-[200px] truncate">${UI.esc(i.notes || '')}</td>

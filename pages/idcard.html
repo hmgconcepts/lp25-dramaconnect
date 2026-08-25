@@ -66,6 +66,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -84,13 +87,23 @@
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
 
-            // Photo (or initials) on the ID; force the round ID-photo frame.
+            // Photo (or initials) on the ID. Build the element directly so a
+            // stored profile value never becomes executable markup.
             (function () {
                 const box = document.getElementById('id-avatar');
-                if (me.avatar_url) {
-                    box.innerHTML = `<img src="${UI.esc(me.avatar_url)}" class="id-photo" alt="photo">`;
+                box.replaceChildren();
+                const photoUrl = Utils.safeImageUrl(me.avatar_url);
+                if (photoUrl) {
+                    const image = document.createElement('img');
+                    image.src = photoUrl;
+                    image.className = 'id-photo';
+                    image.alt = 'Member photo';
+                    box.appendChild(image);
                 } else {
-                    box.innerHTML = `<div class="id-photo flex items-center justify-center text-2xl font-black text-blue-800">${UI.esc(Utils.initials(me.full_name))}</div>`;
+                    const fallback = document.createElement('div');
+                    fallback.className = 'id-photo flex items-center justify-center text-2xl font-black text-blue-800';
+                    fallback.textContent = Utils.initials(me.full_name);
+                    box.appendChild(fallback);
                 }
             })();
             document.getElementById('id-name').innerText = me.full_name || 'Member';

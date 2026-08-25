@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * DramaConnect Enterprise v5 — Global Configuration
+ * DramaConnect Enterprise v13.2 — Global Configuration
  * ============================================================================
  * RCCG LP 25 Drama Department Management System.
  *
@@ -21,7 +21,7 @@ const CONFIG = {
     SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZuaHZpbGZhbWdhZG9sbnJ3YnB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MTQ3NDcsImV4cCI6MjA5NjQ5MDc0N30.ucTG6EB4FURv4iCTSWPf0bA2g_thXeNXhIP39xABVqs',
 
     APP_NAME: 'DramaConnect Enterprise',
-    APP_VERSION: 'v5.0',
+    APP_VERSION: 'v13.2',
     PROVINCE: 'LP 25',
     CURRENCY: '₦',
 
@@ -72,5 +72,12 @@ var sb = null;
         auth: { persistSession: true, autoRefreshToken: true }
     });
     window.sb = sb;
+    window.supabaseClient = sb;
     window.CONFIG = CONFIG;
+
+    // The Drive scheduler is initialized after every parser-loaded script has
+    // evaluated. Automatic checks never initiate Google OAuth.
+    window.addEventListener('load', function () {
+        if (window.DriveSync) window.DriveSync.initScheduler();
+    }, { once: true });
 })();

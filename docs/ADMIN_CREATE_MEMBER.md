@@ -94,6 +94,14 @@ secrets**. You never touched the service_role key.
 4. The member signs in and can change their password under **My Profile**, and
    complete the rest of their details.
 
+### Permanent account removal
+The same function also handles **Remove** from the Members page. It verifies an
+approved administrator JWT, prevents self-deletion, deletes the Supabase Auth
+user with `auth.admin.deleteUser()`, lets foreign-key cascades remove the profile
+and dependent rows, and attempts a server-side `member_remove` audit entry.
+There is deliberately no browser `profiles` DELETE policy, so a failed Auth
+deletion cannot leave an orphaned login.
+
 ✅ Done. The service_role key never left Supabase, never went to GitHub.
 
 ---
@@ -109,7 +117,7 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF      # find ref in Settings → General
 
 # 2. Deploy the function (uploads the CODE only)
-supabase functions deploy admin-create-member --no-verify-jwt
+supabase functions deploy admin-create-member
 ```
 
 You're done — no secrets to set, because Supabase auto-provides the
@@ -146,5 +154,9 @@ members can self‑register and be approved in the meantime.
 ## 🔒 Security summary
 - **anon key** → browser/GitHub = fine (limited by RLS).
 - **service_role key** → Supabase vault ONLY = never in browser, never in GitHub.
-- The function verifies the caller is an **admin** before creating anyone.
-- Auto‑generated passwords are random; members change them after first login.
+- Keep the default Supabase JWT verification enabled. The function additionally
+  resolves the bearer token and requires an **approved administrator** profile.
+- The function supports create and permanent delete operations, blocks
+  self-deletion, rolls back a newly created Auth user if profile creation fails,
+  and returns sanitized errors while logging detailed server errors.
+- Auto-generated passwords are random; members should change them after first login.

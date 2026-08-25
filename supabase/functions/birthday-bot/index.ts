@@ -1,69 +1,75 @@
-// ============================================================================
-// Supabase Edge Function — birthday-bot (fully automatic birthday greetings)
-// ----------------------------------------------------------------------------
-// Runs daily on a schedule (Supabase Cron, free). For every member whose
-// birth_month/birth_day is TODAY and who hasn't already been greeted today:
-//   1. Posts a celebratory message to that member's in-platform Inbox.
-//   2. Posts a department-wide broadcast so everyone can celebrate them.
-//   3. (Optional) Emails the member via Resend, if RESEND_API_KEY is set.
-//   4. Marks bday_last_sent = today's date so it never double-sends.
-//
-// NOTE: WhatsApp cannot be auto-sent for free (Meta requires a paid Business
-// API). So automatic delivery uses the in-platform Inbox + optional email,
-// while admins can still one-tap WhatsApp greetings from the Birthdays page.
-//
-// DEPLOY (full steps in docs/BIRTHDAY_BOT.md):
-//   supabase functions deploy birthday-bot --no-verify-jwt
-//   supabase secrets set PROJECT_URL=https://<ref>.supabase.co \
-//        SERVICE_ROLE_KEY=<service_role key>  [RESEND_API_KEY=re_xxx FROM_EMAIL=you@x]
-//   Then schedule daily (e.g. 06:00) with pg_cron + pg_net.
-// ============================================================================
+// Scheduled birthday greetings. Deploy with --no-verify-jwt only when a strong
+// CRON_SECRET is configured; every request must provide it in X-Cron-Secret.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-Deno.serve(async () => {
-  const url = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("PROJECT_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY")!;
-  const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-  const FROM_EMAIL = Deno.env.get("FROM_EMAIL") || "onboarding@resend.dev";
-  if (!url || !serviceKey) return json({ error: "Missing secrets" }, 500);
+Deno.serve(async (req) => {
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const cronSecret = Deno.env.get("CRON_SECRET") || "";
+  if (!cronSecret) return json({ error: "CRON_SECRET is not configured" }, 500);
+  if (!constantTimeEqual(req.headers.get("x-cron-secret") || "", cronSecret))
+    return json({ error: "Unauthorized" }, 401);
+
+  const url = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("PROJECT_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  const fromEmail = Deno.env.get("FROM_EMAIL") || "onboarding@resend.dev";
+  if (!url || !serviceKey) return json({ error: "Missing Supabase configuration" }, 500);
 
   const db = createClient(url, serviceKey);
   const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
-  const dayKey = `${now.getFullYear()}-${pad(month)}-${pad(day)}`;
+  const month = now.getUTCMonth() + 1;
+  const day = now.getUTCDate();
+  const dayKey = `${now.getUTCFullYear()}-${pad(month)}-${pad(day)}`;
 
   const { data: celebrants, error } = await db.from("profiles")
-    .select("*").eq("birth_month", month).eq("birth_day", day);
-  if (error) return json({ error: error.message }, 500);
-  if (!celebrants || !celebrants.length) return json({ ok: true, greeted: 0 });
+    .select("id,full_name,email,bday_last_sent")
+    .eq("status", "approved")
+    .eq("birth_month", month)
+    .eq("birth_day", day);
+  if (error) return json({ error: "Could not load birthday list" }, 500);
+  if (!celebrants?.length) return json({ ok: true, greeted: 0 });
 
   let greeted = 0;
-  for (const m of celebrants) {
-    if (m.bday_last_sent === dayKey) continue; // already done today
+  const failures: string[] = [];
+  for (const member of celebrants) {
+    if (member.bday_last_sent === dayKey) continue;
 
-    const personal = `Happy Birthday, ${m.full_name || "dear member"}! 🎉🎂 The entire RCCG LP 25 Drama Department celebrates you today. May this new year overflow with God's grace, joy and favour!`;
-    const broadcast = `🎂 Today we celebrate ${m.full_name || "a member"}! Please join us in wishing them a Happy Birthday. 🎉`;
+    // Atomically claim this member/date so overlapping cron runs cannot duplicate
+    // messages. Restore the prior value if inbox delivery fails.
+    const { data: claim, error: claimError } = await db.from("profiles")
+      .update({ bday_last_sent: dayKey })
+      .eq("id", member.id)
+      .or(`bday_last_sent.is.null,bday_last_sent.neq.${dayKey}`)
+      .select("id");
+    if (claimError || !claim?.length) continue;
 
-    // 1) Personal inbox message
-    await db.from("inbox").insert([{
-      sender_id: null, sender_name: "Birthday Bot", recipient_id: m.id,
-      to_admins: false, subject: "🎉 Happy Birthday!", body: personal,
-    }]);
-    // 2) Department broadcast
-    await db.from("inbox").insert([{
-      sender_id: null, sender_name: "Birthday Bot", recipient_id: null,
-      to_admins: false, subject: "🎂 Birthday Celebration", body: broadcast,
-    }]);
-    // 3) Optional email
-    if (RESEND_API_KEY && m.email) {
+    const personal = `Happy Birthday, ${member.full_name || "dear member"}! 🎉🎂 The entire RCCG LP 25 Drama Department celebrates you today. May this new year overflow with God's grace, joy and favour!`;
+    const broadcast = `🎂 Today we celebrate ${member.full_name || "a member"}! Please join us in wishing them a Happy Birthday. 🎉`;
+    const { error: inboxError } = await db.from("inbox").insert([
+      {
+        sender_id: null, sender_name: "Birthday Bot", recipient_id: member.id,
+        to_admins: false, subject: "🎉 Happy Birthday!", body: personal,
+      },
+      {
+        sender_id: null, sender_name: "Birthday Bot", recipient_id: null,
+        to_admins: false, subject: "🎂 Birthday Celebration", body: broadcast,
+      },
+    ]);
+    if (inboxError) {
+      await db.from("profiles").update({ bday_last_sent: member.bday_last_sent }).eq("id", member.id);
+      failures.push(member.id);
+      continue;
+    }
+
+    if (resendKey && member.email) {
       try {
-        await fetch("https://api.resend.com/emails", {
+        const emailResponse = await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            from: FROM_EMAIL, to: [m.email],
+            from: fromEmail,
+            to: [member.email],
             subject: "🎉 Happy Birthday from RCCG LP 25 Drama!",
             html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;text-align:center">
               <div style="background:#003399;color:#fff;padding:24px;border-radius:12px 12px 0 0">
@@ -74,20 +80,30 @@ Deno.serve(async () => {
               </div></div>`,
           }),
         });
-      } catch (_e) { /* email failure must not stop the bot */ }
+        if (!emailResponse.ok) console.error("Birthday email rejected for", member.id);
+      } catch (emailError) {
+        console.error("Birthday email failed for", member.id, emailError);
+      }
     }
-    // 4) Mark done
-    await db.from("profiles").update({ bday_last_sent: dayKey }).eq("id", m.id);
     greeted++;
   }
 
-  return json({ ok: true, greeted });
+  return json({ ok: failures.length === 0, greeted, failed: failures.length }, failures.length ? 207 : 200);
 });
 
 function pad(n: number) { return String(n).padStart(2, "0"); }
-function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function constantTimeEqual(a: string, b: string): boolean {
+  let mismatch = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let i = 0; i < length; i++) mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return mismatch === 0;
+}
+function escapeHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 function json(obj: unknown, status = 200) {
-  return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
 }

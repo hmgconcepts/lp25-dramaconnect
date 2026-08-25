@@ -32,6 +32,9 @@
     </main>
 
     <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
     <script src="../assets/js/ui.js"></script>
     <script src="../assets/js/auth.js"></script>
@@ -58,21 +61,22 @@
         async function load() {
             const host = document.getElementById('event-list');
             try {
-                const [events, rsvpRows] = await Promise.all([DB.getEvents(), DB.getMyRsvps(me.id).catch(() => [])]);
-                myRsvps = {}; rsvpRows.forEach(r => myRsvps[r.event_id] = r.response);
+                const [events, rsvpRows] = await Promise.all([DB.getEvents(), DB.getRsvpResults()]);
+                const counts = {};
+                myRsvps = {};
+                rsvpRows.forEach(r => {
+                    if (!counts[r.event_id]) counts[r.event_id] = { going: 0, maybe: 0, no: 0 };
+                    if (['going', 'maybe', 'no'].includes(r.response)) counts[r.event_id][r.response] = Number(r.response_count) || 0;
+                    if (r.is_mine) myRsvps[r.event_id] = r.response;
+                });
                 if (!events.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No events scheduled.</p>'; return; }
                 const isAdmin = Auth.isAdmin(me);
-                // Load RSVP counts per event (one query each, small N).
-                const counts = {};
-                await Promise.all(events.map(async ev => {
-                    try { const rs = await DB.getRsvps(ev.id); counts[ev.id] = rs; } catch (e) { counts[ev.id] = []; }
-                }));
                 host.innerHTML = events.map(e => {
                     const days = Utils.daysUntil(e.event_date);
                     const past = days !== null && days < 0;
-                    const rs = counts[e.id] || [];
-                    const going = rs.filter(r => r.response === 'going').length;
-                    const maybe = rs.filter(r => r.response === 'maybe').length;
+                    const summary = counts[e.id] || { going: 0, maybe: 0, no: 0 };
+                    const going = summary.going;
+                    const maybe = summary.maybe;
                     const mine = myRsvps[e.id];
                     const btn = (val, label, cls) => `<button onclick="rsvp('${e.id}','${val}')" class="text-xs px-3 py-1 rounded-full font-bold ${mine===val?cls:'bg-slate-100 text-slate-600'}">${label}</button>`;
                     return `

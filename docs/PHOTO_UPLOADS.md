@@ -1,18 +1,18 @@
 # 🖼️ Profile Photo Uploads (Free, via Supabase Storage)
 
 Members can upload a photo that appears on their **digital ID card**, the
-**Member Directory**, and the **Members** list. Photos are stored free in
-**Supabase Storage** (free tier includes generous storage + bandwidth).
+**Member Directory**, and the **Members** list. Photos are stored in
+**Supabase Storage**. Available storage and bandwidth depend on the current
+project plan and should be checked in the dashboard.
 
-> ✅ The setup is **automatic** — running `database/repair_and_upgrade.sql`
-> already creates the `avatars` storage bucket and the security policies. There is
-> usually **nothing extra to do**. This doc explains it and gives a manual
-> fallback just in case.
+> ✅ Setup is automatic after running **both** database migrations in order:
+> `repair_and_upgrade.sql`, then `security_hardening.sql`. The second migration
+> replaces legacy storage policies and requires the owner to be approved.
 
 ---
 
 ## What the SQL set up for you
-Running `repair_and_upgrade.sql` created:
+Running both migrations in the documented order creates:
 1. A **public** storage bucket named **`avatars`** (public = photos are viewable
    on ID cards/directory).
 2. Security policies so that **each member can upload/replace/delete only their
@@ -32,12 +32,11 @@ If you ever see "Photo storage not set up yet", create the bucket by hand:
 2. Name: **`avatars`**, toggle **Public bucket = ON**, **Save**.
 3. Supabase → **SQL Editor**, run just the storage section again (it's near the
    end of `repair_and_upgrade.sql`, the block that starts with
-   `INSERT INTO storage.buckets ... 'avatars' ...` and the `CREATE POLICY
-   "avatars_*"` lines).
+   `INSERT INTO storage.buckets ... 'avatars' ...` and the storage policy section of `database/security_hardening.sql`.
 
 ### Option B — Re-run the whole repair script
-Simply paste all of `database/repair_and_upgrade.sql` again and Run. It is safe
-to re-run.
+Run all of `database/repair_and_upgrade.sql`, then all of
+`database/security_hardening.sql`. Both are safe to re-run in that order.
 
 ---
 
@@ -55,7 +54,7 @@ to re-run.
 ## Troubleshooting
 | Problem | Fix |
 | :-- | :-- |
-| "Photo storage not set up yet" | Create the `avatars` public bucket (Option A) or re-run the SQL. |
-| Upload says "row-level security" | The avatar policies didn't apply — re-run the storage section of the SQL. |
+| "Photo storage not set up yet" | Create the bucket or re-run both migrations in order. |
+| Upload says "row-level security" | Confirm the account is approved, the path begins with its Auth user ID, and re-run both migrations in order. |
 | Photo doesn't show | Confirm the bucket is **Public**; hard-refresh the page. |
 | Image too large | Keep it under ~2 MB; resize before uploading. |
