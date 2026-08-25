@@ -124,8 +124,8 @@
     <!-- Strict PWA Install Overlay Container -->
     <div id="pwa-strict-overlay" class="hidden fixed inset-0 z-[10000] bg-blue-900 flex flex-col items-center justify-center p-6 text-center text-white">
         <img src="assets/icons/icon-192.png" alt="Icon" class="w-24 h-24 mb-6 rounded-2xl shadow-2xl">
-        <h2 class="text-3xl font-extrabold mb-3">Install App to Continue</h2>
-        <p class="text-blue-200 mb-8 max-w-sm">For offline access, high security, and the best Theatre Management experience, DramaConnect Enterprise requires installation on your device.</p>
+        <h2 class="text-3xl font-extrabold mb-3">Install DramaConnect</h2>
+        <p class="text-blue-200 mb-8 max-w-sm">Install the app for quicker access and an app-like experience, or continue securely in your browser.</p>
         
         <button id="pwa-force-install-btn" class="bg-white text-blue-900 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:bg-blue-50 transition w-full max-w-xs mb-4">
             <i class="fas fa-download mr-2"></i> Install App Now
@@ -138,11 +138,14 @@
         
         <!-- Bug Fix: Fallback for desktops or incompatible browsers to prevent locking out users entirely -->
         <button id="pwa-bypass-btn" class="mt-6 text-[11px] text-blue-300 hover:text-white underline decoration-blue-400/50 transition">
-            Continue to Web Version (Not Recommended)
+            Continue in Browser
         </button>
     </div>
 
     <script src="assets/js/config.js"></script>
+    <script src="assets/js/resilience.js"></script>
+    <script src="assets/js/data-portability.js"></script>
+    <script src="assets/js/drive-sync.js"></script>
     <script src="assets/js/i18n.js"></script>
     <script src="assets/js/ui.js"></script>
     <script src="assets/js/auth.js"></script>
@@ -161,12 +164,15 @@
         (async () => {
             try {
                 const u = await Auth.getCurrentUser();
-                if (u && (u.role === 'admin' || !u.status || u.status === 'approved')) {
+                if (Auth.isApproved(u)) {
                     window.location.href = 'pages/home.html';
                 } else if (u) {
                     await sb.auth.signOut();
                 }
-            } catch (e) {}
+            } catch (e) {
+                // Fail closed when a signed-in account cannot be tied to a readable profile.
+                try { await sb.auth.signOut(); } catch (_e) {}
+            }
         })();
         // Show a message if the user was bounced for being pending.
         try { if (sessionStorage.getItem('dc-pending')) { sessionStorage.removeItem('dc-pending'); UI.toast('Your account is awaiting admin approval.', 'warning', 8000); } } catch (e) {}
@@ -180,14 +186,18 @@
                 await Auth.signIn(email, pass);
                 // Approval gate — block users an admin has not yet approved.
                 const u = await Auth.getCurrentUser();
-                if (u && u.role !== 'admin' && u.status && u.status !== 'approved') {
+                if (!Auth.isApproved(u)) {
                     await sb.auth.signOut();
                     UI.hideLoader();
                     UI.toast('Your account is awaiting admin approval. Please try again once approved.', 'warning', 8000);
                     return;
                 }
                 window.location.href = 'pages/home.html';
-            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+            } catch (e) {
+                try { await sb.auth.signOut(); } catch (_e) {}
+                UI.hideLoader();
+                UI.toast(e.message, 'error');
+            }
         };
 
         document.getElementById('signup-btn').onclick = async () => {

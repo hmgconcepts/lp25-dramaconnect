@@ -1,62 +1,30 @@
-# 📖 User Guide - DramaConnect Enterprise v4
+# DramaConnect v13.2 User Guide
 
-Welcome to the user manual for the RCCG LP 25 Drama Department Management System. This guide explains how to utilize the platform to its full potential.
+The current, complete user manual is **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
+The full feature-by-feature reference is **[docs/FEATURES.md](docs/FEATURES.md)**.
 
----
+## Essential rules
 
-## 🔐 Accessing the System
-1.  **Landing Page:** Visit the portal URL.
-2.  **Sign In:** Enter your registered email and password.
-3.  **Requesting Access:** If you are a new member, use the "Request Access" form. An administrator must approve your account in the backend before you can enter.
+- Registration creates a `pending` profile. Pending and rejected accounts cannot
+  enter the application; an administrator may later approve either state.
+- Full personnel profiles are administrator-only. Approved members use the
+  restricted directory and can edit only permitted fields on their own profile.
+- Role, approval status, drama unit, and unit-leader assignment are managed by
+  approved administrators.
+- Unit leaders coordinate their unit and may manage their own gallery uploads;
+  they cannot edit other member profiles or authorization fields.
+- **Remove** is permanent account deletion: the secured administrator function
+  deletes the Supabase Auth account and cascade-linked profile/data. Rejection is
+  the reversible blocked state.
+- Poll and RSVP pages show aggregate results plus the caller's own choice. Raw
+  RSVP identities are available only to approved administrators.
+- App installation is optional. Cached shell pages may open without a network,
+  but authentication and live data features require connectivity.
+- Automatic reminders, birthday messages, and approval emails work only when the
+  optional secured Edge Functions have been deployed and configured.
+- Only approved administrators can view resilience health, create/restore sealed
+  22-table archives, connect Google Drive or use the private backup vault.
+  Browser archives exclude Auth passwords/sessions and Storage object bytes.
 
----
-
-## 📊 The Command Center (Dashboard)
-The dashboard is your high-level overview. 
-*   **KPI Cards:** Instantly see the total member count, net treasury balance, and active productions.
-*   **Financial Chart:** View the balance between income and production costs.
-*   **Administration Alerts:** Keep track of system updates and urgent notifications.
-
----
-
-## 👥 Personnel Management (Members Page)
-*   **Directory:** View all drama members, their assigned roles (Actor, Director, etc.), and their home parishes.
-*   **One-Tap Contact:** Click the WhatsApp icon next to any member to message them instantly.
-*   **Admin Control:** Admins can add new members, update roles, or remove members from the directory.
-
----
-
-## 🎭 Production & Casting (Productions Page)
-*   **Project Logging:** Admins can create new productions, set dates, and assign a director.
-*   **Casting Module:** For each play, admins can assign specific roles to members, creating a digital "Cast List".
-*   **Script Access:** Access a central repository of script links for easy distribution.
-
----
-
-## 📅 Rehearsal & Attendance (Rehearsals Page)
-*   **Scheduling:** Admins log rehearsal dates and specific session goals.
-*   **Attendance Marking:** A simple checklist allows the admin to mark who is present.
-*   **Tracking:** Members can see their own attendance history on their profile page.
-
----
-
-## 💰 Financial Ledger (Finance Page)
-*   **Transaction Logging:** Record every kobo of income (dues, donations) and expenditure (costumes, props).
-*   **Budgeting:** Admins can set a target budget for a specific play to prevent overspending.
-*   **Balance Tracking:** The system automatically maintains the net treasury balance.
-
----
-
-## 📄 Official Reporting (Reports Page)
-The reporting center is for creating official records for the Province:
-1.  **Select Report:** Choose from Personnel, Finance, or Attendance.
-2.  **Preview:** Review the data in the preview table.
-3.  **Export:** 
-    *   **PDF:** Best for official submission to leadership.
-    *   **XLSX:** Best for further data analysis in Excel.
-
----
-
-## 👤 User Profile & Portfolio
-*   **My Profile:** View your personal details, assigned roles, and attendance record.
-*   **Developer Bio:** Learn more about the architect of the system, Adewale Samson Adeagbo, and the services offered by HMG Concepts.
+For setup and troubleshooting, see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**
+and **[docs/ISSUE_RESOLUTION.md](docs/ISSUE_RESOLUTION.md)**.

@@ -1,16 +1,27 @@
-# 🎭 DramaConnect Enterprise v13 — RCCG LP 25 Drama Department
+# 🎭 DramaConnect Enterprise v13.2 — RCCG LP 25 Drama Department
 
-DramaConnect is a complete, **zero‑cost institutional management hub** for the
-RCCG LP 25 Drama Department. It runs entirely on **free‑tier tools** (Supabase +
-static hosting) and requires **no paid AI API** — keeping running costs at
-**₦0/month**.
+DramaConnect is a complete institutional management hub for the RCCG LP 25
+Drama Department. It can operate within the free allowances of Supabase and a
+static host for modest usage and requires no paid AI API. Provider plans, quotas,
+and pricing can change, so confirm current limits before rollout.
 
 > Architected by **Adewale Samson Adeagbo** · HMG Concepts
 > DataTech • EdTech • FaithTech
 
 ---
 
-## ✨ What's New in v13 (this `enterprise v8` build)
+## ✨ v13 feature set (resilience-maintained v13.2 build)
+
+### New in v13.2: resilience and verified backup
+
+- Ten-layer, source-visible Supabase inactivity protection: browser visit, GitHub schedule, Edge monitor, optional `pg_cron`, manual heartbeat, cron-job.org, Vercel Cron, Apps Script, workflow-preservation commit and Management API recovery watchdog.
+- Full portable export of all **22** application/configuration tables with stable pagination, completeness manifest, row counts, per-table SHA-256 hashes and a full archive seal.
+- Approved-admin merge restore with database-backed concurrency leases, completion/failure history, precise row reports and an explicit degraded disaster-recovery mode.
+- Google Identity Services + least-privilege `drive.file`, a dedicated per-account folder, verified upload/list/download/restore/delete, retention and visit-triggered scheduling without unsolicited OAuth popups.
+- Private Supabase archive vault plus an encrypted, unattended weekly `pg_dump` workflow for true closed-browser backup.
+
+Operational setup: **[Supabase protection](docs/SUPABASE_FREE_TIER_PROTECTION.md)** · **[Backup and recovery](docs/BACKUP_AND_RECOVERY.md)** · **[Incident runbook](docs/RESILIENCE_RUNBOOK.md)**
+
 
 | New in v13 | Description |
 | :-- | :-- |
@@ -18,7 +29,7 @@ static hosting) and requires **no paid AI API** — keeping running costs at
 | 🧑‍🤝‍🧑 **Per‑unit dashboard ("My Unit")** | Unit leaders get a focused view of their unit: members, avg attendance, open tasks, monthly birthdays, and one‑click "Message My Unit". |
 | 📥 **Excel + CSV member import** | Bulk‑create logins from `.xlsx/.xls` as well as `.csv`. |
 | ✂️ **Photo cropping before upload** | A free, built‑in (no library) drag‑to‑pan + zoom **square cropper** for profile photos and gallery images. |
-| 🧑‍✈️ **Unit‑leader permissions** | Admins can mark members as **Unit Leaders**; leaders can manage members in **their own unit** and upload to the gallery (scoped by RLS — they can't touch admin roles). |
+| 🧑‍✈️ **Unit-leader permissions** | Admins can mark approved members as **Unit Leaders**. Leaders can upload gallery media and delete only their own uploads; profile, role, unit, approval, and account management remain administrator-only. |
 | 🖼️ **Org‑wide Photo Gallery** | Albums for productions/events with upload (admins + leaders), album filter, and a fullscreen lightbox. |
 | 💡 **Suggestion Box** | Members submit ideas/feedback (optionally **anonymous**); admins triage with statuses (new/reviewed/actioned/closed). |
 
@@ -107,7 +118,7 @@ v7 keeps **every** existing feature and adds messaging + notifications:
 
 | Feature | Description |
 | :-- | :-- |
-| 🧭 **Bulletproof navigation** | Menu uses **local CSS**, not the Tailwind CDN — always works on budget tablets / weak connections. |
+| 🧭 **Resilient navigation** | Menu structure uses **local CSS** and remains available when the Tailwind CDN is unavailable. |
 | 🛟 **Low‑bandwidth mode** | `boot.js` + `fallback.css` keep the app usable if the CDN fails. |
 | ⚙️ **Settings & Backup** · 💾 **JSON backup** · 📥 **CSV roster import** | Admin tools. |
 
@@ -138,7 +149,7 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for a detailed explanation of every
 | Hosting | GitHub Pages / Cloudflare Pages / Vercel (free) | Global CDN |
 | Charts | Chart.js (CDN) | Free, lightweight |
 | Exports | SheetJS + jsPDF + autoTable (CDN) | 100% client‑side, zero server cost |
-| Offline | Service Worker + Web App Manifest | Native browser APIs |
+| Limited offline shell | Service Worker + Web App Manifest; live data stays network-dependent | Native browser APIs |
 
 **No AI API is used anywhere** — by design, to keep the system free to operate.
 
@@ -147,7 +158,7 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for a detailed explanation of every
 ## 📂 Folder Structure
 
 ```
-enterprise v8/
+lp25-dramaconnect/
 ├── index.html              # Landing + login / signup / forgot password
 ├── manifest.json           # PWA manifest
 ├── sw.js                   # Service worker (offline shell)
@@ -165,14 +176,18 @@ enterprise v8/
 │       ├── config.js       # Supabase client init + feature flags
 │       ├── ui.js           # Toasts, modals, loaders, dark mode
 │       ├── auth.js         # Sign in/up, reset, approval gate, guards
-│       ├── db.js           # Data access layer (all tables + backup/bulk)
+│       ├── db.js           # Data access layer + portable archive compatibility
+│       ├── resilience.js   # Heartbeats, health, backup leases and run metadata
+│       ├── data-portability.js # 22-table sealed export + safe restore + vault
+│       ├── drive-sync.js   # GIS / Drive file backup, retention and scheduler
 │       ├── utils.js        # Currency/date/CSV/export helpers
 │       ├── layout.js       # Shared sidebar + header (local-CSS navigation)
 │       └── install.js      # PWA install prompt
-├── pages/                  # 31 authenticated app pages
+├── pages/                  # 31 authenticated app pages + reset page
 │   ├── home.html       dashboard.html  members.html      directory.html
 │   ├── productions.html casting.html   rehearsals.html   attendance.html
-│   ├── analytics.html  finance.html    budgets.html      inbox.html
+│   ├── analytics.html  finance.html    budgets.html      inventory.html
+│   ├── myunit.html     inbox.html
 │   ├── announcements.html tasks.html   messaging.html    events.html
 │   ├── birthdays.html  gallery.html    polls.html        suggestions.html
 │   ├── resources.html  idcard.html     reports.html      reminders.html
@@ -180,12 +195,18 @@ enterprise v8/
 │   ├── portfolio.html  reset.html
 ├── database/
 │   ├── schema.sql                # Full schema + RLS + triggers
-│   └── repair_and_upgrade.sql    # All-in-one setup/repair (run this once)
+│   ├── repair_and_upgrade.sql    # Legacy schema/upgrade prerequisite
+│   ├── security_hardening.sql    # Required least-privilege hardening (run second)
+│   └── resilience_and_backup.sql # Heartbeat, backup leases/vault (run third)
 ├── supabase/functions/
 │   ├── notify-approval/index.ts      # OPTIONAL auto approval email
 │   ├── run-reminders/index.ts        # OPTIONAL scheduled auto reminders
 │   ├── birthday-bot/index.ts         # OPTIONAL automatic birthday greetings
-│   └── admin-create-member/index.ts  # Admin creates member logins
+│   ├── admin-create-member/index.ts  # Admin creates member logins
+│   └── ping/index.ts                 # Secret-protected external heartbeat
+├── api/keep-alive.js                 # Secret-protected Vercel Cron endpoint
+├── .github/workflows/                # Heartbeat, recovery and encrypted backup
+├── scripts/                          # Verification, monitors and guarded restore
 └── docs/
     ├── SETUP_CHECKLIST.md       # Tick‑box first‑time setup
     ├── DEPLOYMENT.md            # Step‑by‑step deployment (3 free hosts)
@@ -195,6 +216,9 @@ enterprise v8/
     ├── BIRTHDAY_BOT.md          # Optional automatic birthday greetings
     ├── PHOTO_UPLOADS.md         # Profile photos via Supabase Storage
     ├── EMAIL_NOTIFICATIONS.md   # Optional automated approval emails
+    ├── SUPABASE_FREE_TIER_PROTECTION.md # Protection-layer operations
+    ├── BACKUP_AND_RECOVERY.md   # Drive, dump, Storage and restore guide
+    ├── RESILIENCE_RUNBOOK.md    # Incident response and recovery drills
     └── USER_GUIDE.md            # End‑user manual
 ```
 
@@ -202,14 +226,20 @@ enterprise v8/
 
 ## 🚀 Quick Start (5 minutes)
 
-1. **Create a Supabase project** (free) → run `database/repair_and_upgrade.sql`
-   in the SQL Editor (it creates everything and is safe to re-run).
+1. **Create a Supabase project** (free) → in the SQL Editor run
+   `database/repair_and_upgrade.sql`, then run
+   `database/security_hardening.sql`, then
+   `database/resilience_and_backup.sql`. They are designed to be safely re-run in
+   that order; the latter two migrations are required for the fixed authorization,
+   resilience, backup-vault and restore model.
 2. **Paste your credentials** into `assets/js/config.js` (`SUPABASE_URL`, `SUPABASE_KEY`).
-3. **Upload the contents of the `enterprise` folder** to GitHub Pages /
+3. **Upload the contents of the project folder** to GitHub Pages /
    Cloudflare Pages / Vercel (so `index.html` is at the site root).
 4. **Sign up** in the app, then make yourself admin (edit the email line in
    `repair_and_upgrade.sql`, or run):
    `UPDATE profiles SET role='admin', status='approved' WHERE email='you@example.com';`
+5. Configure at least one daily external heartbeat and one encrypted off-site
+   backup using the linked protection and recovery guides above.
 
 Full, unambiguous instructions: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
@@ -219,13 +249,15 @@ Full, unambiguous instructions: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 | Capability | Member | Admin |
 | :-- | :-: | :-: |
-| View all data (dashboard, members, finance, etc.) | ✅ | ✅ |
+| View approved-member directory and department operations | ✅ | ✅ |
+| View full private profiles and RSVP identities | Own profile / own RSVP only | ✅ |
 | Edit own profile & password | ✅ | ✅ |
 | Add/edit/delete productions, finance, rehearsals | ❌ | ✅ |
 | Manage casting, budgets, attendance | ❌ | ✅ |
 | Post announcements & events | ❌ | ✅ |
-| Promote/demote members | ❌ | ✅ |
+| Approve/reject, change role/unit/leader, permanently delete accounts | ❌ | ✅ |
 | View Activity Log (audit) | ❌ | ✅ |
+| Configure resilience, export/verify/restore archives, use Drive/vault | ❌ | ✅ |
 
 Permissions are enforced **both** in the UI **and** at the database via RLS.
 
@@ -235,8 +267,13 @@ Permissions are enforced **both** in the UI **and** at the database via RLS.
 
 - The `SUPABASE_KEY` in `config.js` is the **anon/publishable** key — safe to ship
   to the browser. It only grants what your RLS policies allow.
-- **Never** put the `service_role` key in any front‑end file.
-- All user‑supplied content is HTML‑escaped before rendering (XSS protection).
+- **Never** put the `service_role` key in any front‑end file. It is optional only
+  as a protected GitHub Actions secret for the unattended Storage-byte export.
+- Keep database URLs, Management API tokens, rclone configuration, cron/ping
+  secrets and backup passphrases server-side. See the operational guides for the
+  exact secret-to-provider mapping and rotation procedure.
+- Dynamic content is rendered through escaped text, validated URLs, constrained
+  values, or explicit trusted-markup boundaries to reduce XSS risk.
 
 ---
 
