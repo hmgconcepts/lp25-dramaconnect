@@ -25,6 +25,9 @@ const Auth = {
     async signIn(email, password) {
         const { data, error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (window.PlatformManagement) {
+            await PlatformManagement.recordLoginEvent('sign_in', { method: 'password' });
+        }
         return data;
     },
 
@@ -41,6 +44,9 @@ const Auth = {
     },
 
     async signOut() {
+        if (window.PlatformManagement) {
+            await PlatformManagement.recordLoginEvent('sign_out', { reason: 'user_requested' });
+        }
         try { await sb.auth.signOut(); } catch (e) { /* ignore */ }
         this._cachedUser = null;
         window.location.href = Auth.indexUrl();
@@ -63,8 +69,8 @@ const Auth = {
         return this._cachedUser;
     },
 
-    /** Guards a page; redirects to login if not signed in OR not approved. */
-    async checkSession() {
+    /** Guards a page; redirects when unauthenticated, unapproved or restricted. */
+    async checkSession(options = {}) {
         let user;
         try { user = await this.getCurrentUser(); }
         catch (error) {
@@ -82,6 +88,11 @@ const Auth = {
             await sb.auth.signOut();
             window.location.href = Auth.indexUrl();
             return null;
+        }
+        if (window.PlatformManagement) {
+            const access = await PlatformManagement.enforceAccess({ allowRestricted: Boolean(options.allowRestricted) });
+            if (!access) return null;
+            user.platformAccess = access;
         }
         return user;
     },

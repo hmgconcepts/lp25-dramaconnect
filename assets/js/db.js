@@ -6,17 +6,140 @@
  * ============================================================================
  */
 const DB = {
+    /* ======================= SCHEMA RESILIENCE =======================
+     * The hardened projections (member_directory, rehearsal_schedule) and the
+     * aggregate RPCs (poll_results, event_rsvp_results) are created by the
+     * security-hardening component of the database installer. If that component
+     * was never applied — or if its transaction rolled back on a particular
+     * project — PostgREST answers PGRST205, "Could not find the table/function
+     * ... in the schema cache", and every page that touches the object fails
+     * with a message that gives the operator no idea what to do.
+     *
+     * These helpers detect that exact condition, degrade safely wherever
+     * degradation is honest, and otherwise raise a message that names the
+     * missing object and the one command that repairs it.
+     * ================================================================ */
+
+    /** Columns exposed by public.member_directory (no addresses or contacts). */
+    DIRECTORY_COLUMNS:
+        'id,full_name,email,phone,parish,role,status,unit,occupation,avatar_url,' +
+        'whatsapp,facebook,instagram,tiktok,twitter,birth_month,birth_day,' +
+        'is_unit_leader,created_at',
+
+    /** Columns exposed by public.rehearsal_schedule (no check-in code). */
+    SCHEDULE_COLUMNS: 'id,rehearsal_date,notes,checkin_open,created_at',
+
+    /** True when the database/API says an object simply is not installed. */
+    isMissingObject(error) {
+        if (!error) return false;
+        const code = String(error.code || '');
+        if (code === 'PGRST205' || code === 'PGRST202' || code === 'PGRST203') return true;
+        if (code === '42P01' || code === '42883' || code === '42704') return true;
+        const text = String(error.message || error.details || '');
+        return /could not find the (table|view|function)/i.test(text)
+            || /schema cache/i.test(text);
+    },
+
+    missingObjectHelp(name) {
+        return `This deployment is missing "${name}", so this page cannot load its data. ` +
+            'An administrator should run database/complete-schema.sql once in the Supabase ' +
+            'SQL editor; it now finishes with a self-healing section that recreates this ' +
+            'object and reloads the API schema cache.';
+    },
+
+    _warnOnce(name) {
+        if (!window.console || typeof console.warn !== 'function') return;
+        if (!DB._warned) DB._warned = {};
+        if (DB._warned[name]) return;
+        DB._warned[name] = true;
+        console.warn('[DramaConnect] ' + DB.missingObjectHelp(name));
+    },
+
+    /**
+     * Members directory for the current caller.
+     * Administrators read profiles directly (they are entitled to every field).
+     * Everyone else uses the safe view; if the view was never installed there is
+     * no member-safe substitute, because row level security on profiles only
+     * ever exposes the caller's own row, so we report the fix instead of
+     * rendering a silently truncated directory.
+     */
+    async _directoryRows(columns) {
+        const me = await DB._currentUser();
+        const select = columns || DB.DIRECTORY_COLUMNS;
+        if (me && Auth.isAdmin(me)) {
+            const { data, error } = await sb.from('profiles').select(select).order('full_name');
+            if (error) throw error;
+            return data || [];
+        }
+        const { data, error } = await sb
+            .from('member_directory').select(select).order('full_name');
+        if (!error) return data || [];
+        DB._warnOnce('public.member_directory');
+        if (DB.isMissingObject(error)) throw new Error(DB.missingObjectHelp('public.member_directory'));
+        throw error;
+    },
+
+    /**
+     * Rehearsal schedule for the current caller, minus the secret check-in code.
+     * rehearsals itself is admin-only by design, so when the safe view is absent
+     * there is no member-safe fallback; report the remediation instead of
+     * showing an empty schedule as though no rehearsals existed.
+     */
+    async _scheduleRows(columns) {
+        const me = await DB._currentUser();
+        const select = columns || DB.SCHEDULE_COLUMNS;
+        if (me && Auth.isAdmin(me)) {
+            const { data, error } = await sb.from('rehearsals')
+                .select(select).order('rehearsal_date', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        }
+        const { data, error } = await sb.from('rehearsal_schedule')
+            .select(select).order('rehearsal_date', { ascending: false });
+        if (!error) return data || [];
+        DB._warnOnce('public.rehearsal_schedule');
+        if (DB.isMissingObject(error)) throw new Error(DB.missingObjectHelp('public.rehearsal_schedule'));
+        throw error;
+    },
+
+    /**
+     * Resolve the caller once. Auth._cachedUser is populated by checkSession();
+     * a page that queries before that resolves would otherwise be treated as a
+     * non-admin and routed to the member-scoped views.
+     */
+    async _currentUser() {
+        if (Auth._cachedUser) return Auth._cachedUser;
+        if (typeof Auth.getCurrentUser !== 'function') return null;
+        try { return await Auth.getCurrentUser(); } catch (error) { return null; }
+    },
+
+    /** Group rows into { group, bucket, count, is_mine } aggregate records. */
+    _tally(rows, groupKey, bucketKey, countKey, selfKey) {
+        const me = Auth._cachedUser ? Auth._cachedUser.id : null;
+        const map = new Map();
+        (rows || []).forEach((row) => {
+            const key = row[groupKey] + '|' + row[bucketKey];
+            let entry = map.get(key);
+            if (!entry) {
+                entry = {
+                    [groupKey]: row[groupKey],
+                    [bucketKey]: row[bucketKey],
+                    [countKey]: 0,
+                    is_mine: false
+                };
+                map.set(key, entry);
+            }
+            entry[countKey] += 1;
+            if (me && row[selfKey] === me) entry.is_mine = true;
+        });
+        return Array.from(map.values());
+    },
+
     /* =========================== PERSONNEL =========================== */
     async getMembers() {
-        // Full profile rows contain addresses, emergency contacts and costume
-        // measurements. Only admins query that table; approved members and unit
-        // leaders use the deliberately limited directory view.
-        const me = Auth._cachedUser;
-        const source = me && Auth.isAdmin(me) ? 'profiles' : 'member_directory';
-        const { data, error } = await sb.from(source).select('*').order('full_name');
-        if (error) throw error;
-        return data || [];
+        return DB._directoryRows(DB.DIRECTORY_COLUMNS);
     },
+
     async getMember(id) {
         const { data, error } = await sb.from('profiles').select('*').eq('id', id).maybeSingle();
         if (error) throw error;
@@ -220,12 +343,11 @@ const DB = {
             if (error) throw error;
             return data || [];
         }
-        const [{ data, error }, { data: members, error: memberError }] = await Promise.all([
+        const [{ data, error }, members] = await Promise.all([
             sb.from('cast_list').select('*').eq('production_id', prodId),
-            sb.from('member_directory').select('id,full_name')
+            DB._directoryRows('id,full_name')
         ]);
         if (error) throw error;
-        if (memberError) throw memberError;
         const names = Object.fromEntries((members || []).map(m => [m.id, m.full_name]));
         return (data || []).map(row => ({ ...row, profiles: { full_name: names[row.member_id] || 'Member' } }));
     },
@@ -241,16 +363,14 @@ const DB = {
     /* ===================== REHEARSALS & ATTENDANCE ================== */
     async getRehearsals() {
         // The public schedule view deliberately omits the secret check-in code.
-        const source = Auth.isAdmin(Auth._cachedUser) ? 'rehearsals' : 'rehearsal_schedule';
-        const [{ data, error }, { data: attendance, error: attendanceError }] = await Promise.all([
-            sb.from(source).select('*').order('rehearsal_date', { ascending: false }),
+        const [schedule, { data: attendance, error: attendanceError }] = await Promise.all([
+            DB._scheduleRows(DB.SCHEDULE_COLUMNS),
             sb.from('attendance').select('rehearsal_id,member_id,status')
         ]);
-        if (error) throw error;
         if (attendanceError) throw attendanceError;
         const byRehearsal = {};
         (attendance || []).forEach(a => (byRehearsal[a.rehearsal_id] ||= []).push(a));
-        return (data || []).map(r => ({ ...r, attendance: byRehearsal[r.id] || [] }));
+        return schedule.map(r => ({ ...r, attendance: byRehearsal[r.id] || [] }));
     },
     async createRehearsal(date, note) {
         const { data, error } = await sb.from('rehearsals')
@@ -353,8 +473,16 @@ const DB = {
     /** Aggregate RSVP counts plus only the caller's own choice. */
     async getRsvpResults() {
         const { data, error } = await sb.rpc('event_rsvp_results');
-        if (error) throw error;
-        return data || [];
+        if (!error) return data || [];
+        if (!DB.isMissingObject(error)) throw error;
+        // Aggregate RPC absent (partial install). Tally whatever this caller is
+        // allowed to read from the base table so the events page still renders;
+        // counts are complete for admins and limited to the member's own RSVP
+        // for everyone else, which is exactly what row level security permits.
+        DB._warnOnce('public.event_rsvp_results()');
+        const rows = await sb.from('event_rsvps').select('event_id,response,member_id');
+        if (rows.error) throw rows.error;
+        return DB._tally(rows.data || [], 'event_id', 'response', 'response_count', 'member_id');
     },
     /** Individual identities are returned only to administrators by RLS. */
     async getRsvps(eventId) {
@@ -403,14 +531,12 @@ const DB = {
             if (error) throw error;
             return data || [];
         }
-        const [{ data, error }, { data: members, error: memberError }, { data: rehearsals, error: rehearsalError }] = await Promise.all([
+        const [{ data, error }, members, rehearsals] = await Promise.all([
             sb.from('attendance').select('*'),
-            sb.from('member_directory').select('id,full_name'),
-            sb.from('rehearsal_schedule').select('id,rehearsal_date')
+            DB._directoryRows('id,full_name'),
+            DB._scheduleRows('id,rehearsal_date')
         ]);
         if (error) throw error;
-        if (memberError) throw memberError;
-        if (rehearsalError) throw rehearsalError;
         const names = Object.fromEntries((members || []).map(m => [m.id, m.full_name]));
         const dates = Object.fromEntries((rehearsals || []).map(r => [r.id, r.rehearsal_date]));
         return (data || []).map(row => ({
@@ -540,13 +666,29 @@ const DB = {
     },
 
     /* ========================= POLLS / VOTING ===================== */
+
+    /**
+     * Vote tallies for every poll. The server-side aggregate is preferred; when
+     * it is absent the tally is rebuilt from the rows this caller may read, so
+     * the polls page still renders and still highlights the caller's own vote.
+     * Voting itself uses the separate cast_poll_vote RPC and is unaffected.
+     */
+    async _pollResults() {
+        const { data, error } = await sb.rpc('poll_results');
+        if (!error) return data || [];
+        if (!DB.isMissingObject(error)) throw error;
+        DB._warnOnce('public.poll_results()');
+        const rows = await sb.from('poll_votes').select('poll_id,option_index,voter_id');
+        if (rows.error) throw rows.error;
+        return DB._tally(rows.data || [], 'poll_id', 'option_index', 'vote_count', 'voter_id');
+    },
+
     async getPolls() {
-        const [{ data: polls, error }, { data: summary, error: summaryError }] = await Promise.all([
+        const [{ data: polls, error }, summary] = await Promise.all([
             sb.from('polls').select('*').order('created_at', { ascending: false }),
-            sb.rpc('poll_results')
+            DB._pollResults()
         ]);
         if (error) throw error;
-        if (summaryError) throw summaryError;
         const byPoll = {};
         (summary || []).forEach(row => (byPoll[row.poll_id] ||= []).push(row));
         return (polls || []).map(p => ({ ...p, vote_summary: byPoll[p.id] || [] }));
@@ -624,7 +766,7 @@ const DB = {
 
     /**
      * Export the entire department dataset using the shared portable-archive
-     * engine: all 22 tables, stable pagination, completeness manifest and
+     * engine: all 25 tables, stable pagination, completeness manifest and
      * SHA-256 integrity seal. Kept here as a compatibility entry point.
      */
     async exportAll(options = {}) {

@@ -39,9 +39,14 @@ const Layout = {
             { id: 'reports',       href: 'reports.html',       icon: 'fa-file-export',    label: 'Reports' }
         ]},
         { group: 'Administration', items: [
-            { id: 'reminders',     href: 'reminders.html',     icon: 'fa-bell',             label: 'Scheduled Reminders', adminOnly: true },
-            { id: 'activity',      href: 'activity.html',      icon: 'fa-clock-rotate-left', label: 'Activity Log', adminOnly: true },
-            { id: 'settings',      href: 'settings.html',      icon: 'fa-gear',             label: 'Settings & Backup', adminOnly: true }
+            { id: 'reminders',       href: 'reminders.html',       icon: 'fa-bell',             label: 'Scheduled Reminders', adminOnly: true },
+            { id: 'activity',        href: 'activity.html',        icon: 'fa-clock-rotate-left', label: 'Activity Log', adminOnly: true },
+            { id: 'settings',        href: 'settings.html',        icon: 'fa-gear',             label: 'Settings', adminOnly: true },
+            { id: 'admin-data',      href: 'admin-data.html',      icon: 'fa-database',         label: 'Admin Data', adminOnly: true },
+            { id: 'storage-manager', href: 'storage-manager.html', icon: 'fa-hard-drive',       label: 'Storage Manager', adminOnly: true },
+            { id: 'platform-health', href: 'platform-health.html', icon: 'fa-heart-pulse',      label: 'Platform Health', adminOnly: true },
+            { id: 'roles-status',    href: 'roles-status.html',    icon: 'fa-user-shield',      label: 'Roles & Status', adminOnly: true },
+            { id: 'site-license',    href: 'site-license.html',    icon: 'fa-certificate',      label: 'Site License' }
         ]},
         { group: 'Workspace', items: [
             { id: 'profile',       href: 'profile.html',       icon: 'fa-user-circle',    label: 'My Profile' },

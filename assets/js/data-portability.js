@@ -1,6 +1,6 @@
 /*
  * DramaConnect portable archives.
- * Full, paginated export of all 22 application/configuration tables with a
+ * Full, paginated export of all 25 application/configuration tables with a
  * deterministic manifest and SHA-256 integrity seal. Restore is admin-only,
  * merge/upsert based, verified before the first write, and fully reported.
  */
@@ -9,13 +9,13 @@
 
   const FORMAT = 'dramaconnect-portable-archive';
   const FORMAT_VERSION = 2;
-  const SCHEMA_VERSION = '13.2';
+  const SCHEMA_VERSION = '14.0';
   const PAGE_SIZE = 500;
   const MAX_LOCAL_ARCHIVE_BYTES = 100 * 1024 * 1024;
   const MAX_VAULT_ARCHIVE_BYTES = 50 * 1024 * 1024;
   const VAULT_BUCKET = 'dramaconnect-backups';
 
-  // Dependency order is also the normal restore order. These are the 22
+  // Dependency order is also the normal restore order. These are the 25
   // application/configuration tables; resilience history and leases are
   // intentionally excluded to prevent recursive operational backups.
   const TABLES = Object.freeze([
@@ -31,6 +31,9 @@
     { name: 'resources', key: 'id' },
     { name: 'inventory', key: 'id' },
     { name: 'tenant_settings', key: 'id' },
+    { name: 'dc_platform_settings', key: 'id' },
+    { name: 'dc_retention_settings', key: 'id' },
+    { name: 'dc_site_license', key: 'id' },
     { name: 'activity_log', key: 'id' },
     { name: 'budgets', key: 'production_id' },
     { name: 'cast_list', key: 'id', identity: true },
@@ -115,7 +118,7 @@
   }
 
   function appVersion() {
-    return document.querySelector('meta[name="app-version"]')?.content || '13.2';
+    return document.querySelector('meta[name="app-version"]')?.content || '14.0';
   }
 
   async function buildArchive(options = {}) {
@@ -132,7 +135,7 @@
         origin: location.origin
       },
       scope: {
-        included: '22 public application/configuration tables visible to an approved administrator',
+        included: '25 public application/configuration tables visible to an approved administrator',
         excludes: [
           'Supabase Auth password/session data',
           'Supabase Storage object bytes',
