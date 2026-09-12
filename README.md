@@ -1,4 +1,4 @@
-# 🎭 DramaConnect Enterprise v13.2 — RCCG LP 25 Drama Department
+# 🎭 DramaConnect Enterprise v14.0 — RCCG LP 25 Drama Department
 
 DramaConnect is a complete institutional management hub for the RCCG LP 25
 Drama Department. It can operate within the free allowances of Supabase and a
@@ -10,12 +10,12 @@ and pricing can change, so confirm current limits before rollout.
 
 ---
 
-## ✨ v13 feature set (resilience-maintained v13.2 build)
+## ✨ v13 feature set (resilience-maintained v14.0 build)
 
-### New in v13.2: resilience and verified backup
+### New in v14.0: resilience and verified backup
 
 - Ten-layer, source-visible Supabase inactivity protection: browser visit, GitHub schedule, Edge monitor, optional `pg_cron`, manual heartbeat, cron-job.org, Vercel Cron, Apps Script, workflow-preservation commit and Management API recovery watchdog.
-- Full portable export of all **22** application/configuration tables with stable pagination, completeness manifest, row counts, per-table SHA-256 hashes and a full archive seal.
+- Full portable export of all **25** application/configuration tables with stable pagination, completeness manifest, row counts, per-table SHA-256 hashes and a full archive seal.
 - Approved-admin merge restore with database-backed concurrency leases, completion/failure history, precise row reports and an explicit degraded disaster-recovery mode.
 - Google Identity Services + least-privilege `drive.file`, a dedicated per-account folder, verified upload/list/download/restore/delete, retention and visit-triggered scheduling without unsolicited OAuth popups.
 - Private Supabase archive vault plus an encrypted, unattended weekly `pg_dump` workflow for true closed-browser backup.
@@ -178,12 +178,12 @@ lp25-dramaconnect/
 │       ├── auth.js         # Sign in/up, reset, approval gate, guards
 │       ├── db.js           # Data access layer + portable archive compatibility
 │       ├── resilience.js   # Heartbeats, health, backup leases and run metadata
-│       ├── data-portability.js # 22-table sealed export + safe restore + vault
+│       ├── data-portability.js # 25-table sealed export + safe restore + vault
 │       ├── drive-sync.js   # GIS / Drive file backup, retention and scheduler
 │       ├── utils.js        # Currency/date/CSV/export helpers
 │       ├── layout.js       # Shared sidebar + header (local-CSS navigation)
 │       └── install.js      # PWA install prompt
-├── pages/                  # 31 authenticated app pages + reset page
+├── pages/                  # 36 authenticated app pages + reset page
 │   ├── home.html       dashboard.html  members.html      directory.html
 │   ├── productions.html casting.html   rehearsals.html   attendance.html
 │   ├── analytics.html  finance.html    budgets.html      inventory.html
@@ -191,13 +191,15 @@ lp25-dramaconnect/
 │   ├── announcements.html tasks.html   messaging.html    events.html
 │   ├── birthdays.html  gallery.html    polls.html        suggestions.html
 │   ├── resources.html  idcard.html     reports.html      reminders.html
-│   ├── activity.html   settings.html   profile.html      help.html
-│   ├── portfolio.html  reset.html
+│   ├── activity.html   settings.html   admin-data.html   storage-manager.html
+│   ├── platform-health.html  roles-status.html  site-license.html
+│   └── portfolio.html  profile.html    help.html         reset.html
 ├── database/
-│   ├── schema.sql                # Full schema + RLS + triggers
-│   ├── repair_and_upgrade.sql    # Legacy schema/upgrade prerequisite
-│   ├── security_hardening.sql    # Required least-privilege hardening (run second)
-│   └── resilience_and_backup.sql # Heartbeat, backup leases/vault (run third)
+│   ├── complete-schema.sql       # Canonical, cumulative, idempotent installer
+│   ├── repair_and_upgrade.sql    # Component source retained for maintenance
+│   ├── security_hardening.sql    # Component source retained for maintenance
+│   ├── resilience_and_backup.sql # Component source retained for maintenance
+│   └── platform_management.sql   # Component source retained for maintenance
 ├── supabase/functions/
 │   ├── notify-approval/index.ts      # OPTIONAL auto approval email
 │   ├── run-reminders/index.ts        # OPTIONAL scheduled auto reminders
@@ -226,18 +228,17 @@ lp25-dramaconnect/
 
 ## 🚀 Quick Start (5 minutes)
 
-1. **Create a Supabase project** (free) → in the SQL Editor run
-   `database/repair_and_upgrade.sql`, then run
-   `database/security_hardening.sql`, then
-   `database/resilience_and_backup.sql`. They are designed to be safely re-run in
-   that order; the latter two migrations are required for the fixed authorization,
-   resilience, backup-vault and restore model.
+1. **Create a Supabase project** (free) → in the SQL Editor run all of
+   `database/complete-schema.sql`. It is the canonical cumulative installer,
+   is safe to rerun, and includes the repaired schema, authorization,
+   resilience, backup-vault, restore and v14 management control plane. No
+   individual component SQL is required afterward.
 2. **Paste your credentials** into `assets/js/config.js` (`SUPABASE_URL`, `SUPABASE_KEY`).
 3. **Upload the contents of the project folder** to GitHub Pages /
    Cloudflare Pages / Vercel (so `index.html` is at the site root).
-4. **Sign up** in the app, then make yourself admin (edit the email line in
-   `repair_and_upgrade.sql`, or run):
-   `UPDATE profiles SET role='admin', status='approved' WHERE email='you@example.com';`
+4. **Sign up** in the app, then promote that exact account once in the trusted
+   SQL Editor (the cumulative installer never promotes a visitor automatically):
+   `UPDATE public.profiles SET role='admin', status='approved' WHERE email='you@example.com';`
 5. Configure at least one daily external heartbeat and one encrypted off-site
    backup using the linked protection and recovery guides above.
 
@@ -274,6 +275,26 @@ Permissions are enforced **both** in the UI **and** at the database via RLS.
   exact secret-to-provider mapping and rotation procedure.
 - Dynamic content is rendered through escaped text, validated URLs, constrained
   values, or explicit trusted-markup boundaries to reduce XSS risk.
+
+---
+
+## ✅ Maintainer Validation
+
+Install development dependencies, then run the deterministic schema and browser-source suite:
+
+```bash
+npm ci
+npm test
+```
+
+`npm test` rebuilds `database/complete-schema.sql`, executes it twice in a disposable Supabase-compatible PostgreSQL harness, runs the standalone missing-`tenant_settings` hardening regression, and parses all browser/inline scripts and administration surfaces. An optional Chromium recovery-surface check is available after installing Playwright Chromium:
+
+```bash
+npx playwright install chromium
+npm run test:browser
+```
+
+These checks do not replace staging tests against the real Supabase, Google Drive, scheduler, Storage, and backup providers.
 
 ---
 

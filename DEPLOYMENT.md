@@ -1,16 +1,13 @@
-# DramaConnect v13.2 Deployment Guide
+# DramaConnect v14.0 Deployment Guide
 
 The canonical step-by-step guide is **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. Use **[docs/SETUP_CHECKLIST.md](docs/SETUP_CHECKLIST.md)** for final verification.
 
 ## Required order
 
 1. Create a Supabase project. Put only its Project URL and anon/publishable key in `assets/js/config.js`; never put privileged secrets in browser code.
-2. In SQL Editor run, in order:
-   1. `database/repair_and_upgrade.sql`
-   2. `database/security_hardening.sql`
-   3. `database/resilience_and_backup.sql`
+2. In SQL Editor run **all of `database/complete-schema.sql` once**. It is the canonical cumulative installer, is safe to rerun, and includes the repaired schema, least-privilege security, resilience/backup and v14 management control plane. Do not run the component SQL files afterward.
 3. Register the first account, then use the controlled SQL in the canonical guide to set both `role = 'admin'` and `status = 'approved'` for that exact email.
-4. Deploy this static project with `index.html` at the site root; deploy matching service worker cache `dramaconnect-v13.2`.
+4. Deploy this static project with `index.html` at the site root; deploy matching service worker cache `dramaconnect-v14.0`.
 5. Configure at least one daily external heartbeat using **[Supabase protection](docs/SUPABASE_FREE_TIER_PROTECTION.md)**.
 6. Configure and rehearse an encrypted off-site backup using **[Backup and recovery](docs/BACKUP_AND_RECOVERY.md)**.
 7. Fill in the private/offline copy of the **[resilience runbook](docs/RESILIENCE_RUNBOOK.md)** and complete every applicable setup check.

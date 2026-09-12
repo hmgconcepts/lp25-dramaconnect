@@ -1,4 +1,4 @@
-# DramaConnect v13.2 User Guide
+# DramaConnect v14.0 User Guide
 
 The current, complete user manual is **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
 The full feature-by-feature reference is **[docs/FEATURES.md](docs/FEATURES.md)**.
@@ -23,7 +23,7 @@ The full feature-by-feature reference is **[docs/FEATURES.md](docs/FEATURES.md)*
 - Automatic reminders, birthday messages, and approval emails work only when the
   optional secured Edge Functions have been deployed and configured.
 - Only approved administrators can view resilience health, create/restore sealed
-  22-table archives, connect Google Drive or use the private backup vault.
+  25-table archives, connect Google Drive or use the private backup vault.
   Browser archives exclude Auth passwords/sessions and Storage object bytes.
 
 For setup and troubleshooting, see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**

@@ -1,0 +1,21 @@
+{
+  "name": "dramaconnect-v14-validation",
+  "private": true,
+  "version": "14.0.0",
+  "description": "Development-only validation for DramaConnect schema, browser modules and generated output.",
+  "type": "module",
+  "scripts": {
+    "build:schema": "node scripts/build-complete-schema.mjs",
+    "test:schema": "node tools/test-complete-schema.mjs",
+    "test:js": "node tools/test-javascript.mjs",
+    "test:browser": "node tools/test-browser.mjs",
+    "test": "npm run build:schema && npm run test:schema && npm run test:selfheal && npm run test:js",
+    "test:selfheal": "node tools/test-selfheal.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.10",
+    "esbuild": "^0.25.9",
+    "jsdom": "26.1.0",
+    "playwright": "^1.55.0"
+  }
+}

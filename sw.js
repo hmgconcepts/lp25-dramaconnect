@@ -4,7 +4,7 @@
  * - Never caches Supabase/API or cross-origin CDN traffic.
  * - Uses network-first navigation so deployments are not pinned to stale HTML.
  */
-const CACHE = 'dramaconnect-v13.2';
+const CACHE = 'dramaconnect-v14.0';
 const CORE = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const CORE = [
   './assets/js/boot.js',
   './assets/js/config.js',
   './assets/js/resilience.js',
+  './assets/js/platform-management.js',
   './assets/js/data-portability.js',
   './assets/js/drive-sync.js',
   './assets/js/i18n.js',
@@ -24,6 +25,12 @@ const CORE = [
   './assets/js/layout.js',
   './assets/js/install.js',
   './assets/js/crop.js',
+  './pages/settings.html',
+  './pages/admin-data.html',
+  './pages/storage-manager.html',
+  './pages/platform-health.html',
+  './pages/roles-status.html',
+  './pages/site-license.html',
   './assets/img/rccg_logo.png',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png'
