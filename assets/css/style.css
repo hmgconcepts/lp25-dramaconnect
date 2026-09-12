@@ -129,6 +129,45 @@ html.dark .enterprise-table thead th { background-color: #1a2335; }
 .dc-btn-primary { background-color: var(--rccg-blue); color: #fff; }
 .dc-btn-primary:hover { background-color: var(--rccg-blue-dark); }
 
+/* v14 control-plane component aliases (independent of the Tailwind CDN). */
+.card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 1.25rem;
+    box-shadow: 0 1px 3px rgba(15,23,42,.08);
+}
+.form-input {
+    padding: .7rem .8rem;
+    border: 1px solid var(--card-border);
+    border-radius: .75rem;
+    background: var(--card-bg);
+    color: var(--text);
+    outline: none;
+}
+.form-input:focus { border-color: var(--blue-600); box-shadow: 0 0 0 3px rgba(37,99,235,.13); }
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    padding: .65rem 1rem;
+    border: 1px solid transparent;
+    border-radius: .75rem;
+    font-weight: 700;
+    font-size: .875rem;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform .15s, filter .15s, background-color .15s;
+}
+.btn:hover:not(:disabled) { filter: brightness(.96); transform: translateY(-1px); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: #1d4ed8; color: #fff; }
+.btn-secondary { background: var(--card-bg); color: var(--text); border-color: var(--card-border); }
+.btn-success { background: #15803d; color: #fff; }
+.btn-danger { background: #b91c1c; color: #fff; }
+.btn-sm { padding: .45rem .7rem; border-radius: .6rem; font-size: .75rem; }
+
 /* ---- Badges ---- */
 .badge { padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; }
 .badge-admin { background:#dbeafe; color:#1d4ed8; }
@@ -136,6 +175,9 @@ html.dark .enterprise-table thead th { background-color: #1a2335; }
 .badge-green { background:#dcfce7; color:#15803d; }
 .badge-red { background:#fee2e2; color:#b91c1c; }
 .badge-yellow { background:#fef9c3; color:#a16207; }
+.badge-success { background:#dcfce7; color:#166534; }
+.badge-warning { background:#fef3c7; color:#92400e; }
+.badge-danger { background:#fee2e2; color:#991b1b; }
 
 /* ---- Visibility helpers ---- */
 .admin-only { display: none; }
