@@ -352,11 +352,31 @@ BEGIN
 
   IF NOT FOUND THEN RAISE EXCEPTION 'Rehearsal not found'; END IF;
   IF r.checkin_open IS NOT TRUE THEN RAISE EXCEPTION 'Self check-in is closed'; END IF;
-  IF r.rehearsal_date <> CURRENT_DATE THEN
+
+  -- rehearsal_date is a plain DATE with no timezone, while CURRENT_DATE is the
+  -- server date (UTC on Supabase). A rehearsal held in the evening in a
+  -- timezone ahead of UTC, or one running past midnight, was rejected as "not
+  -- the rehearsal date" even though it was the correct local day. A one-day
+  -- window either side covers every real timezone offset while still refusing
+  -- check-in for a rehearsal weeks away. The code itself remains secret and the
+  -- window remains under explicit admin control through checkin_open.
+  IF r.rehearsal_date NOT BETWEEN CURRENT_DATE - 1 AND CURRENT_DATE + 1 THEN
     RAISE EXCEPTION 'Self check-in is only available on the rehearsal date';
   END IF;
-  IF r.checkin_code IS NULL OR char_length(r.checkin_code) <> 6
-     OR trim(COALESCE(p_code, '')) <> r.checkin_code THEN
+
+  -- A code must simply exist and not be trivially short. The previous rule
+  -- demanded char_length(code) = 6 exactly, which silently rejected every code
+  -- of any other length -- including the "DRAMA25" example shown in the admin
+  -- UI (seven characters) and ordinary codes such as "SEP12" (five characters)
+  -- -- and reported "Invalid check-in code" no matter what the member typed.
+  IF r.checkin_code IS NULL OR char_length(btrim(r.checkin_code)) < 3 THEN
+    RAISE EXCEPTION 'No self check-in code is set for this rehearsal' USING ERRCODE = '22023';
+  END IF;
+
+  -- Compare case-insensitively with whitespace removed on BOTH sides, so a
+  -- member who types "sep12" or pastes "SEP12 " against an announced "SEP12"
+  -- is checked in rather than rejected.
+  IF upper(btrim(COALESCE(p_code, ''))) <> upper(btrim(r.checkin_code)) THEN
     RAISE EXCEPTION 'Invalid check-in code' USING ERRCODE = '22023';
   END IF;
 

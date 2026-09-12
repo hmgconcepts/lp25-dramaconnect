@@ -19,7 +19,7 @@
 --
 -- COMPONENT MANIFEST (the builder verifies these source digests):
 -- 01 database/repair_and_upgrade.sql  sha256:ff81eda256cc670de00d24f93b059676a457a0e25559b256b59c6796620e3be0
--- 02 database/security_hardening.sql  sha256:d8878e7213704acd47a7f012fb5ec8d1a7fbd28a0f670d19cd40cd7b750a59e0
+-- 02 database/security_hardening.sql  sha256:8dbd18438c93351a2ad07d625c83026539bf107db974ff382bd89d8cb9174d60
 -- 03 database/resilience_and_backup.sql  sha256:f56b3811a30b96ad66c33f49772159709c94d6543ed7616a1db1dfb09f648554
 -- 04 database/platform_management.sql  sha256:e55223de561dc8d1752a6b23df601f3317f8679e1b67d602b36f94cf56522323
 -- 05 database/post_install_selfheal.sql  sha256:dc0f41e0bfc17332db078952142345b3c65a18fcd646f6c834ec819894432f53
@@ -980,11 +980,31 @@ BEGIN
 
   IF NOT FOUND THEN RAISE EXCEPTION 'Rehearsal not found'; END IF;
   IF r.checkin_open IS NOT TRUE THEN RAISE EXCEPTION 'Self check-in is closed'; END IF;
-  IF r.rehearsal_date <> CURRENT_DATE THEN
+
+  -- rehearsal_date is a plain DATE with no timezone, while CURRENT_DATE is the
+  -- server date (UTC on Supabase). A rehearsal held in the evening in a
+  -- timezone ahead of UTC, or one running past midnight, was rejected as "not
+  -- the rehearsal date" even though it was the correct local day. A one-day
+  -- window either side covers every real timezone offset while still refusing
+  -- check-in for a rehearsal weeks away. The code itself remains secret and the
+  -- window remains under explicit admin control through checkin_open.
+  IF r.rehearsal_date NOT BETWEEN CURRENT_DATE - 1 AND CURRENT_DATE + 1 THEN
     RAISE EXCEPTION 'Self check-in is only available on the rehearsal date';
   END IF;
-  IF r.checkin_code IS NULL OR char_length(r.checkin_code) <> 6
-     OR trim(COALESCE(p_code, '')) <> r.checkin_code THEN
+
+  -- A code must simply exist and not be trivially short. The previous rule
+  -- demanded char_length(code) = 6 exactly, which silently rejected every code
+  -- of any other length -- including the "DRAMA25" example shown in the admin
+  -- UI (seven characters) and ordinary codes such as "SEP12" (five characters)
+  -- -- and reported "Invalid check-in code" no matter what the member typed.
+  IF r.checkin_code IS NULL OR char_length(btrim(r.checkin_code)) < 3 THEN
+    RAISE EXCEPTION 'No self check-in code is set for this rehearsal' USING ERRCODE = '22023';
+  END IF;
+
+  -- Compare case-insensitively with whitespace removed on BOTH sides, so a
+  -- member who types "sep12" or pastes "SEP12 " against an announced "SEP12"
+  -- is checked in rather than rejected.
+  IF upper(btrim(COALESCE(p_code, ''))) <> upper(btrim(r.checkin_code)) THEN
     RAISE EXCEPTION 'Invalid check-in code' USING ERRCODE = '22023';
   END IF;
 
