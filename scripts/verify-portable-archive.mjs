@@ -5,7 +5,7 @@ import { lstat, readFile } from 'node:fs/promises';
 const MAX_BYTES = 100 * 1024 * 1024;
 const FORMAT = 'dramaconnect-portable-archive';
 const FORMAT_VERSION = 2;
-const SCHEMA_VERSION = '13.2';
+const SCHEMA_VERSION = '14.0';
 const expected = [
   ['profiles', 'id'], ['productions', 'id'], ['rehearsals', 'id'], ['events', 'id'],
   ['polls', 'id'], ['finances', 'id'], ['announcements', 'id'], ['messages', 'id'],
