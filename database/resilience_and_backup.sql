@@ -1,4 +1,4 @@
--- DramaConnect v13.2 — resilience, keep-alive, backup coordination and archive vault
+-- DramaConnect v14.0 — resilience, keep-alive, backup coordination and archive vault
 -- Apply after database/repair_and_upgrade.sql and database/security_hardening.sql.
 -- Safe to re-run. No production secret is stored in this migration.
 

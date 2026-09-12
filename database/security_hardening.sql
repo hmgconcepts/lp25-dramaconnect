@@ -1,67 +1,145 @@
 -- ============================================================================
 -- DramaConnect security hardening and missing backend objects
--- Run AFTER database/repair_and_upgrade.sql in Supabase SQL Editor.
--- Idempotent: policies, views, functions and triggers are replaced safely.
+-- Prefer database/complete-schema.sql for installation. When this migration is
+-- run on a legacy database by itself, it now bootstraps tenant_settings before
+-- altering it, fixing SQLSTATE 42P01. Other application tables remain expected
+-- from the base schema. Idempotent: policies, views, functions and triggers are
+-- replaced safely.
 -- ============================================================================
 
 BEGIN;
 
+-- Standalone dependency guard for the setting relation this migration extends.
+CREATE TABLE IF NOT EXISTS public.tenant_settings (
+  id INT PRIMARY KEY DEFAULT 1,
+  app_name TEXT DEFAULT 'DramaConnect Enterprise',
+  org_name TEXT DEFAULT 'RCCG LP 25',
+  logo_url TEXT DEFAULT '../assets/img/rccg_logo.png',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO public.tenant_settings (id, app_name, org_name)
+VALUES (1, 'DramaConnect Enterprise', 'RCCG LP 25')
+ON CONFLICT (id) DO NOTHING;
+
 -- --------------------------------------------------------------------------
 -- 1. Missing columns and data-integrity checks
+--
+-- Every statement in this section is guarded with to_regclass() and column
+-- existence checks. This component runs inside an explicit transaction: if a
+-- single unguarded ALTER hit a table or column that is absent on a particular
+-- project, PostgreSQL would abort and roll the ENTIRE component back. The base
+-- tables created in component 01 would survive, but the views and aggregate
+-- RPCs declared further down this same component would silently vanish, and the
+-- UI would start reporting:
+--     Could not find the table 'public.member_directory' in the schema cache
+--     Could not find the table 'public.rehearsal_schedule' in the schema cache
+--     Could not find the function public.poll_results without parameters
+--     Could not find the function public.event_rsvp_results without parameters
+-- Guarding each statement keeps the transaction atomic for what matters and
+-- makes this migration safe on new, partial and legacy databases alike.
 -- --------------------------------------------------------------------------
-ALTER TABLE public.gallery
-  ADD COLUMN IF NOT EXISTS uploaded_by_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+DO $dc_guard$
+BEGIN
+  IF to_regclass('public.gallery') IS NOT NULL
+     AND to_regclass('public.profiles') IS NOT NULL THEN
+    ALTER TABLE public.gallery
+      ADD COLUMN IF NOT EXISTS uploaded_by_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+  END IF;
 
-ALTER TABLE public.tenant_settings
-  ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#003399';
+  IF to_regclass('public.tenant_settings') IS NOT NULL THEN
+    ALTER TABLE public.tenant_settings
+      ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#003399';
+  END IF;
+END $dc_guard$;
 
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_valid;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_valid
-  CHECK (role IN ('member', 'admin')) NOT VALID;
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_status_valid;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_status_valid
-  CHECK (status IN ('pending', 'approved', 'rejected')) NOT VALID;
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_birth_month_valid;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_birth_month_valid
-  CHECK (birth_month IS NULL OR birth_month BETWEEN 1 AND 12) NOT VALID;
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_birth_day_valid;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_birth_day_valid
-  CHECK (birth_day IS NULL OR birth_day BETWEEN 1 AND 31) NOT VALID;
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_unit_length;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_unit_length
-  CHECK (unit IS NULL OR char_length(unit) <= 80) NOT VALID;
+-- Each constraint is applied only when both the table and every column it
+-- references are present. NOT VALID keeps re-runs cheap and never rejects rows
+-- that already existed before the constraint was introduced.
+DO $dc_guard$
+DECLARE
+  c       RECORD;
+  col     TEXT;
+  missing BOOLEAN;
+BEGIN
+  FOR c IN
+    SELECT * FROM (VALUES
+      ('profiles', 'profiles_role_valid', ARRAY['role'],
+       'role IN (''member'', ''admin'')'),
+      ('profiles', 'profiles_status_valid', ARRAY['status'],
+       'status IN (''pending'', ''approved'', ''rejected'')'),
+      ('profiles', 'profiles_birth_month_valid', ARRAY['birth_month'],
+       'birth_month IS NULL OR birth_month BETWEEN 1 AND 12'),
+      ('profiles', 'profiles_birth_day_valid', ARRAY['birth_day'],
+       'birth_day IS NULL OR birth_day BETWEEN 1 AND 31'),
+      ('profiles', 'profiles_unit_length', ARRAY['unit'],
+       'unit IS NULL OR char_length(unit) <= 80'),
+      ('attendance', 'attendance_status_valid', ARRAY['status'],
+       'status IN (''present'', ''absent'', ''excused'', ''late'')'),
+      ('event_rsvps', 'event_rsvps_response_valid', ARRAY['response'],
+       'response IN (''going'', ''maybe'', ''no'')'),
+      ('tasks', 'tasks_status_valid', ARRAY['status'],
+       'status IN (''open'', ''in_progress'', ''done'')'),
+      ('tasks', 'tasks_priority_valid', ARRAY['priority'],
+       'priority IN (''low'', ''normal'', ''high'')'),
+      ('gallery', 'gallery_image_url_safe', ARRAY['image_url'],
+       'image_url IS NULL OR image_url ~* ''^https?://'''),
+      ('resources', 'resources_url_safe', ARRAY['url'],
+       'url IS NULL OR url ~* ''^https?://'''),
+      ('productions', 'productions_script_url_safe', ARRAY['script_url'],
+       'script_url IS NULL OR script_url ~* ''^https?://'''),
+      ('tenant_settings', 'tenant_primary_color_valid', ARRAY['primary_color'],
+       'primary_color IS NULL OR primary_color = '''' OR primary_color ~ ''^#[0-9A-Fa-f]{6}$'''),
+      ('tenant_settings', 'tenant_logo_url_safe', ARRAY['logo_url'],
+       'logo_url IS NULL OR logo_url = '''' OR logo_url ~* ''^https?://'' OR logo_url ~ ''^(\.{0,2}/|/)(?!/)''')
+    ) AS v(tbl, con, cols, expr)
+  LOOP
+    IF to_regclass('public.' || c.tbl) IS NULL THEN
+      CONTINUE;
+    END IF;
 
-ALTER TABLE public.attendance DROP CONSTRAINT IF EXISTS attendance_status_valid;
-ALTER TABLE public.attendance ADD CONSTRAINT attendance_status_valid
-  CHECK (status IN ('present', 'absent', 'excused', 'late')) NOT VALID;
-ALTER TABLE public.event_rsvps DROP CONSTRAINT IF EXISTS event_rsvps_response_valid;
-ALTER TABLE public.event_rsvps ADD CONSTRAINT event_rsvps_response_valid
-  CHECK (response IN ('going', 'maybe', 'no')) NOT VALID;
-ALTER TABLE public.tasks DROP CONSTRAINT IF EXISTS tasks_status_valid;
-ALTER TABLE public.tasks ADD CONSTRAINT tasks_status_valid
-  CHECK (status IN ('open', 'in_progress', 'done')) NOT VALID;
-ALTER TABLE public.tasks DROP CONSTRAINT IF EXISTS tasks_priority_valid;
-ALTER TABLE public.tasks ADD CONSTRAINT tasks_priority_valid
-  CHECK (priority IN ('low', 'normal', 'high')) NOT VALID;
-ALTER TABLE public.gallery DROP CONSTRAINT IF EXISTS gallery_image_url_safe;
-ALTER TABLE public.gallery ADD CONSTRAINT gallery_image_url_safe
-  CHECK (image_url ~* '^https://') NOT VALID;
-ALTER TABLE public.resources DROP CONSTRAINT IF EXISTS resources_url_safe;
-ALTER TABLE public.resources ADD CONSTRAINT resources_url_safe
-  CHECK (url ~* '^https?://') NOT VALID;
-ALTER TABLE public.productions DROP CONSTRAINT IF EXISTS productions_script_url_safe;
-ALTER TABLE public.productions ADD CONSTRAINT productions_script_url_safe
-  CHECK (script_url IS NULL OR script_url ~* '^https?://') NOT VALID;
-ALTER TABLE public.tenant_settings DROP CONSTRAINT IF EXISTS tenant_primary_color_valid;
-ALTER TABLE public.tenant_settings ADD CONSTRAINT tenant_primary_color_valid
-  CHECK (primary_color ~ '^#[0-9A-Fa-f]{6}$') NOT VALID;
-ALTER TABLE public.tenant_settings DROP CONSTRAINT IF EXISTS tenant_logo_url_safe;
-ALTER TABLE public.tenant_settings ADD CONSTRAINT tenant_logo_url_safe
-  CHECK (logo_url ~* '^https?://' OR logo_url ~ '^(\.{0,2}/|/)(?!/)') NOT VALID;
+    missing := false;
+    FOREACH col IN ARRAY c.cols
+    LOOP
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = c.tbl AND column_name = col
+      ) THEN
+        missing := true;
+      END IF;
+    END LOOP;
 
-CREATE INDEX IF NOT EXISTS gallery_uploaded_by_id_idx ON public.gallery(uploaded_by_id);
-CREATE INDEX IF NOT EXISTS inbox_recipient_created_idx ON public.inbox(recipient_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS tasks_assignee_due_idx ON public.tasks(assignee_id, due_date);
+    IF missing THEN
+      CONTINUE;
+    END IF;
+
+    EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I', c.tbl, c.con);
+    EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I CHECK (%s) NOT VALID',
+                   c.tbl, c.con, c.expr);
+  END LOOP;
+END $dc_guard$;
+
+-- Indexes are guarded for the same reason: a missing table must not abort the
+-- transaction that also carries the views and the aggregate RPCs.
+DO $dc_guard$
+DECLARE
+  i RECORD;
+BEGIN
+  FOR i IN
+    SELECT * FROM (VALUES
+      ('gallery_uploaded_by_id_idx',  'gallery', 'uploaded_by_id'),
+      ('inbox_recipient_created_idx', 'inbox',   'recipient_id, created_at DESC'),
+      ('tasks_assignee_due_idx',      'tasks',   'assignee_id, due_date')
+    ) AS v(idx, tbl, cols)
+  LOOP
+    IF to_regclass('public.' || i.tbl) IS NOT NULL THEN
+      BEGIN
+        EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON public.%I (%s)', i.idx, i.tbl, i.cols);
+      EXCEPTION WHEN undefined_column OR undefined_table THEN
+        NULL; -- column not present on this project; skip quietly
+      END;
+    END IF;
+  END LOOP;
+END $dc_guard$;
 
 -- --------------------------------------------------------------------------
 -- 2. Recursion-safe authorization helpers
@@ -737,6 +815,13 @@ CREATE POLICY gallery_manager_delete ON storage.objects FOR DELETE
   );
 
 COMMIT;
+
+
+-- PostgREST caches the database catalog on startup and reports PGRST205
+-- ("Could not find the table/function ... in the schema cache") for objects
+-- that exist perfectly well until it is told to re-read the catalog. Reload it
+-- explicitly so newly created views and RPCs are immediately callable.
+NOTIFY pgrst, 'reload schema';
 
 -- Optional checks after running:
 -- SELECT policyname, tablename, cmd FROM pg_policies WHERE schemaname='public' ORDER BY tablename, policyname;

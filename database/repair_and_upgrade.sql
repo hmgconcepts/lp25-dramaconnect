@@ -8,13 +8,14 @@
 --   3. BACKFILLS profiles for users who already signed up.
 --   4. Removes ALL old/recursive RLS policies and installs clean ones
 --      (fixes "infinite recursion detected in policy for relation profiles").
---   5. Promotes + approves YOUR account as admin.
+--   5. Includes an explicit, no-op-by-default first-admin bootstrap statement.
 --
 -- It only touches tables that actually exist, so it works whether your database
--- is brand new or partially set up.
+-- is brand new or partially set up. New/backfilled accounts remain pending until
+-- an owner deliberately approves them; this script never silently grants access.
 --
--- HOW TO RUN: Supabase -> SQL Editor -> New query -> paste ALL -> edit the
--- email near the bottom -> Run. Safe to re-run.
+-- HOW TO RUN: prefer database/complete-schema.sql. This legacy component remains
+-- safe to re-run for upgrades and is assembled into the canonical installer.
 -- ============================================================================
 
 -- 0. CREATE ALL TABLES (no-op if they already exist) -------------------------
@@ -515,7 +516,7 @@ ORDER BY created_at;
 -- ============================================================================
 -- Enterprise Upgrade: Inventory & Props Management
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS inventory (
+CREATE TABLE IF NOT EXISTS public.inventory (
   id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name        TEXT NOT NULL,
   category    TEXT DEFAULT 'Prop', -- Prop, Costume, Equipment, Other
@@ -527,7 +528,7 @@ CREATE TABLE IF NOT EXISTS inventory (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "inventory_read" ON public.inventory;
 CREATE POLICY "inventory_read" ON public.inventory FOR SELECT USING (auth.role() = 'authenticated');
 DROP POLICY IF EXISTS "inventory_write" ON public.inventory;
@@ -547,7 +548,7 @@ ADD COLUMN IF NOT EXISTS waist TEXT;
 -- ============================================================================
 -- Enterprise Upgrade V4: True SaaS / Multi-tenant Global Settings 
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS tenant_settings (
+CREATE TABLE IF NOT EXISTS public.tenant_settings (
   id          INT PRIMARY KEY DEFAULT 1,
   app_name    TEXT DEFAULT 'DramaConnect Enterprise',
   org_name    TEXT DEFAULT 'RCCG LP 25',
@@ -556,11 +557,11 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
 );
 
 -- Seed defaults so we never error on reading
-INSERT INTO tenant_settings (id, app_name, org_name) 
+INSERT INTO public.tenant_settings (id, app_name, org_name) 
 VALUES (1, 'DramaConnect Enterprise', 'RCCG LP 25') 
 ON CONFLICT (id) DO NOTHING;
 
-ALTER TABLE tenant_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tenant_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "tenant_settings_read" ON public.tenant_settings;
 CREATE POLICY "tenant_settings_read" ON public.tenant_settings FOR SELECT USING (true);
 
