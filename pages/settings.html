@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="app-version" content="13.2">
+    <meta name="app-version" content="14.0">
     <title>Settings, Resilience & Backup | DramaConnect Enterprise</title>
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -19,9 +19,22 @@
         <div id="page-header"></div>
 
         <div id="migration-warning" class="hidden mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" role="alert">
-            <strong>Resilience migration required.</strong>
-            Apply <code>database/resilience_and_backup.sql</code> after the existing repair and security migrations. Backup leases, health history, the private vault and Drive scheduling remain unavailable until then.
+            <strong>Complete schema required.</strong>
+            Apply <code>database/complete-schema.sql</code>. It is the all-inclusive, safe-to-rerun production installer; no other SQL is required afterward.
         </div>
+
+        <section class="glass-card p-6 mb-6" aria-labelledby="control-title">
+            <h2 id="control-title" class="text-lg font-extrabold text-slate-800 dark-text">Administration control plane</h2>
+            <p class="text-sm text-slate-500 mt-1 mb-4">Each high-risk function now has a dedicated, auditable workspace. This Settings page retains branding, appearance and compatibility controls.</p>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <a href="admin-data.html" class="rounded-xl border border-blue-200 bg-blue-50 p-4 hover:shadow-md transition"><i class="fas fa-database text-blue-700"></i><strong class="block mt-2 text-blue-950">Admin Data</strong><span class="text-xs text-blue-800">Archives, Drive, vault and recovery</span></a>
+                <a href="storage-manager.html" class="rounded-xl border border-violet-200 bg-violet-50 p-4 hover:shadow-md transition"><i class="fas fa-hard-drive text-violet-700"></i><strong class="block mt-2 text-violet-950">Storage Manager</strong><span class="text-xs text-violet-800">Quota, inventory and retention</span></a>
+                <a href="platform-health.html" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 hover:shadow-md transition"><i class="fas fa-heart-pulse text-emerald-700"></i><strong class="block mt-2 text-emerald-950">Platform Health</strong><span class="text-xs text-emerald-800">Resilience, security and audit</span></a>
+                <a href="roles-status.html" class="rounded-xl border border-amber-200 bg-amber-50 p-4 hover:shadow-md transition"><i class="fas fa-user-shield text-amber-700"></i><strong class="block mt-2 text-amber-950">Roles & Status</strong><span class="text-xs text-amber-800">Approvals and least privilege</span></a>
+                <a href="site-license.html" class="rounded-xl border border-cyan-200 bg-cyan-50 p-4 hover:shadow-md transition"><i class="fas fa-certificate text-cyan-700"></i><strong class="block mt-2 text-cyan-950">Site License</strong><span class="text-xs text-cyan-800">Lifetime ownership and entitlement</span></a>
+                <a href="settings.html" class="rounded-xl border border-slate-200 bg-slate-50 p-4"><i class="fas fa-gear text-slate-700"></i><strong class="block mt-2 text-slate-950">Settings</strong><span class="text-xs text-slate-600">Branding, device and compatibility</span></a>
+            </div>
+        </section>
 
         <section class="glass-card p-6 md:p-8 mb-6 animate-fade-in admin-only" aria-labelledby="health-title">
             <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
@@ -47,7 +60,7 @@
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="local-title">
                 <h2 id="local-title" class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-file-shield text-blue-600 mr-2"></i> Verified Portable Archive</h2>
-                <p class="text-xs text-slate-500 mb-5">Exports all 22 application/configuration tables with stable pagination, row counts, per-table hashes and a full SHA-256 seal. Auth passwords/sessions and Storage object bytes are not included.</p>
+                <p class="text-xs text-slate-500 mb-5">Exports all 25 application/configuration tables with stable pagination, row counts, per-table hashes and a full SHA-256 seal. Auth passwords/sessions and Storage object bytes are not included.</p>
                 <div class="flex flex-wrap gap-2 mb-5">
                     <button id="backup-btn" class="dc-btn dc-btn-primary"><i class="fas fa-download mr-1"></i> Download Verified JSON</button>
                     <select id="csv-table" class="dc-input max-w-[190px]" aria-label="CSV table"></select>
@@ -165,6 +178,7 @@
 
     <script src="../assets/js/config.js"></script>
     <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
     <script src="../assets/js/data-portability.js"></script>
     <script src="../assets/js/drive-sync.js"></script>
     <script src="../assets/js/i18n.js"></script>
@@ -433,7 +447,7 @@
         function bindControls() {
             $('health-refresh').onclick = () => action('Refreshing resilience health…', refreshHealth).catch(() => {});
             $('heartbeat-btn').onclick = () => action('Sending heartbeat…', () => Resilience.ping('manual-button'), 'Heartbeat accepted.').then(refreshHealth).catch(() => {});
-            $('backup-btn').onclick = () => action('Exporting 22 tables and sealing archive…', () => DataPortability.downloadLocal(), 'Verified portable archive downloaded.').then(refreshHealth).catch(() => {});
+            $('backup-btn').onclick = () => action('Exporting 25 tables and sealing archive…', () => DataPortability.downloadLocal(), 'Verified portable archive downloaded.').then(refreshHealth).catch(() => {});
             $('csv-export').onclick = () => action('Exporting CSV…', () => DataPortability.downloadTableCsv($('csv-table').value)).then(count => UI.toast(`${count} row(s) exported.`, 'success')).catch(() => {});
             $('restore-file').onchange = () => { selectedArchive = null; $('restore-report').classList.add('hidden'); };
             $('verify-file').onclick = async () => {
