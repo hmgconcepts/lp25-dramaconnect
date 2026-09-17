@@ -60,16 +60,43 @@ const Utils = {
         return (CONFIG.CURRENCY || '₦') + Number(amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
     },
 
+    /**
+     * Parse a date/datetime string into a Date.
+     *
+     * `new Date('2025-09-17')` is specified to represent UTC midnight, so rendering it
+     * with toLocaleDateString() in any timezone behind UTC (all of the Americas) shows
+     * the PREVIOUS day. PostgreSQL DATE columns (rehearsals.rehearsal_date,
+     * productions.performance_date, tasks.due_date, finances.date,
+     * dc_site_license.starts_on/expires_on) arrive as plain 'YYYY-MM-DD' with no time
+     * zone, so they must be built as LOCAL calendar dates instead.
+     *
+     * Strings that already carry a real instant ('…Z' or '+HH:mm'/'‑HH:mm') and full
+     * 'YYYY-MM-DDTHH:mm' timestamps with an offset fall through to the native parser,
+     * preserving existing behaviour for timestamptz columns such as created_at.
+     */
+    parseLocalDate(dateStr) {
+        if (dateStr instanceof Date) return dateStr;
+        if (typeof dateStr !== 'string') return new Date(dateStr);
+        const text = dateStr.trim();
+        const hasExplicitZone = /([Zz]|[+-]\d{2}:?\d{2})$/.test(text);
+        const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(text);
+        if (m && !hasExplicitZone) {
+            const [, y, mo, d, h = '0', mi = '0', s = '0'] = m;
+            return new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s));
+        }
+        return new Date(text);
+    },
+
     formatDate(dateStr) {
         if (!dateStr) return '—';
-        const d = new Date(dateStr);
+        const d = this.parseLocalDate(dateStr);
         if (isNaN(d.getTime())) return '—';
         return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     },
 
     formatDateTime(dateStr) {
         if (!dateStr) return '—';
-        const d = new Date(dateStr);
+        const d = this.parseLocalDate(dateStr);
         if (isNaN(d.getTime())) return '—';
         return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     },
@@ -77,7 +104,7 @@ const Utils = {
     /** Days from today (negative = past). */
     daysUntil(dateStr) {
         if (!dateStr) return null;
-        const d = new Date(dateStr);
+        const d = this.parseLocalDate(dateStr);
         if (isNaN(d.getTime())) return null;
         const today = new Date(); today.setHours(0, 0, 0, 0);
         return Math.round((d - today) / 86400000);

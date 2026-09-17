@@ -120,13 +120,22 @@ const UI = {
     },
 
     applyStoredTheme() {
-        if (localStorage.getItem('dc_theme') === 'dark') document.documentElement.classList.add('dark');
+        // localStorage access throws when site data is blocked; the theme is a
+        // cosmetic preference and must never be able to break page start-up.
+        let stored = null;
+        try { stored = localStorage.getItem('dc_theme'); } catch (_) { /* storage blocked */ }
+        if (stored === 'dark') document.documentElement.classList.add('dark');
     },
 
     toggleTheme() {
         document.documentElement.classList.toggle('dark');
-        localStorage.setItem('dc_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        try {
+            localStorage.setItem('dc_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        } catch (_) { /* storage blocked — the in-memory theme still applied */ }
     }
 };
-UI.applyStoredTheme();
+
+// Publish the global before applying the stored theme: nothing that runs at load
+// time should be able to prevent window.UI from existing.
 window.UI = UI;
+UI.applyStoredTheme();

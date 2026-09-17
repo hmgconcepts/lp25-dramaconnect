@@ -6,8 +6,19 @@
  * Add more languages by extending DICT.
  * ============================================================================
  */
+/**
+ * Reading localStorage throws outright when site data is blocked (Safari private
+ * browsing, a restricted iframe, or cookies disabled in Chrome). This value is read
+ * while the module is still evaluating, so an unguarded throw here would abort
+ * i18n.js before I18n exists — and because i18n.js loads before ui.js, auth.js,
+ * db.js and utils.js, it would take the entire page down with it.
+ */
+function readStoredLang() {
+    try { return localStorage.getItem('dc-lang'); } catch (_) { return null; }
+}
+
 const I18n = {
-    lang: localStorage.getItem('dc-lang') || 'en',
+    lang: readStoredLang() || 'en',
     DICT: {
         en: {
             dashboard: 'Dashboard', my_dashboard: 'My Dashboard', members: 'Members',
@@ -45,7 +56,7 @@ const I18n = {
     },
     set(lang) {
         this.lang = lang;
-        localStorage.setItem('dc-lang', lang);
+        try { localStorage.setItem('dc-lang', lang); } catch (_) { /* storage blocked */ }
         this.apply();
         document.dispatchEvent(new CustomEvent('langchange', { detail: { lang } }));
     }
