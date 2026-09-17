@@ -33,7 +33,7 @@ Deno.serve(async (request: Request) => {
         apikey: anonKey,
         authorization: `Bearer ${anonKey}`,
         'content-type': 'application/json',
-        'user-agent': 'DramaConnect-Edge-Ping/13.2'
+        'user-agent': 'DramaConnect-Edge-Ping/14.0'
       },
       body: JSON.stringify({ p_source: source }),
       signal: controller.signal

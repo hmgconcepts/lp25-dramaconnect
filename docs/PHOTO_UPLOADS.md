@@ -5,14 +5,14 @@ Members can upload a photo that appears on their **digital ID card**, the
 **Supabase Storage**. Available storage and bandwidth depend on the current
 project plan and should be checked in the dashboard.
 
-> ✅ Setup is automatic after running **both** database migrations in order:
-> `repair_and_upgrade.sql`, then `security_hardening.sql`. The second migration
-> replaces legacy storage policies and requires the owner to be approved.
+> ✅ Setup is automatic after running all of the canonical
+> `database/complete-schema.sql`. Its storage hardening replaces legacy policies
+> and requires the owner to be approved.
 
 ---
 
-## What the SQL set up for you
-Running both migrations in the documented order creates:
+## What the SQL sets up for you
+Running the cumulative schema creates:
 1. A **public** storage bucket named **`avatars`** (public = photos are viewable
    on ID cards/directory).
 2. Security policies so that **each member can upload/replace/delete only their
@@ -30,13 +30,12 @@ If you ever see "Photo storage not set up yet", create the bucket by hand:
 ### Option A — Dashboard (no code)
 1. Supabase → **Storage** → **New bucket**.
 2. Name: **`avatars`**, toggle **Public bucket = ON**, **Save**.
-3. Supabase → **SQL Editor**, run just the storage section again (it's near the
-   end of `repair_and_upgrade.sql`, the block that starts with
-   `INSERT INTO storage.buckets ... 'avatars' ...` and the storage policy section of `database/security_hardening.sql`.
+3. Supabase → **SQL Editor**, rerun all of `database/complete-schema.sql`. Do not
+   extract only a storage subsection, because the final ownership policies depend
+   on the cumulative helper functions and profile hardening.
 
-### Option B — Re-run the whole repair script
-Run all of `database/repair_and_upgrade.sql`, then all of
-`database/security_hardening.sql`. Both are safe to re-run in that order.
+### Option B — Re-run the cumulative installer
+Run all of `database/complete-schema.sql`. It is safe to rerun.
 
 ---
 
@@ -54,7 +53,7 @@ Run all of `database/repair_and_upgrade.sql`, then all of
 ## Troubleshooting
 | Problem | Fix |
 | :-- | :-- |
-| "Photo storage not set up yet" | Create the bucket or re-run both migrations in order. |
-| Upload says "row-level security" | Confirm the account is approved, the path begins with its Auth user ID, and re-run both migrations in order. |
+| "Photo storage not set up yet" | Create the bucket or rerun `database/complete-schema.sql`. |
+| Upload says "row-level security" | Confirm the account is approved, the path begins with its Auth user ID, and rerun the cumulative schema. |
 | Photo doesn't show | Confirm the bucket is **Public**; hard-refresh the page. |
 | Image too large | Keep it under ~2 MB; resize before uploading. |

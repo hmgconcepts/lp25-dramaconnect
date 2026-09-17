@@ -40,7 +40,7 @@ export default async function handler(request, response) {
         apikey: anonKey,
         Authorization: `Bearer ${anonKey}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'DramaConnect-Vercel-Cron/13.2'
+        'User-Agent': 'DramaConnect-Vercel-Cron/14.0'
       },
       body: JSON.stringify({ p_source: 'vercel-cron' }),
       cache: 'no-store',

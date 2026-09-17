@@ -1,14 +1,14 @@
 # Backup, Google Drive Sync and Recovery
 
-DramaConnect v13.2 uses several complementary backup types. No single copy is enough.
+DramaConnect v14.0 uses several complementary backup types. No single copy is enough.
 
 ## Coverage matrix
 
 | Backup | Browser must be open? | Off-site? | Application rows | Auth credentials | Storage bytes | Primary purpose |
 |---|---:|---:|---:|---:|---:|---|
-| Downloaded portable archive | Yes | After you move it | All 22 app/config tables visible to an approved admin | No | No | Easy verified export/import |
-| Google Drive portable archive | Yes for creation | Yes | Same 22 tables | No | No | Convenient versioned copies |
-| Private Supabase vault | Yes for creation | **No** | Same 22 tables | No | No | Fast secondary copy in-project |
+| Downloaded portable archive | Yes | After you move it | All 25 app/config tables visible to an approved admin | No | No | Easy verified export/import |
+| Google Drive portable archive | Yes for creation | Yes | Same 25 tables | No | No | Convenient versioned copies |
+| Private Supabase vault | Yes for creation | **No** | Same 25 tables | No | No | Fast secondary copy in-project |
 | Encrypted weekly public-schema dump | No | Yes, through rclone | All `public` schema objects/data | Separate Auth component | No | Database disaster recovery |
 | Encrypted Auth data dump | No | Yes, through rclone | N/A | `auth.users` and `auth.identities`; no sessions/tokens | No | Recreate user UUIDs and password hashes |
 | Encrypted Storage export | No | Yes, through rclone | Storage manifest | No | Yes, when service-role secret is configured | Restore avatars/gallery/media |
@@ -17,9 +17,9 @@ A portable archive is not a PostgreSQL dump. The vault is not independent of Sup
 
 ## Portable archive format
 
-The archive format is `dramaconnect-portable-archive`, version 2. It contains these 22 tables in dependency order:
+The archive format is `dramaconnect-portable-archive`, version 2. It contains these 25 tables in dependency order:
 
-`profiles`, `productions`, `rehearsals`, `events`, `polls`, `finances`, `announcements`, `messages`, `reminders`, `resources`, `inventory`, `tenant_settings`, `activity_log`, `budgets`, `cast_list`, `attendance`, `inbox`, `tasks`, `poll_votes`, `event_rsvps`, `gallery`, `suggestions`.
+`profiles`, `productions`, `rehearsals`, `events`, `polls`, `finances`, `announcements`, `messages`, `reminders`, `resources`, `inventory`, `tenant_settings`, `dc_platform_settings`, `dc_retention_settings`, `dc_site_license`, `activity_log`, `budgets`, `cast_list`, `attendance`, `inbox`, `tasks`, `poll_votes`, `event_rsvps`, `gallery`, `suggestions`.
 
 Export safeguards:
 
@@ -46,14 +46,14 @@ The archive intentionally excludes Supabase Auth passwords/sessions, Storage obj
 node scripts/verify-portable-archive.mjs path/to/dramaconnect-archive.json
 ```
 
-The verifier has no application or npm dependency. A successful result identifies format/version, all 22 table manifests, keys, duplicate status, row counts, every table digest and the full seal. Keep at least one verified copy on a second device.
+The verifier has no application or npm dependency. A successful result identifies format/version, all 25 table manifests, keys, duplicate status, row counts, every table digest and the full seal. Keep at least one verified copy on a second device.
 
 ### Browser restore modes
 
 - **Merge** — upserts the full verified archive in dependency order. Use when the target Supabase Auth project already contains the same user UUIDs.
 - **Degraded disaster recovery** — skips identity-dependent tables (`profiles`, `cast_list`, `attendance`, `inbox`, `tasks`, `poll_votes`, `event_rsvps`) and removes unrecoverable actor references from supported rows. The report states what was skipped.
 
-Every browser restore verifies the complete archive before its first write and reports attempted/restored/skipped rows by table. Restore is merge/upsert-only; it does not delete rows absent from the archive and is not one transaction across all 22 tables. A network/RLS failure may leave a partial merge. Preserve the report, correct the cause and rerun the same archive; primary-key upserts are designed to be repeatable.
+Every browser restore verifies the complete archive before its first write and reports attempted/restored/skipped rows by table. Restore is merge/upsert-only; it does not delete rows absent from the archive and is not one transaction across all 25 tables. A network/RLS failure may leave a partial merge. Preserve the report, correct the cause and rerun the same archive; primary-key upserts are designed to be repeatable.
 
 Use the encrypted database/Auth recovery set—not degraded browser mode—when exact identities must be recovered.
 
@@ -226,7 +226,7 @@ The restore utility verifies the strict manifest and all local object sizes/hash
 ### Post-restore checklist
 
 - [ ] Reapply any migrations released after the backup timestamp, in order.
-- [ ] Confirm all 22 application tables exist and compare row counts with a verified portable archive/report.
+- [ ] Confirm all 25 application/configuration tables exist and compare row counts with a verified portable archive/report.
 - [ ] Confirm `auth.users` IDs match `profiles.id`; test password and OAuth sign-in with designated accounts.
 - [ ] Confirm avatars/gallery objects load and private buckets remain private.
 - [ ] Reapply/review RLS and run anonymous-versus-member-versus-admin authorization tests.

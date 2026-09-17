@@ -1,4 +1,4 @@
-# 📖 DramaConnect Enterprise v13.2 — Detailed Feature Guide
+# 📖 DramaConnect Enterprise v14.0 — Detailed Feature Guide
 
 This document explains **every feature** in the system: what it does, who can use
 it, where to find it, and how it works under the hood. All features run on
@@ -241,7 +241,7 @@ it, where to find it, and how it works under the hood. All features run on
   notice: *"Running in low‑bandwidth mode — some styling is simplified, but all
   features work."* The core experience never breaks.
 
-## 16. Settings, Resilience & Backup (expanded in v13.2, admin only)
+## 16. Settings, Resilience & Backup (expanded in v14.0, admin only)
 
 - **Where:** `pages/settings.html` · **Access:** approved administrators only,
   enforced in the UI and by database/Storage authorization.
@@ -250,7 +250,7 @@ it, where to find it, and how it works under the hood. All features run on
 - **Resilience health:** source-aware browser, GitHub, Edge, Vercel, Apps Script,
   external and optional `pg_cron` heartbeats; administrators can inspect source
   freshness and send a verified manual test.
-- **Portable archive:** stable pagination exports all 22 application/configuration
+- **Portable archive:** stable pagination exports all 25 application/configuration
   tables with counts, primary-key metadata, per-table SHA-256 digests and a full
   seal. Independent verification is available in `scripts/verify-portable-archive.mjs`.
 - **Safe restore:** a database-backed lease prevents overlapping runs; merge or

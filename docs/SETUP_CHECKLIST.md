@@ -1,24 +1,22 @@
-# ✅ DramaConnect v13.2 — First-Time Setup Checklist
+# ✅ DramaConnect v14.0 — First-Time Setup Checklist
 
 Follow the mandatory sections in order. The core app can be launched quickly; production resilience, OAuth and verified recovery require additional provider setup and a rehearsal.
 
 ## A. Backend (Supabase) — mandatory
 
 - [ ] **A1.** Create a Supabase project, choose the nearest suitable region and store the database password in the organization password manager.
-- [ ] **A2.** In **SQL Editor**, run all of `database/repair_and_upgrade.sql`.
-- [ ] **A3.** In a new query, run all of `database/security_hardening.sql`.
-- [ ] **A4.** In a third query, run all of `database/resilience_and_backup.sql`.
-- [ ] **A5.** Confirm the three scripts completed in that exact order without ignored errors.
-- [ ] **A6.** Create/sign up the first account, then promote that exact email to `admin` + `approved` once through the trusted SQL Editor (see `DEPLOYMENT.md`).
-- [ ] **A7.** Decide whether email confirmation remains ON. Turning it off does not bypass DramaConnect's administrator approval gate.
-- [ ] **A8.** Optional: enable `pg_cron`, rerun the third migration and confirm `dramaconnect-internal-heartbeat` exists. Do not treat an internal cron as a wake-up layer.
+- [ ] **A2.** In **SQL Editor**, run all of `database/complete-schema.sql`; do not ignore errors or run only a selected section.
+- [ ] **A3.** Confirm the cumulative installer completed. It is safe to rerun and no individual component SQL is required afterward.
+- [ ] **A4.** Create/sign up the first account, then promote that exact email to `admin` + `approved` once through the trusted SQL Editor (see `DEPLOYMENT.md`).
+- [ ] **A5.** Decide whether email confirmation remains ON. Turning it off does not bypass DramaConnect's administrator approval gate.
+- [ ] **A6.** Optional: enable `pg_cron`, rerun `database/complete-schema.sql` and confirm `dramaconnect-internal-heartbeat` exists. Do not treat an internal cron as a wake-up layer.
 
 ## B. Connect the static app — mandatory
 
 - [ ] **B1.** Copy only the Supabase **Project URL** and **anon/publishable** key.
 - [ ] **B2.** Put them in `assets/js/config.js` as `SUPABASE_URL` and `SUPABASE_KEY`.
 - [ ] **B3.** Confirm no placeholder remains and no database password, service-role key, Management API token, cron secret or OAuth client secret exists in any frontend file.
-- [ ] **B4.** Confirm `CONFIG.APP_VERSION` is `v13.2` and deploy the matching `sw.js`.
+- [ ] **B4.** Confirm `CONFIG.APP_VERSION` is `v14.0` and deploy the matching `sw.js`.
 
 ## C. Publish the site — choose one
 
@@ -51,7 +49,7 @@ Use `SUPABASE_FREE_TIER_PROTECTION.md` for the exact procedure.
 
 Use `BACKUP_AND_RECOVERY.md`.
 
-- [ ] **F1.** In Settings, download the full 22-table portable archive.
+- [ ] **F1.** In Settings, download the full 25-table portable archive.
 - [ ] **F2.** Run `node scripts/verify-portable-archive.mjs ARCHIVE.json`; retain the successful output in the private backup register.
 - [ ] **F3.** Enable Google Drive API and create an OAuth **Web application** client with the exact production origin.
 - [ ] **F4.** Save only the public OAuth client ID in Admin Settings; connect explicitly with `drive.file` scope.

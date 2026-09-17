@@ -49,7 +49,7 @@
         <!-- Admin check-in code control -->
         <div id="code-card" class="glass-card p-6 mb-6 admin-only border-l-4 border-blue-600">
             <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-key text-blue-600 mr-2"></i> Self Check‑In Code (admin)</h3>
-            <p class="text-xs text-slate-500 mb-3">Set a code and open check‑in so members can mark their own attendance for the selected rehearsal.</p>
+            <p class="text-xs text-slate-500 mb-3">Set a code and open check‑in so members can mark their own attendance for the selected rehearsal. Any code of 3 or more characters works, and matching is case‑insensitive, so <b>SEP12</b> and <b>sep12</b> are the same.</p>
             <div class="flex flex-wrap gap-2 items-center">
                 <input id="set-code" class="dc-input max-w-[200px]" placeholder="e.g. DRAMA25">
                 <button id="open-code" class="dc-btn bg-green-600 text-white text-sm py-2">Open check‑in</button>
@@ -146,6 +146,9 @@
             if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
             const code = document.getElementById('set-code').value.trim();
             if (open && !code) { UI.toast('Enter a code to open check‑in.', 'warning'); return; }
+            if (open && code.length < 3) {
+                UI.toast('Use a check‑in code of at least 3 characters.', 'warning'); return;
+            }
             try {
                 await DB.setCheckinCode(current, code || null, open);
                 const r = currentRehearsal(); if (r) { r.checkin_code = code; r.checkin_open = open; }
@@ -256,13 +259,12 @@
         function onScanFailure(error) { /* handle quietly */ }
 
         function stopScanner() {
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.clear().then(() => {
-                    document.getElementById('qr-reader-container').classList.add('hidden');
-                });
-            } else {
-                document.getElementById('qr-reader-container').classList.add('hidden');
-            }
+            const container = document.getElementById('qr-reader-container');
+            const hide = () => { if (container) container.classList.add('hidden'); };
+            if (!html5QrcodeScanner) { hide(); return; }
+            // clear() rejects if the scanner was never started or is already torn down.
+            // Hide the panel either way, and never leave the rejection unhandled.
+            Promise.resolve(html5QrcodeScanner.clear()).catch(() => {}).then(hide);
         }
 
         window.mark = mark;

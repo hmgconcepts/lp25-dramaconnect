@@ -1,6 +1,6 @@
 # Supabase Free-Tier Protection and Resilience
 
-DramaConnect v13.2 implements independent, source-visible database activity paths plus a paused-project recovery watchdog. These controls reduce the risk of an inactive Supabase Free project being paused; they do **not** change Supabase's plan, create an SLA, or guarantee that Supabase will never pause, limit, or retire a project. As of this release, Supabase documents that Free projects with low activity may be paused after a seven-day period and that a paused project can be restored from the dashboard. Recheck the current policy before deployment: <https://supabase.com/docs/guides/platform/free-project-pausing>.
+DramaConnect v14.0 implements independent, source-visible database activity paths plus a paused-project recovery watchdog. These controls reduce the risk of an inactive Supabase Free project being paused; they do **not** change Supabase's plan, create an SLA, or guarantee that Supabase will never pause, limit, or retire a project. As of this release, Supabase documents that Free projects with low activity may be paused after a seven-day period and that a paused project can be restored from the dashboard. Recheck the current policy before deployment: <https://supabase.com/docs/guides/platform/free-project-pausing>.
 
 ## Protection layers
 
@@ -20,15 +20,9 @@ DramaConnect v13.2 implements independent, source-visible database activity path
 
 Only two or three independent external layers are needed in most deployments. Configure at least one **daily** external monitor in addition to browser activity. Excessive requests add no protection: `dc_keep_alive` accepts only an allow-listed source and throttles physical writes for each source to one per five minutes.
 
-## 1. Apply the database migration
+## 1. Apply the database schema
 
-Run these in the Supabase SQL Editor, in order:
-
-1. `database/repair_and_upgrade.sql`
-2. `database/security_hardening.sql`
-3. `database/resilience_and_backup.sql`
-
-The third migration creates the heartbeat table/RPC, administrator-only health visibility, backup settings, concurrency leases, run history, private backup vault policies and optional `pg_cron` job. It is idempotent and can be rerun after enabling `pg_cron`.
+Run all of `database/complete-schema.sql` in the Supabase SQL Editor. This canonical cumulative installer creates the heartbeat table/RPC, administrator-only health visibility, backup settings, concurrency leases, run history, private backup vault policies, optional `pg_cron` job and the v14 management control plane. It is idempotent and can be rerun after enabling `pg_cron`; no individual component SQL is required afterward.
 
 Do not expose any table directly to `anon`. Anonymous callers can execute only the narrow `dc_keep_alive(text)` function. Unknown source values collapse to `external`, preventing unbounded row creation.
 
@@ -94,7 +88,7 @@ node scripts/check-resilience.mjs
 
 ## 5. Optional `pg_cron`
 
-In the Supabase dashboard, enable the `pg_cron` extension, then rerun `database/resilience_and_backup.sql`. Confirm the job exists:
+In the Supabase dashboard, enable the `pg_cron` extension, then rerun `database/complete-schema.sql`. Confirm the job exists:
 
 ```sql
 select jobid, jobname, schedule, active
@@ -142,7 +136,7 @@ A personal access token is powerful. Store it only in GitHub Actions secrets, re
 
 ## Verification checklist
 
-- [ ] All three SQL files were applied in order without errors.
+- [ ] The complete cumulative schema was applied without errors.
 - [ ] An anonymous RPC call returns `ok: true` but cannot select `dc_heartbeat_sources`.
 - [ ] An approved administrator sees health; an ordinary approved member does not.
 - [ ] GitHub manual heartbeat succeeds.
@@ -159,7 +153,7 @@ A personal access token is powerful. Store it only in GitHub Actions secrets, re
 |---|---|---|
 | 401 from Edge ping | Missing/stale `PING_SECRET` | Update monitor or rotate/deploy the secret |
 | 401 from Vercel endpoint | Missing/stale `CRON_SECRET` | Confirm Vercel environment and redeploy |
-| RPC 404 | Third migration not applied or schema cache stale | Apply migration; reload PostgREST schema if necessary |
+| RPC 404 | Complete schema not applied or schema cache stale | Apply `database/complete-schema.sql`; reload PostgREST schema if necessary |
 | RPC says `throttled` | Same source wrote within five minutes | Healthy and expected |
 | GitHub schedule vanished | Public-repository inactivity or Actions disabled | Re-enable workflow; fix activity policy |
 | `pg-cron` stale while external rows are current | Extension/job disabled | Rerun migration after enabling extension |

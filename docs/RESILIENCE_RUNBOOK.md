@@ -152,7 +152,7 @@ After correction, manually dispatch the workflow. Download all files sharing one
 2. Establish the earliest known bad time and latest known good time.
 3. Verify candidate backups without writing to production.
 4. Restore the best candidate to a **separate non-production Supabase project**.
-5. Compare all 22 table counts, critical financial/event records, Auth/profile UUIDs and Storage object hashes.
+5. Compare all 25 table counts, critical financial/event records, Auth/profile UUIDs and Storage object hashes.
 6. Decide between:
    - limited, reviewed row-level repair from a portable archive/report; or
    - full recovery following `BACKUP_AND_RECOVERY.md`.
@@ -239,7 +239,7 @@ Monthly:
 Quarterly:
 
 - restore a selected encrypted set into a non-production target;
-- verify Auth/profile UUIDs, all 22 table counts, RLS roles and Storage hashes;
+- verify Auth/profile UUIDs, all 25 table counts, RLS roles and Storage hashes;
 - time the recovery against RTO/RPO;
 - delete the rehearsal target and decrypted files securely;
 - record defects and update this runbook through review.

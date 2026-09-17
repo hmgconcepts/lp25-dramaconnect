@@ -1,4 +1,4 @@
-# 🚀 Deployment Guide — DramaConnect Enterprise v13.2
+# 🚀 Deployment Guide — DramaConnect Enterprise v14.0
 
 This guide deploys the static application and its required Supabase database controls. Resilience, Google Drive and unattended recovery are separate operational stages; do not claim production readiness until they are configured and tested.
 
@@ -15,15 +15,10 @@ The app itself needs no build step. Supabase CLI, Node, PostgreSQL clients, GnuP
 
 1. Create the project in the nearest suitable region.
 2. Generate a strong database password and store it in the organization password manager.
-3. In **SQL Editor → New query**, run the complete files in this exact order:
-   1. `database/repair_and_upgrade.sql`
-   2. `database/security_hardening.sql`
-   3. `database/resilience_and_backup.sql`
-4. Do not concatenate, reorder or ignore errors. All are intended to be safely rerunnable in order.
+3. In **SQL Editor → New query**, run all of `database/complete-schema.sql` once. Do not ignore errors or run only a selected section.
+4. The cumulative installer is idempotent and safe to rerun. It includes the repaired application schema, least-privilege RLS, safe projections and server-authoritative RPCs, source-aware heartbeats, backup leases/history/vault, and the v14 management control plane. No individual component SQL is required afterward.
 
-The first file supplies/repairs the application schema. The second replaces permissive authorization with least-privilege RLS, safe projections, guards and server-authoritative RPCs. The third adds source-aware heartbeats, backup settings, concurrency leases, run history, administrator RSVP restore access and the private archive vault.
-
-Optional `pg_cron`: enable the extension in Supabase, rerun the third migration and check:
+Optional `pg_cron`: enable the extension in Supabase, rerun `database/complete-schema.sql` and check:
 
 ```sql
 select jobid, jobname, schedule, active
@@ -56,7 +51,7 @@ const CONFIG = {
 
 The anon key is designed for browser use and is constrained by RLS. Never place a database password, service-role key, Management API token, backup passphrase, rclone configuration, `PING_SECRET`, `CRON_SECRET` or Google client secret in static files.
 
-Before publish, confirm `APP_VERSION: 'v13.2'` and service-worker cache `dramaconnect-v13.2`.
+Before publish, confirm `APP_VERSION: 'v14.0'` and service-worker cache `dramaconnect-v14.0`.
 
 ## Stage 3 — Publish the static site
 
@@ -81,7 +76,7 @@ Before publish, confirm `APP_VERSION: 'v13.2'` and service-worker cache `dramaco
 3. Deploy.
 4. If using the included Cron, configure protected Production environment values `SUPABASE_URL`, `SUPABASE_ANON_KEY` and a high-entropy `CRON_SECRET`, then redeploy. Follow `SUPABASE_FREE_TIER_PROTECTION.md` and current Vercel plan limits.
 
-Hard-refresh after each release. The v13.2 service worker uses network-first navigation, independent same-origin shell caching and never caches Supabase/API/CDN traffic.
+Hard-refresh after each release. The v14.0 service worker uses network-first navigation, independent same-origin shell caching and never caches Supabase/API/CDN traffic.
 
 ## Stage 4 — Bootstrap the first administrator
 
@@ -117,7 +112,7 @@ A heartbeat reduces inactivity risk but is not a backup, SLA or guarantee agains
 
 Follow `docs/BACKUP_AND_RECOVERY.md`.
 
-1. Download a 22-table portable archive in Settings and verify it with:
+1. Download a 25-table portable archive in Settings and verify it with:
 
    ```bash
    node scripts/verify-portable-archive.mjs ARCHIVE.json
@@ -147,7 +142,7 @@ Never make service-role automations publicly invocable without their documented 
 - [ ] Direct RLS tests cover anonymous, pending, member, unit leader and administrator—not just UI visibility.
 - [ ] Production/event/finance/attendance/RSVP/task/poll/message paths work.
 - [ ] Reports export; phone/tablet menu works; optional install can be declined.
-- [ ] Current service-worker cache is `dramaconnect-v13.2`.
+- [ ] Current service-worker cache is `dramaconnect-v14.0`.
 - [ ] Daily external heartbeat and manually dispatched watchdog both pass.
 - [ ] A complete encrypted backup set exists remotely and one recovery rehearsal passed.
 
@@ -156,9 +151,9 @@ Never make service-role automations publicly invocable without their documented 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `supabase is not defined` | Supabase JS missing/wrong order | Load `@supabase/supabase-js@2` before `config.js`; preserve shared-script order. |
-| RPC/table 404 in resilience settings | Third migration missing/schema cache stale | Run all three migrations in order; reload PostgREST schema if needed. |
-| `infinite recursion detected in policy` | Legacy/incomplete hardening | Rerun repair, security and resilience migrations in order. |
-| Dashboard empty after signup | Trigger/profile/approval issue | Verify profile exists and status is exactly `approved`; rerun migrations. |
+| RPC/table 404 in resilience settings | Cumulative schema missing/schema cache stale | Run all of `database/complete-schema.sql`; reload PostgREST schema if needed. |
+| `infinite recursion detected in policy` | Legacy/incomplete hardening | Rerun all of `database/complete-schema.sql`. |
+| Dashboard empty after signup | Trigger/profile/approval issue | Verify profile exists and status is exactly `approved`; rerun the cumulative schema. |
 | Admin settings hidden | Caller is not approved admin | Complete bootstrap; inspect authoritative profile row. |
 | Drive Connect fails | Wrong OAuth type/origin/test user | Use Web application client, exact HTTPS origin, Drive API and consent test user. |
 | Drive schedule says overdue | No still-valid memory token | Administrator explicitly reconnects and runs a verified backup; automatic code never opens OAuth. |
@@ -167,12 +162,12 @@ Never make service-role automations publicly invocable without their documented 
 | Weekly dump cannot connect | Paused project/wrong DB URL/pool mode/password | Activate project; use direct/session URL, URL-encoded password and SSL. |
 | Archive verifier fails | Truncated/modified/corrupt copy | Do not restore; download again or choose another fully verified backup. |
 | Styling is plain + low-bandwidth warning | Tailwind CDN unavailable | Local safety CSS keeps features usable; retry on a better connection. |
-| Old UI persists | Older service worker/cache | Deploy matching v13.2 `sw.js`, close tabs, hard-refresh/unregister stale worker if needed. |
+| Old UI persists | Older service worker/cache | Deploy matching v14.0 `sw.js`, close tabs, hard-refresh/unregister stale worker if needed. |
 
 ## Updating later
 
 1. Create and independently verify a pre-change backup.
-2. Review/apply any new migration after the existing three, in release order.
+2. Apply the release's cumulative `database/complete-schema.sql`; do not mix component SQL from different releases.
 3. Deploy static files and increment `CONFIG.APP_VERSION` plus the `CACHE` name together.
 4. Rerun static, RLS, browser-role and backup verification.
 5. Manually run heartbeat and unattended backup after deployment.

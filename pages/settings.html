@@ -500,8 +500,15 @@
             $('vault-refresh').onclick = () => action('Listing vault archives…', refreshVault).catch(() => {});
 
             $('d-save').onclick = () => {
-                localStorage.setItem('dc-dept', JSON.stringify({ name: $('d-name').value.trim(), prov: $('d-prov').value.trim(), leader: $('d-leader').value.trim(), contact: $('d-contact').value.trim() }));
-                UI.toast('Device profile saved.', 'success');
+                const profile = { name: $('d-name').value.trim(), prov: $('d-prov').value.trim(), leader: $('d-leader').value.trim(), contact: $('d-contact').value.trim() };
+                // localStorage throws when site data is blocked; report it instead of
+                // failing silently with an unhandled error.
+                try {
+                    localStorage.setItem('dc-dept', JSON.stringify(profile));
+                    UI.toast('Device profile saved.', 'success');
+                } catch (_) {
+                    UI.toast('Could not save: this browser is blocking site data. The profile is applied for this session only.', 'warning', 8000);
+                }
             };
             $('theme-toggle').onclick = UI.toggleTheme;
             $('saas-save').onclick = saveBranding;

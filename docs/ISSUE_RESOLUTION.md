@@ -33,7 +33,7 @@ spam placement, and function/Auth logs.
   blocks self-deletion and cannot be replaced with a browser profile delete.
 
 If an account authenticates but returns to the sign-in page, inspect its profile
-status and confirm all three database migrations were run in order.
+status and confirm all of `database/complete-schema.sql` completed without errors.
 
 ## 3. Profile photos and external gallery media
 
@@ -45,9 +45,9 @@ status and confirm all three database migrations were run in order.
   values before creating links or embeds.
 - Do not upload private/sensitive imagery to public-read buckets.
 
-If an upload is denied by RLS, run `database/repair_and_upgrade.sql` and then
-`database/security_hardening.sql`, verify approval status, and check that the
-storage path begins with the caller's Auth user ID.
+If an upload is denied by RLS, rerun all of `database/complete-schema.sql`,
+verify approval status, and check that the storage path begins with the caller's
+Auth user ID.
 
 ## 4. Edge Function authorization failures
 
@@ -64,7 +64,7 @@ JWT modes.
 
 ## 5. Stale installed application shell
 
-The v13.2 service worker uses cache `dramaconnect-v13.2`, network-first
+The v14.0 service worker uses cache `dramaconnect-v14.0`, network-first
 navigation, and network-only handling for cross-origin/backend requests. Deploy
 `sw.js` with the rest of the release, then hard-refresh once. For a later app
 release, change the cache identifier to that release version.
