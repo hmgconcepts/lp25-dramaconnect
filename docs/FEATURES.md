@@ -552,3 +552,179 @@ The application uses no paid AI API. Charts, exports, PDF generation, and the
 limited offline shell run client-side; authentication, data, Storage, and optional
 automation use Supabase server resources. The project may fit within free
 allowances at modest usage, but provider quotas and pricing must be verified.
+
+---
+
+# 🛡️ Part II — The v14 Administration Control Plane
+
+Part I (sections 1–43) documents the member-facing application. This part documents the
+**six dedicated administration workspaces** introduced in v14.0. Each is reachable from the
+sidebar and each is additionally gated in the browser by `Auth.isAdmin()`, which mirrors the
+SQL helper `is_admin()` — so hiding a link never becomes the security control.
+
+> **Server-side truth:** the browser gate is UX only. Every one of these surfaces is
+> ultimately protected by Row Level Security policies of the form
+> `USING is_admin()`, and by `SECURITY DEFINER` RPCs that re-check `is_admin()` inside the
+> database. An administrator is `status = 'approved' AND role = 'admin'`.
+
+## 44. Admin Data — Portability, Backup & Recovery (`pages/admin-data.html`)
+
+The single workspace for moving data in and out of the platform. It is deliberately split
+into four independent mechanisms so that the failure of one never leaves you without a
+route to your data.
+
+**44.1 Export a verified archive.** `DataPortability.downloadLocal()` serialises the
+portability table set to JSON. Before the file is offered for download it is passed through
+`DataPortability.verifyArchive()`, which recomputes a checksum over the payload. A file that
+does not verify is never presented as a good backup. This is the difference between "we have
+a backup" and "we have a backup that restores".
+
+**44.2 Archive preflight.** `verifyArchive()` is also exposed on its own so an operator can
+check an archive received from someone else *without* restoring it. Preflight reports
+schema version, table coverage and row counts, and tells you whether the archive came from
+the same release as the site you are restoring into.
+
+**44.3 Verify or restore.** `restoreVerifiedArchive()` will refuse to write anything unless
+verification has passed. Restoration is therefore all-or-nothing at the archive level rather
+than partially applied.
+
+**44.4 Table CSV export.** `downloadTableCsv()` exports a single table for spreadsheet work.
+This is the everyday operational export; the verified archive is the disaster-recovery
+artefact. They are not substitutes.
+
+**44.5 Google Drive connection and backup policy.** `DriveSync.connect()` initiates OAuth
+using the **Web client ID** configured in Settings. The generator never asks for a client
+secret, and the static site cannot keep one. `getSettings()` / `saveBackupSettings` control
+the folder, cadence and grace period; `backup()` performs an upload and `listBackups()`
+lists what is already in Drive. `download()` and `restore()` close the loop. Backups track
+**leases and history**, so two administrators cannot unknowingly overwrite each other.
+
+**44.6 The private Supabase vault.** `uploadVault()` / `listVault()` / `downloadVault()` /
+`restoreVault()` store an encrypted archive inside Supabase Storage itself. This exists
+because Drive depends on a Google account that an organisation may lose control of; the
+vault keeps a second copy under the database's own credentials.
+
+## 45. Platform Health (`pages/platform-health.html`)
+
+The operational dashboard for Supabase's free tier.
+
+**45.1 Heartbeat.** Supabase pauses projects after roughly seven days of inactivity.
+`PlatformManagement.platformHealth()` reports when external activity was last received, so
+you can see a project approaching the pause threshold *before* it happens. Four independent
+keep-alive paths exist — browser, GitHub Actions, the Supabase Edge `ping` function, and an
+optional external cron — so no single provider outage silences the heartbeat.
+
+**45.2 Database space.** Reports database size against the free-tier ceiling, with the
+storage meter carried over from the Storage Manager.
+
+**45.3 Security state.** Displays the protection layers currently active: RLS coverage,
+the profile-guard trigger that blocks self-promotion and approval bypass, and the login
+audit trail.
+
+**45.4 Login & access audit.** `listAudit()` surfaces recent authentication and
+authorisation events, recorded by `dc_record_login_event()`. This is the record you consult
+when investigating "who did this and when".
+
+**45.5 Protection layers and settings.** `getPlatformSettings()` /
+`savePlatformSettings()` govern idle lock, emergency lockdown and retention behaviour.
+
+## 46. Site License (`pages/site-license.html`)
+
+Displays and administers the entitlement state of this deployment.
+
+**46.1 Deployment ownership (read-only for everyone).** Shows model, status, plan, licensed
+organisation, start/expiry, grace period and the public message. Every member can see the
+state of the system they depend on.
+
+**46.2 License administration (admin only).** `getLicense()` / `saveLicense()` edit model,
+status, plan name, licensed organisation, dates, grace days, renewal URL, support email and
+an optional external entitlement registry.
+
+**46.3 Why enforcement is honestly labelled.** A static browser application cannot keep a
+private signing secret — anything shipped to the browser is readable by the browser. So
+client-side expiry logic is documented as **operational access control, not tamper-proof
+commercial enforcement**. Where stronger authority is genuinely required, the
+`registry_url` field points at a trusted server you control, which becomes the source of
+truth. LP25's own deployment uses lifetime ownership and therefore needs no registry.
+
+## 47. Storage Manager (`pages/storage-manager.html`)
+
+Free-tier storage is a hard ceiling, so it is treated as a managed resource rather than an
+afterthought.
+
+**47.1 Usage overview.** `storageOverview()` reports bucket-level and database-level usage
+with a posture indicator, so growth is visible before it becomes a failure.
+
+**47.2 Object browser.** `listStorage()` enumerates objects in a bucket, and
+`deleteStorageObject()` removes individual files — the routine cleanup path.
+
+**47.3 Retention policy.** `getRetentionSettings()` / `saveRetentionSettings()` /
+`retentionPreview()` / `applyRetention()` define and apply how long different classes of
+artefact are kept. The **preview** step is the important one: it shows exactly what a policy
+will delete before anything is removed. Retention is a data-destroying operation and must
+never be a single opaque click.
+
+## 48. Roles & Status (`pages/roles-status.html`)
+
+The member access registry — approval, role, unit and access version in one table.
+
+**48.1 Registry.** `listMemberAccess()` lists every member with status, role, unit and unit-leader
+flag, with live counts for all / approved / pending / admin. This is the onboarding queue.
+
+**48.2 Editing access.** `updateMemberAccess()` changes status, role and unit. The
+`access_version` column is the important subtlety: incrementing a member's access version
+invalidates their cached authorisation state, so a demotion takes effect immediately rather
+than at the member's next session.
+
+**48.3 Server-side guard.** Role and status changes are additionally constrained by a
+column-level trigger on `profiles` (see section 15.5). The UI cannot grant more than the
+database permits.
+
+## 49. Activity Log (`pages/activity.html`)
+
+The audit trail. Records who changed what and when across the platform. Covered in section
+13 for the member view; as an administration surface it is the companion to the login audit
+in Platform Health — Platform Health answers "who signed in", Activity Log answers "what did
+they do".
+
+## 50. The Deployment Generator — the SaaS layer (`dramaconnect-generator/`)
+
+This is the component that turns the application from a single deployment into a product
+that can be issued to many organisations.
+
+**50.1 What it is.** A standalone, browser-only application. No backend, no build server,
+no account. You open `index.html` over HTTP(S), complete five steps, and it produces a
+deployment ZIP.
+
+**50.2 How it stays trustworthy.** `templates/dramaconnect/_template-manifest.json` records
+every canonical file's path, byte count and SHA-256 digest. At generation time the browser
+fetches each file and re-computes its hash. A missing file, a size mismatch or a hash
+mismatch **stops generation** — you can never receive a partial or tampered site.
+
+**50.3 How branding works.** The canonical template is **brand-neutral**. At template build
+time every deployment-specific literal is rewritten into a sentinel token
+(`__DC_APP_NAME__`, `__DC_ORG_NAME__`, `__DC_PROVINCE__`, `__DC_CURRENCY__`,
+`__DC_PRIMARY_COLOR__`, `__DC_KEYWORDS__`, `__SUPABASE_URL__`, `__SUPABASE_ANON_KEY__`),
+and the build **fails** if any residual brand string survives. At generation time each token
+is replaced with the operator's value. Because substitution is token-based rather than
+"search for the old organisation's name", a value can never be partially rewritten and the
+template never carries another organisation's identity.
+
+**50.4 Credential safety.** `validateSupabaseKey()` rejects `service_role` keys,
+`sb_secret_…` keys and any JWT whose role is not `anon`. The generator never asks for a
+database password or an OAuth client secret — the static app cannot protect them.
+
+**50.5 What you receive.** A ZIP preserving the full directory structure under a folder name
+you choose, containing all 37 application pages, the six administration surfaces, the
+cumulative `database/complete-schema.sql`, and `generated-site.json` plus `START_HERE.txt`
+as a generation receipt and next-steps pointer.
+
+## 51. Full-stack and SaaS assessment — an honest answer
+
+| Question | Answer |
+|----------|--------|
+| **Is it full-stack?** | Yes, in the sense that matters: a Postgres database with RLS, RPCs, triggers and views; Edge Functions for server-side work the browser cannot do; and a static front end. There is no custom application server to operate, which is what keeps it free. |
+| **Is it SaaS?** | The **generator** is the SaaS enabler: it issues an isolated deployment per organisation, each with its own database, branding and entitlement state. It is multi-tenant by *isolation*, not by shared tables — which is the correct choice for RLS and for data sovereignty. |
+| **What is deliberately not included?** | Centralised billing, a tenant-provisioning API, and server-side licence signing. All three require a paid control plane. They are the natural next step when the product outgrows free tooling, and the generator's receipt format is designed so that a provisioning service can be added later without changing the output contract. |
+| **What is the honest limitation?** | Browser-hosted licence enforcement is alterable by a determined operator. This is stated in the product, not hidden. Use `registry_url` when tamper-resistance matters. |
+
