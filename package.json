@@ -9,13 +9,14 @@
     "test:schema": "node tools/test-complete-schema.mjs",
     "test:js": "node tools/test-javascript.mjs",
     "test:browser": "node tools/test-browser.mjs",
-    "test": "npm run build:schema && npm run test:schema && npm run test:selfheal && npm run test:checkin && npm run test:dates && npm run test:storage && npm run test:recovery && npm run test:heartbeat && npm run test:js",
+    "test": "npm run build:schema && npm run test:schema && npm run test:selfheal && npm run test:checkin && npm run test:dates && npm run test:storage && npm run test:recovery && npm run test:heartbeat && npm run test:js && npm run test:assistant",
     "test:selfheal": "node tools/test-selfheal.mjs",
     "test:checkin": "node tools/test-checkin.mjs",
     "test:dates": "node tools/test-dates.mjs",
     "test:storage": "node tools/test-storage-guard.mjs",
     "test:recovery": "node tools/test-recovery-mode.mjs",
-    "test:heartbeat": "node tools/test-heartbeat-quorum.mjs"
+    "test:heartbeat": "node tools/test-heartbeat-quorum.mjs",
+    "test:assistant": "node tools/test-assistant.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.10",

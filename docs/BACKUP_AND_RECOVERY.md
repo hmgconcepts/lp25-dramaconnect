@@ -38,7 +38,7 @@ The archive intentionally excludes Supabase Auth passwords/sessions, Storage obj
 ### Create and independently verify a local archive
 
 1. Sign in as an approved administrator.
-2. Open **Settings → Local Portable Backup**.
+2. Open **Admin Data → Local**.
 3. Select **Download full archive** and keep the resulting `.json` unchanged.
 4. Verify it independently, outside the browser application:
 
@@ -76,7 +76,7 @@ The client ID is a public identifier, not a client secret. Never create or embed
 
 ### Connect and configure
 
-1. Open **Settings → Google Drive Backup & Sync** as an approved administrator.
+1. Open **Admin Data → Drive** as an approved administrator.
 2. Enter the OAuth Web Client ID.
 3. Choose a dedicated folder name, interval (1–30 days), retention count (1–50) and overdue grace period (0–168 hours).
 4. Save settings, then select **Connect Google Drive**.

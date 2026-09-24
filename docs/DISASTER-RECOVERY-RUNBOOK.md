@@ -365,4 +365,4 @@ Fill this in once things are calm. It makes the next incident faster.
 
 ---
 
-*Part of the DramaConnect v15.0 resilience suite. Review this document twice a year.*
+*Part of the DramaConnect v14.0 resilience suite. Review this document twice a year.*

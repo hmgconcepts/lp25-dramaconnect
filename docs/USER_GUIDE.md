@@ -78,7 +78,14 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
 - **Profile photo:** in My Profile, tap **Upload Photo** — it shows on your ID
   card and in the directory.
 - **Directory:** browse members with photos and reach them via WhatsApp/email/socials.
-- **Help & FAQ:** searchable answers to common questions.
+- **Help Centre:** searchable answers to common questions, a full guide for every
+  page, getting-started checklists, troubleshooting and a "which page owns what" map.
+- **❓ Page guide:** the button at the bottom-left of every page explains that exact
+  page — what it is, what it does, who uses it, how to use it and why. Press **?**
+  as a shortcut.
+- **💬 Assistant:** the button at the bottom-right answers questions about any page
+  or topic (backups, recovery, staying awake, roles, storage…). It works **offline**
+  with no AI service and no data leaving your device. Press **Ctrl+K** to open it.
 - **Photo cropping:** when you upload a photo, you can drag and zoom to crop it
   to a neat square before it saves.
 - **Photo Gallery:** browse department albums (productions, events). Admins and
@@ -122,6 +129,15 @@ Admins see **add / edit / delete** controls across the app:
 
 ## Need Help?
 
-Contact your department administrator. For technical/build matters, the system
-was architected by **Adewale Samson Adeagbo (HMG Concepts)** —
+**Inside the app, in order of speed:**
+
+1. **❓ Page guide** (bottom-left, or press **?**) — explains the page you are on.
+2. **💬 Assistant** (bottom-right, or press **Ctrl+K**) — ask about any page or
+   topic in plain language. Offline, free, and no AI service is used.
+3. **Help Centre** (sidebar → Help Centre) — every page guide, the FAQ, a
+   troubleshooting table and the ownership map.
+4. **Inbox → New Message → "Department Admins"** — message the leadership directly.
+
+Contact your department administrator for account matters. For technical/build
+matters, the system was architected by **Adewale Samson Adeagbo (HMG Concepts)** —
 see the **Developer Bio** page inside the app.

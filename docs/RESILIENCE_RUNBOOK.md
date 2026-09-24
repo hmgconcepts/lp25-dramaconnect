@@ -111,7 +111,7 @@ Escalate to SEV-1/full recovery if the project cannot be restored, data is missi
 ## Scenario C — Google Drive backup is overdue or authorization failed
 
 1. Confirm another unattended or local verified backup exists. If not, treat as SEV-2.
-2. In Settings, select **Connect Google Drive**. Confirm the expected Google account and `drive.file` scope.
+2. In **Admin Data → Drive**, select **Connect Google Drive**. Confirm the expected Google account and `drive.file` scope.
 3. Do not add a client secret or broader Drive scope to “fix” token expiration.
 4. Select **Backup Now**. It must upload, download, fully verify and update `last_success_at`.
 5. Inspect retention warnings separately. Never delete old copies until the new one verifies.

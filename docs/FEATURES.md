@@ -241,25 +241,30 @@ it, where to find it, and how it works under the hood. All features run on
   notice: *"Running in low‑bandwidth mode — some styling is simplified, but all
   features work."* The core experience never breaks.
 
-## 16. Settings, Resilience & Backup (expanded in v14.0, admin only)
+## 16. Settings (admin only) — the front door, not a second copy
 
 - **Where:** `pages/settings.html` · **Access:** approved administrators only,
   enforced in the UI and by database/Storage authorization.
-- **Department Profile:** administrators store validated tenant branding and
-  contact settings in Supabase; approved members can read permitted settings.
-- **Resilience health:** source-aware browser, GitHub, Edge, Vercel, Apps Script,
-  external and optional `pg_cron` heartbeats; administrators can inspect source
-  freshness and send a verified manual test.
-- **Portable archive:** stable pagination exports all 25 application/configuration
-  tables with counts, primary-key metadata, per-table SHA-256 digests and a full
-  seal. Independent verification is available in `scripts/verify-portable-archive.mjs`.
-- **Safe restore:** a database-backed lease prevents overlapping runs; merge or
-  degraded recovery verifies first and reports attempted/restored/skipped rows.
-- **Google Drive:** Google Identity Services token flow with least-privilege
-  `drive.file`, dedicated folder, verified upload/download, retention and a
-  visit-triggered schedule that never opens an unsolicited OAuth popup.
-- **Private vault:** administrator-only Supabase Storage copies for convenience;
-  the vault is not an off-site backup.
+- **What Settings owns:** the **Administration control plane** (live status tiles
+  that route into every high-risk workspace), **Global App Branding** (application
+  name, organisation, logo, theme colour), **Device Profile & Appearance** and
+  **System Information**.
+- **One owner per function.** Settings deliberately does **not** re-implement any
+  high-risk operation. Backup, restore, Google Drive, the vault, heartbeats,
+  retention, approvals and licensing each live on exactly one page, and Settings
+  links to them. This removes the earlier duplication in which two pages could
+  perform the same destructive operation.
+- **Live control-plane status.** Each tile shows real evidence pulled from the owning
+  page's own API — last verified backup, fresh heartbeat source count (with a
+  single-point-of-failure warning), storage percentage against quota, and pending
+  approvals — so an administrator can see where to go before clicking.
+- **Ownership map:** Admin Data (archives, Drive, vault, recovery), Storage Manager
+  (quota, inventory, retention), Platform Health (heartbeats, resilience, security),
+  Roles & Status (approvals, roles, units), Site License (entitlement), Activity Log
+  (audit trail).
+- **Where the old features went:** portable archive, restore, lease protection,
+  Google Drive backup and the private vault are documented under §44 (Admin Data).
+  Security state and the login/access audit are under §45 (Platform Health).
 - **Unattended recovery:** GitHub creates encrypted public-schema and Auth data
   dumps and optionally exports actual Storage bytes to rclone/Drive with remote
   verification and post-verification retention.
@@ -503,12 +508,54 @@ it, where to find it, and how it works under the hood. All features run on
 - Members record an **emergency contact name, phone and relationship** —
   essential safeguarding information for rehearsals, events and travel.
 
-## 39. Help & FAQ (NEW in v12)
+## 39. Help Centre, Page Guides and the Assistant (expanded, all members)
 
 - **Where:** `pages/help.html` · **Access:** all members.
-- A searchable list of common how-tos (photos, ID card, check-in, RSVP,
-  messaging, birthdays, install, password reset) plus a **"Message an Admin"**
-  shortcut — smoothing onboarding for new members.
+- **Help Centre.** Five panels — **Page guides**, **Getting started**, **FAQ**,
+  **Troubleshooting** and **Which page owns what?** — behind one search box that
+  spans all of them and switches panels to wherever the first hit lives. The page
+  guide panel is generated from the shared registry, so it can never fall behind
+  the application.
+- **A description for every page.** `assets/js/page-guide.js` holds one
+  authoritative entry per page — **37 pages, 37 entries** — each with icon,
+  category, intended roles, a one-line summary, what it is, what it does, who uses
+  it, numbered how-to steps, why it works that way, the benefit to the department
+  and tips, plus cross-links to related pages.
+- **Page guide button.** Every page mounts a **❓ Page guide** button (bottom-left)
+  and binds the **`?`** key. Either opens a modal with that page's full guide and
+  its related pages, without leaving the page.
+- **Header descriptions.** Page descriptions are taken from the same registry, so
+  the line under a page title is always the maintained description rather than a
+  hand-copied string that drifts.
+- **The Assistant** (`assets/js/assistant.js`, the 💬 button on every page). A
+  rules-based, **fully offline** assistant: no AI API, no network call, no paid
+  service, and no data leaves the browser — consistent with the standing
+  free-tools-only constraint.
+- **Assistant depth.** Three layers, in order of specificity:
+  1. **Per-page depth** — every page can be explained in full from the registry.
+  2. **Curated topics** — 22 scored knowledge entries covering backup, restore,
+     disaster recovery, re-linking, Google Drive, anti-pause, quorum, licensing,
+     approvals, roles, attendance, casting, storage, retention, audit, sign-in,
+     install, export, notifications, appearance, "finding things" and human help.
+     Entries are **scored**, so the best match wins rather than the first.
+  3. **Full-text fallback** — if nothing matches, the assistant searches every page
+     guide and offers the most relevant pages instead of dead-ending.
+- **Conversation continuity.** History persists for the session across page
+  navigations, the current page is named in the header, follow-up suggestion chips
+  are offered after each answer, and the conversation can be cleared.
+- **Shortcuts.** **Ctrl/Cmd + K** opens the assistant with a page finder; **`/`**
+  jumps to the input; **`?`** opens the page guide; **Esc** closes either.
+- **Honest precedence.** A question that merely mentions a page ("why did
+  attendance lose names after recovery") is answered with the *topic*, not with
+  that page's description; a question that is *about* a page ("explain
+  attendance") gets the full page guide. This deliberately avoids the common bot
+  failure of hijacking every sentence that contains a module name.
+- **Coverage is machine-checked.** `tools/test-assistant.mjs` (part of `npm test`)
+  asserts that all 37 pages have a complete guide, that every guide is reachable
+  from the Help Centre index, that no guide is an empty or stub description, that
+  every guide renders, that all 37 pages are explainable by name, that 23 headline
+  topics all resolve, that scoring beats first-match on known traps, and that
+  unknown input still returns guidance. **556 checks.**
 
 ## 40. Photo Cropping (NEW in v13)
 
@@ -593,7 +640,7 @@ This is the everyday operational export; the verified archive is the disaster-re
 artefact. They are not substitutes.
 
 **44.5 Google Drive connection and backup policy.** `DriveSync.connect()` initiates OAuth
-using the **Web client ID** configured in Settings. The generator never asks for a client
+using the **Web client ID** configured on **Admin Data → Drive**. The generator never asks for a client
 secret, and the static site cannot keep one. `getSettings()` / `saveBackupSettings` control
 the folder, cadence and grace period; `backup()` performs an upload and `listBackups()`
 lists what is already in Drive. `download()` and `restore()` close the loop. Backups track
@@ -626,7 +673,12 @@ authorisation events, recorded by `dc_record_login_event()`. This is the record 
 when investigating "who did this and when".
 
 **45.5 Protection layers and settings.** `getPlatformSettings()` /
-`savePlatformSettings()` govern idle lock, emergency lockdown and retention behaviour.
+`savePlatformSettings()` govern the idle sign-out and the emergency lockdown — the
+security state. **Retention is not set here:** `dc_retention_preview()` and
+`dc_apply_retention()` read `login_audit_days` from `dc_retention_settings`, which is
+edited on the **Storage Manager**. Platform Health displays that value read-only and
+links to its owner, and `dc_update_platform_settings()` mirrors any value it is given
+into `dc_retention_settings` so the two tables can never silently disagree.
 
 ## 46. Site License (`pages/site-license.html`)
 

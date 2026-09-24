@@ -909,4 +909,4 @@ Two printable companions exist:
 
 ---
 
-*Last reviewed for DramaConnect v15.0 · Supabase free tier · all tools used are free.*
+*Last reviewed for DramaConnect v14.0 · Supabase free tier · all tools used are free.*

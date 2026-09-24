@@ -42,7 +42,8 @@ Operational setup: **[Supabase protection](docs/SUPABASE_FREE_TIER_PROTECTION.md
 | 📸 **Profile photo uploads** | Members upload a photo (free Supabase Storage) shown on their **digital ID card**, the **Directory** and the **Members** list. Each user manages only their own photo (storage RLS). |
 | 📇 **Member Directory** | A photo‑rich, searchable card grid with units filter and one‑tap WhatsApp/Email/social links. |
 | 🚑 **Emergency / Next‑of‑kin contact** | Captured on the profile — essential safeguarding info for any real organisation. |
-| ❓ **Help & FAQ page** | Searchable in‑app answers + a "Message an Admin" shortcut for onboarding. |
+| ❓ **Help Centre** | A maintained guide for **every** page, plus FAQ, getting‑started checklists, troubleshooting and a "which page owns what" map — all behind one search box. |
+| 💬 **Built‑in assistant** | A rules‑based, **fully offline** assistant (no AI API) that explains any page in depth and answers questions on backup, recovery, anti‑pause, roles, storage and more. |
 | 🪪 **ID card with real photo** | The digital ID now shows the uploaded photo (initials fallback). |
 
 ---

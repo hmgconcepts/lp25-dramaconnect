@@ -29,7 +29,7 @@ Follow the mandatory sections in order. The core app can be launched quickly; pr
 
 - [ ] **D1.** Sign up on the live site and confirm email if enabled.
 - [ ] **D2.** Run the one-time bootstrap SQL from `DEPLOYMENT.md` for the exact email.
-- [ ] **D3.** Sign in and confirm **Activity Log**, **Settings, Resilience & Backup**, and **Messaging** are available.
+- [ ] **D3.** Sign in and confirm the administration workspaces — **Activity Log**, **Settings**, **Admin Data**, **Storage Manager**, **Platform Health**, **Roles & Status**, **Site License** — and **Messaging** are available.
 - [ ] **D4.** Sign in with an approved ordinary member and confirm administrator settings/data are unavailable even through direct database API calls.
 - [ ] **D5.** Confirm a pending/rejected account remains blocked.
 
@@ -49,10 +49,10 @@ Use `SUPABASE_FREE_TIER_PROTECTION.md` for the exact procedure.
 
 Use `BACKUP_AND_RECOVERY.md`.
 
-- [ ] **F1.** In Settings, download the full 25-table portable archive.
+- [ ] **F1.** In **Admin Data → Local**, download the full 25-table portable archive.
 - [ ] **F2.** Run `node scripts/verify-portable-archive.mjs ARCHIVE.json`; retain the successful output in the private backup register.
 - [ ] **F3.** Enable Google Drive API and create an OAuth **Web application** client with the exact production origin.
-- [ ] **F4.** Save only the public OAuth client ID in Admin Settings; connect explicitly with `drive.file` scope.
+- [ ] **F4.** Save only the public OAuth client ID in **Admin Data → Drive**; connect explicitly with `drive.file` scope.
 - [ ] **F5.** Create a Drive backup and confirm upload → download → full re-verification completes before retention.
 - [ ] **F6.** Create/list/download a private vault copy, while acknowledging that it is not off-site.
 - [ ] **F7.** Enable visit-triggered scheduling and confirm that expired authorization causes an overdue warning, never an unsolicited popup.

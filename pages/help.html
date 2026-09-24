@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Help & FAQ | DramaConnect Enterprise</title>
+    <meta name="app-version" content="14.0">
+    <title>Help Centre | DramaConnect Enterprise</title>
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -11,18 +12,108 @@
     <link rel="stylesheet" href="../assets/css/style.css">
     <link rel="stylesheet" href="../assets/css/fallback.css">
     <script src="../assets/js/boot.js"></script>
+    <style>
+        .hc-tab{transition:all .15s ease}
+        .hc-card{transition:box-shadow .15s ease,transform .15s ease}
+        .hc-card:hover{box-shadow:0 8px 22px rgba(15,23,42,.09);transform:translateY(-1px)}
+        .hc-chev{transition:transform .18s ease}
+        .hc-open .hc-chev{transform:rotate(90deg)}
+        mark{background:#fef08a;color:inherit;padding:0 2px;border-radius:3px}
+    </style>
 </head>
 <body class="bg-slate-50 min-h-screen app-shell">
     <div id="app-sidebar"></div>
     <main class="app-main">
         <div id="page-header"></div>
 
-        <div class="glass-card p-6 md:p-8 max-w-3xl mx-auto animate-fade-in">
-            <input id="q" class="dc-input mb-6" placeholder="🔍 Search help topics…">
+        <!-- ============================ SEARCH ============================ -->
+        <section class="glass-card p-5 md:p-6 mb-6">
+            <div class="flex items-center gap-3 mb-3">
+                <span class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center flex-none">
+                    <i class="fas fa-circle-question"></i>
+                </span>
+                <div class="min-w-0">
+                    <h2 class="font-extrabold text-slate-800">Search all help</h2>
+                    <p class="text-xs text-slate-500">Every page guide, every FAQ and every troubleshooting entry — one box.</p>
+                </div>
+            </div>
+            <div class="relative">
+                <i class="fas fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input id="q" class="dc-input" style="padding-left:40px"
+                       placeholder="Try: backup, Google Drive, paused, approvals, casting, storage, licence…"
+                       aria-label="Search help">
+            </div>
+            <div id="search-count" class="text-xs text-slate-400 mt-2"></div>
+        </section>
+
+        <!-- ============================ TABS ============================ -->
+        <div class="flex flex-wrap gap-2 mb-5" id="tabs" role="tablist"></div>
+
+        <!-- ============================ PANELS ============================ -->
+        <div id="panel-guides"></div>
+
+        <section id="panel-start" class="glass-card p-6 md:p-8 mb-6 hidden">
+            <h2 class="text-lg font-extrabold text-slate-800 mb-1"><i class="fas fa-rocket text-blue-600 mr-2"></i>Getting started</h2>
+            <p class="text-sm text-slate-500 mb-5">Two short checklists. Tick them once and the whole department runs smoothly.</p>
+            <div class="grid md:grid-cols-2 gap-5">
+                <div class="rounded-xl border border-slate-200 p-5">
+                    <p class="font-bold text-slate-800 mb-3"><i class="fas fa-user text-blue-600 mr-2"></i>If you are a member</p>
+                    <ol class="text-sm text-slate-600 space-y-2 list-decimal pl-5">
+                        <li>Sign in with the email and password you were given.</li>
+                        <li>Open <strong>My Profile</strong> — upload a photo and complete your details (aim for the meter to reach 100%).</li>
+                        <li>Change your password the first time you sign in.</li>
+                        <li>Open <strong>My ID Card</strong> and print or save it as PDF.</li>
+                        <li>Check <strong>My Dashboard</strong> each time you sign in — it lists your rehearsals, tasks and messages.</li>
+                        <li>Install DramaConnect on your phone so it opens in one tap.</li>
+                    </ol>
+                </div>
+                <div class="rounded-xl border border-amber-200 bg-amber-50/50 p-5">
+                    <p class="font-bold text-amber-900 mb-3"><i class="fas fa-user-shield text-amber-700 mr-2"></i>If you are an administrator</p>
+                    <ol class="text-sm text-amber-900/90 space-y-2 list-decimal pl-5">
+                        <li>Approve everyone waiting on <strong>Roles &amp; Status → Pending Review</strong> — nobody sees anything until you do.</li>
+                        <li>Set branding on <strong>Settings → Global App Branding</strong>.</li>
+                        <li>Open <strong>Admin Data → Drive</strong>, paste your Google OAuth Client ID and take the first backup.</li>
+                        <li>Open <strong>Platform Health</strong> and confirm at least <strong>two</strong> heartbeat sources are fresh — one is a single point of failure.</li>
+                        <li>Set retention on the <strong>Storage Manager</strong> so old logs are purged safely.</li>
+                        <li>Create your first <strong>Production</strong>, then cast it and schedule rehearsals.</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <section id="panel-faq" class="glass-card p-6 md:p-8 mb-6 hidden">
+            <h2 class="text-lg font-extrabold text-slate-800 mb-1"><i class="fas fa-comments text-blue-600 mr-2"></i>Frequently asked questions</h2>
+            <p class="text-sm text-slate-500 mb-5">The questions the department asks most often.</p>
             <div id="faq"></div>
-            <div class="mt-8 pt-6 border-t border-slate-100 text-center">
-                <p class="text-sm text-slate-500 mb-3">Still need help? Reach the department leadership inside the app.</p>
+        </section>
+
+        <section id="panel-fix" class="glass-card p-6 md:p-8 mb-6 hidden">
+            <h2 class="text-lg font-extrabold text-slate-800 mb-1"><i class="fas fa-screwdriver-wrench text-blue-600 mr-2"></i>Troubleshooting</h2>
+            <p class="text-sm text-slate-500 mb-5">Symptom → cause → fix, for the things that actually go wrong.</p>
+            <div id="fix"></div>
+        </section>
+
+        <section id="panel-where" class="glass-card p-6 md:p-8 mb-6 hidden">
+            <h2 class="text-lg font-extrabold text-slate-800 mb-1"><i class="fas fa-map text-blue-600 mr-2"></i>Which page owns what?</h2>
+            <p class="text-sm text-slate-500 mb-5">Every high-risk function lives on exactly one page, so there is never any doubt.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-left text-xs uppercase text-slate-400 border-b">
+                        <th class="p-2">Capability</th><th class="p-2">Owned by</th><th class="p-2">Nowhere else</th>
+                    </tr></thead>
+                    <tbody id="ownership" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <p class="text-xs text-slate-500 mt-4"><strong>Settings</strong> is the front door: its Administration control plane shows live status for each workspace and links straight into it.</p>
+        </section>
+
+        <!-- ============================ FOOTER CTA ============================ -->
+        <div class="mt-8 pt-6 border-t border-slate-200 text-center">
+            <p class="text-sm text-slate-500 mb-3">Still need help? Ask the 💬 assistant on any page, or reach the department leadership inside the app.</p>
+            <div class="flex flex-wrap gap-2 justify-center">
                 <a href="inbox.html" class="dc-btn dc-btn-primary"><i class="fas fa-paper-plane mr-1"></i> Message an Admin</a>
+                <button type="button" onclick="Assistant.toggle(true)" class="dc-btn bg-slate-700 text-white"><i class="fas fa-comment-dots mr-1"></i> Ask the assistant</button>
+                <button type="button" onclick="PageGuide.open('help')" class="dc-btn bg-slate-200 text-slate-800"><i class="fas fa-circle-question mr-1"></i> About this page</button>
             </div>
         </div>
     </main>
@@ -39,42 +130,261 @@
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/page-guide.js"></script>
+    <script src="../assets/js/assistant.js"></script>
     <script>
-        const FAQ = [
-            ['How do I add my profile photo?', 'Go to My Profile → click "Upload Photo". It appears on your digital ID card and in the directory.'],
-            ['How do I complete my details?', 'My Profile lets you add phone, birthday (month & day), occupation, address, social links and emergency contact. The completion meter tracks your progress.'],
-            ['I was given a login by an admin. What next?', 'Sign in with the email & password you were given, then open My Profile to change your password and complete your details.'],
-            ['How do I get my ID card?', 'Open "My ID Card", then click Print / Save as PDF. It includes your photo and a QR code.'],
-            ['How do I check in to a rehearsal?', 'On the Attendance page, select the rehearsal and enter the check-in code the admin announces.'],
-            ['How do I RSVP to an event?', 'On the Events page, tap Going / Maybe / No on the event card.'],
-            ['How do I message the admin or another member?', 'Open Inbox → New Message → choose the recipient (or "Department Admins") → send. It stays inside the platform.'],
-            ['Will I be reminded of my tasks?', 'Yes — open tasks appear on My Dashboard and in the 🔔 notifications bell.'],
-            ['How are birthdays celebrated?', 'Add your birth month & day in My Profile. On your birthday the system greets you automatically (and admins can also send WhatsApp/Email).'],
-            ['Can I install this like an app?', 'Yes — accept the "Install DramaConnect" banner, or use your browser menu → Add to Home Screen. It works offline for browsing.'],
-            ['I forgot my password.', 'On the sign-in screen click "Forgot password?" to receive a reset link by email.']
-        ];
-        async function init() {
-            const me = await Auth.checkSession();
-            if (!me) return;
-            Layout.renderSidebar('help', me);
-            document.getElementById('page-header').innerHTML = Layout.renderHeader('Help & FAQ', 'Answers to common questions');
-            Layout.setDate();
-            if (Layout.loadNotifications) Layout.loadNotifications(me);
-            document.getElementById('q').oninput = render;
-            render();
+    /* ======================================================================
+       Help Centre — one index for the entire platform.
+       ====================================================================== */
+
+    const FAQ = [
+        ['How do I add my profile photo?', 'Go to My Profile → click "Upload Photo". It appears on your digital ID card and in the directory.', 'profile'],
+        ['How do I complete my details?', 'My Profile lets you add phone, birthday (month & day), occupation, address, social links and emergency contact. The completion meter tracks your progress.', 'profile'],
+        ['I was given a login by an admin. What next?', 'Sign in with the email & password you were given, then open My Profile to change your password and complete your details.', 'profile'],
+        ['How do I get my ID card?', 'Open "My ID Card", then click Print / Save as PDF. It includes your photo and a QR code.', 'idcard'],
+        ['How do I check in to a rehearsal?', 'On the Attendance page, select the rehearsal and enter the check-in code the admin announces.', 'attendance'],
+        ['How do I RSVP to an event?', 'On the Events page, tap Going / Maybe / No on the event card.', 'events'],
+        ['How do I message the admin or another member?', 'Open Inbox → New Message → choose the recipient (or "Department Admins") → send. It stays inside the platform.', 'inbox'],
+        ['Will I be reminded of my tasks?', 'Yes — open tasks appear on My Dashboard and in the 🔔 notifications bell.', 'tasks'],
+        ['How are birthdays celebrated?', 'Add your birth month & day in My Profile. On your birthday the system greets you automatically (and admins can also send WhatsApp/Email).', 'birthdays'],
+        ['Can I install this like an app?', 'Yes — accept the "Install DramaConnect" banner, or use your browser menu → Add to Home Screen. It works offline for browsing.', 'home'],
+        ['I forgot my password.', 'On the sign-in screen click "Forgot password?" to receive a reset link by email.', 'roles-status'],
+        ['Why can I not see anything after signing up?', 'Because your account is still pending. An administrator must approve you on Roles & Status first — nobody sees anything until they are approved.', 'roles-status'],
+        ['How often should we back up?', 'Weekly is the recommended interval (7 days, keep 12 archives). Anything you cannot afford to lose should also be exported to your own device or OneDrive monthly.', 'admin-data'],
+        ['What happens if Supabase pauses our project?', 'Restore it at supabase.com, then press 💓 Test heartbeat on Platform Health. If it is genuinely gone, use the 🚑 disaster-recovery wizard on Admin Data.', 'platform-health'],
+        ['Where did the backup controls that used to be on Settings go?', 'Into Admin Data, which owns archiving, Google Drive, the vault, restores and disaster recovery. Settings now launches into it via the Administration control plane.', 'settings'],
+        ['Does the Google Drive backup read our other Drive files?', 'No. It uses the least-privilege drive.file scope, which permits access only to the files it created itself.', 'admin-data'],
+        ['Is there any subscription fee?', 'No. DramaConnect is lifetime ownership for the default site licence. Every tool in the backup and anti-pause guides is free.', 'site-license']
+    ];
+
+    const FIXES = [
+        ['The site says the database is unreachable',
+         'The Supabase project is most likely paused after 7 days of inactivity.',
+         'Sign in at supabase.com and restore the project. Wait 2–5 minutes, then press 💓 Test heartbeat on Platform Health. Then add a second external heartbeat source so it cannot happen again.'],
+        ['Platform Health says "single point of failure"',
+         'Only one heartbeat source is fresh. If it dies, the database still looks healthy and you find out only after the pause.',
+         'Add a second independent external scheduler — GitHub Actions plus Vercel Cron is the usual free pair. Confirm the banner clears within an hour.'],
+        ['The Google Drive popup will not open',
+         'The browser blocked the popup, or third-party cookies are disabled.',
+         'Allow popups for your site, then retry. If you see "idpiframe_initialization_failed", allow third-party cookies or use an incognito window.'],
+        ['Google says "Access blocked: this app has not completed verification"',
+         'The Google account you are signing in with is not on the consent screen test-user list.',
+         'Add that email as a test user in Google Cloud Console → APIs & Services → OAuth consent screen → Test users. Then try again.'],
+        ['Google says "redirect_uri_mismatch"',
+         'Your site URL is not listed under Authorised JavaScript origins for the OAuth client.',
+         'Add the exact URL (no trailing slash) to both Authorised JavaScript origins and Authorised redirect URIs, then retry.'],
+        ['A restore refuses to start',
+         'The archive SHA-256 seal does not match its contents.',
+         'This is the safety system working correctly — a corrupt archive can never overwrite good data. Choose a different, verified backup.'],
+        ['After a recovery, attendance rows have no names',
+         'Login accounts cannot be copied, so member links were deferred on purpose.',
+         'Ask everyone to re-register using the same email address, then upload the re-link manifest on Admin Data → Local → Re-link manifest. It is safe to re-run as more people join.'],
+        ['Storage is nearly full',
+         'Photos and videos are almost always the cause.',
+         'Open the Storage Manager, load the object inventory, and remove what you no longer need. Set a retention policy so old logs are purged automatically — purging is backup-gated, so it will not remove anything unprotected.'],
+        ['I am not receiving notifications',
+         'System notices go to the 🔔 bell, not the Inbox.',
+         'Check the bell at the top right of any page. Private messages from people arrive in the Inbox; automatic system notices arrive in the bell.'],
+        ['A member cannot sign in',
+         'Either the account is still pending, or the password is wrong.',
+         'Check Roles & Status → Pending Review first. If the account is approved, they should use "Forgot password?" to set a new one.'],
+        ['A page looks blank or half-loaded',
+         'A script failed to load, usually a flaky network.',
+         'Reload the page. If it persists, check the browser console and confirm your connection — DramaConnect needs no server of its own beyond Supabase.']
+    ];
+
+    const OWNERSHIP = [
+        ['Archives, Google Drive sync, private vault, restores, 🚑 disaster recovery', 'Admin Data', 'Settings no longer duplicates these'],
+        ['Heartbeat, anti-pause layers, security controls, sign-in audit', 'Platform Health', 'Settings no longer duplicates these'],
+        ['Quota, object inventory, retention and purging', 'Storage Manager', 'Purge is backup-gated'],
+        ['Approvals, roles, suspension', 'Roles & Status', 'The only place access is granted'],
+        ['Audit trail', 'Activity Log', 'Read-only by design'],
+        ['Licence class, entitlement, renewal, licence events', 'Site License', 'Platform Health shows a summary only'],
+        ['Branding, device profile, appearance, system information', 'Settings', 'Plus the Administration control-plane launcher'],
+        ['Reports and exports', 'Reports', 'CSV for analysis, PDF for leadership']
+    ];
+
+    const TABS = [
+        ['guides', 'fa-book', 'Page guides'],
+        ['start', 'fa-rocket', 'Getting started'],
+        ['faq', 'fa-comments', 'FAQ'],
+        ['fix', 'fa-screwdriver-wrench', 'Troubleshooting'],
+        ['where', 'fa-map', 'Which page owns what?']
+    ];
+
+    let activeTab = 'guides';
+
+    function label(id) { return String(id || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
+
+    function renderTabs() {
+        document.getElementById('tabs').innerHTML = TABS.map(([id, icon, text]) =>
+            `<button type="button" data-tab="${id}" role="tab"
+                class="hc-tab px-4 py-2 rounded-xl text-sm font-bold border ${id === activeTab
+                    ? 'bg-blue-600 text-white border-blue-600 shadow'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">
+                <i class="fas ${icon} mr-1.5"></i>${text}
+             </button>`).join('');
+        document.querySelectorAll('[data-tab]').forEach(b => {
+            b.onclick = () => { activeTab = b.dataset.tab; renderTabs(); renderPanels(); };
+        });
+    }
+
+    function renderPanels() {
+        ['guides', 'start', 'faq', 'fix', 'where'].forEach(id => {
+            const el = document.getElementById('panel-' + id);
+            if (el) el.classList.toggle('hidden', id !== activeTab);
+        });
+        if (activeTab === 'guides') renderGuides();
+        if (activeTab === 'faq') renderFaq('');
+        if (activeTab === 'fix') renderFixes('');
+        if (activeTab === 'where') renderOwnership();
+    }
+
+    function renderGuides() {
+        const host = document.getElementById('panel-guides');
+        const q = (document.getElementById('q').value || '').trim().toLowerCase();
+        const groups = (window.PageGuide ? PageGuide.groups() : []);
+        if (!groups.length) {
+            host.innerHTML = '<div class="glass-card p-6"><p class="text-sm text-slate-500">Page guides are unavailable.</p></div>';
+            return;
         }
-        function render() {
-            const q = (document.getElementById('q').value || '').toLowerCase();
-            const list = FAQ.filter(([qn, an]) => !q || (qn + ' ' + an).toLowerCase().includes(q));
-            const host = document.getElementById('faq');
-            if (!list.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No topics match.</p>'; return; }
-            host.innerHTML = list.map(([qn, an]) => `
-                <details class="border-b border-slate-100 py-3">
-                    <summary class="font-bold text-slate-800 cursor-pointer">${UI.esc(qn)}</summary>
-                    <p class="text-sm text-slate-600 mt-2">${UI.esc(an)}</p>
-                </details>`).join('');
-        }
-        init();
+        const hay = g => (g.summary + ' ' + g.purpose + ' ' + g.does + ' ' + g.who + ' ' +
+            (g.steps || []).join(' ') + ' ' + (g.advantages || []).join(' ') + ' ' + g.benefit + ' ' +
+            (g.tips || []).join(' ')).toLowerCase();
+
+        let total = 0;
+        const html = groups.map(([group, ids]) => {
+            const cards = ids.map(id => {
+                const g = PageGuide.get(id);
+                if (!g) return '';
+                if (q && hay(g).indexOf(q) === -1 && id.replace(/-/g, ' ').indexOf(q) === -1) return '';
+                total++;
+                const steps = (g.steps || []).map((s, i) => `<li>${UI.esc(s)}</li>`).join('');
+                const adv = (g.advantages || []).map(a => `<li>${UI.esc(a)}</li>`).join('');
+                const tips = (g.tips || []).length
+                    ? `<p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">Tips</p>
+                       <ul class="list-disc pl-5 space-y-1 text-slate-600">${(g.tips || []).map(t => `<li>${UI.esc(t)}</li>`).join('')}</ul>` : '';
+                const rel = (g.related || []).filter(r => r !== id)
+                    .map(r => `<a href="${UI.esc(r)}.html" class="text-xs font-semibold text-blue-600 hover:underline mr-3">${UI.esc(label(r))} →</a>`).join('');
+                return `
+                <details class="hc-card rounded-xl border border-slate-200 bg-white overflow-hidden">
+                    <summary class="cursor-pointer p-4 flex items-start gap-3 list-none">
+                        <span class="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center flex-none"><i class="fas ${UI.esc(g.icon)}"></i></span>
+                        <span class="flex-1 min-w-0">
+                            <span class="flex items-center gap-2">
+                                <strong class="text-slate-800">${UI.esc(label(id))}</strong>
+                                <i class="fas fa-chevron-right hc-chev text-[10px] text-slate-400"></i>
+                            </span>
+                            <span class="block text-sm text-slate-500 mt-0.5">${UI.esc(g.summary)}</span>
+                        </span>
+                        <a href="${UI.esc(id)}.html" onclick="event.stopPropagation()"
+                           class="text-xs font-bold text-blue-600 hover:underline flex-none">Open →</a>
+                    </summary>
+                    <div class="px-4 pb-4 pt-1 border-t border-slate-100 text-sm">
+                        <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">What it is</p>
+                        <p class="text-slate-700">${UI.esc(g.purpose)}</p>
+                        <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">What it does</p>
+                        <p class="text-slate-700">${UI.esc(g.does)}</p>
+                        <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">Who uses it</p>
+                        <p class="text-slate-700">${UI.esc(g.who)}</p>
+                        ${steps ? `<p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">How to use it</p>
+                                   <ol class="list-decimal pl-5 space-y-1 text-slate-700">${steps}</ol>` : ''}
+                        ${adv ? `<p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">Why it works this way</p>
+                                  <ul class="list-disc pl-5 space-y-1 text-slate-700">${adv}</ul>` : ''}
+                        <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-3 mb-1">Benefit</p>
+                        <p class="text-slate-700">${UI.esc(g.benefit)}</p>
+                        ${tips}
+                        ${rel ? `<div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap">${rel}</div>` : ''}
+                        <div class="mt-3">
+                            <button type="button" onclick="Assistant.toggle(true);Assistant.ask('Explain ${UI.esc(label(id).toLowerCase())}')"
+                                    class="text-xs font-bold text-blue-600 hover:underline">
+                                <i class="fas fa-comment-dots mr-1"></i>Ask the assistant about this page
+                            </button>
+                        </div>
+                    </div>
+                </details>`;
+            }).join('');
+            if (!cards) return '';
+            return `<section class="mb-6">
+                <h2 class="text-sm font-extrabold uppercase tracking-widest text-slate-400 mb-3">${UI.esc(group)}</h2>
+                <div class="grid lg:grid-cols-2 gap-3">${cards}</div>
+            </section>`;
+        }).join('');
+
+        host.innerHTML = html || '<div class="glass-card p-6"><p class="text-sm text-slate-500">No page guide matches that search.</p></div>';
+        document.getElementById('search-count').textContent =
+            q ? `${total} page guide(s) match “${document.getElementById('q').value.trim()}”.` : `${total} page guides indexed.`;
+    }
+
+    function renderFaq(filter) {
+        const q = (filter === undefined ? (document.getElementById('q').value || '') : filter).trim().toLowerCase();
+        const list = FAQ.filter(r => !q || (r[0] + ' ' + r[1]).toLowerCase().includes(q));
+        const host = document.getElementById('faq');
+        if (!list.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No questions match.</p>'; return; }
+        host.innerHTML = list.map(([qn, an, page]) => `
+            <details class="border-b border-slate-100 py-3">
+                <summary class="font-bold text-slate-800 cursor-pointer">${UI.esc(qn)}</summary>
+                <p class="text-sm text-slate-600 mt-2">${UI.esc(an)}</p>
+                ${page ? `<a href="${UI.esc(page)}.html" class="inline-block mt-2 text-xs font-bold text-blue-600 hover:underline">Open ${UI.esc(label(page))} →</a>` : ''}
+            </details>`).join('');
+    }
+
+    function renderFixes(filter) {
+        const q = (filter === undefined ? (document.getElementById('q').value || '') : filter).trim().toLowerCase();
+        const list = FIXES.filter(r => !q || (r[0] + ' ' + r[1] + ' ' + r[2]).toLowerCase().includes(q));
+        const host = document.getElementById('fix');
+        if (!list.length) { host.innerHTML = '<p class="text-slate-400 text-sm">No troubleshooting entries match.</p>'; return; }
+        host.innerHTML = list.map(([sym, cause, fix]) => `
+            <details class="rounded-xl border border-slate-200 mb-3 overflow-hidden">
+                <summary class="cursor-pointer p-4 font-bold text-slate-800 list-none flex items-center gap-2">
+                    <i class="fas fa-triangle-exclamation text-amber-500 text-sm"></i>${UI.esc(sym)}
+                </summary>
+                <div class="px-4 pb-4 text-sm space-y-2">
+                    <p><span class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Cause</span><br>
+                       <span class="text-slate-700">${UI.esc(cause)}</span></p>
+                    <p><span class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Fix</span><br>
+                       <span class="text-slate-700">${UI.esc(fix)}</span></p>
+                </div>
+            </details>`).join('');
+    }
+
+    function renderOwnership() {
+        document.getElementById('ownership').innerHTML = OWNERSHIP.map(([cap, owner, note]) => `
+            <tr>
+                <td class="p-2 text-slate-700">${UI.esc(cap)}</td>
+                <td class="p-2"><a href="${UI.esc(owner === 'Admin Data' ? 'admin-data' : owner.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-'))}.html"
+                        class="font-bold text-blue-600 hover:underline">${UI.esc(owner)}</a></td>
+                <td class="p-2 text-slate-500 text-xs">${UI.esc(note)}</td>
+            </tr>`).join('');
+    }
+
+    async function init() {
+        const me = await Auth.checkSession();
+        if (!me) return;
+        Layout.renderSidebar('help', me);
+        document.getElementById('page-header').innerHTML = Layout.renderHeader('Help Centre', 'Answers to common questions');
+        Layout.setDate();
+        if (Layout.loadNotifications) Layout.loadNotifications(me);
+        Layout.registerPWA();
+
+        renderTabs();
+        renderPanels();
+
+        document.getElementById('q').addEventListener('input', () => {
+            // Search spans every panel: jump to the first tab that has a hit.
+            renderGuides();
+            renderFaq();
+            renderFixes();
+            const q = (document.getElementById('q').value || '').trim().toLowerCase();
+            if (!q) return;
+            const inGuides = document.getElementById('panel-guides').innerText.toLowerCase().includes(q);
+            const inFaq = FAQ.some(r => (r[0] + r[1]).toLowerCase().includes(q));
+            const inFix = FIXES.some(r => (r[0] + r[1] + r[2]).toLowerCase().includes(q));
+            if (!inGuides && inFaq) { activeTab = 'faq'; renderTabs(); renderPanels(); }
+            else if (!inGuides && !inFaq && inFix) { activeTab = 'fix'; renderTabs(); renderPanels(); }
+        });
+    }
+    init();
     </script>
 </body>
 </html>

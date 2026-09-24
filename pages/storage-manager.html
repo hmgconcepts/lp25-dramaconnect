@@ -10,6 +10,8 @@
 <div class="mt-5 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900"><strong>Recovery boundary:</strong> database archives do not contain Storage object bytes or Auth passwords. Use <code>scripts/export-storage.mjs</code> and the GitHub database-backup workflow for independent, off-provider recovery copies.</div>
 </main>
 <script src="../assets/js/config.js"></script><script src="../assets/js/resilience.js"></script><script src="../assets/js/platform-management.js"></script><script src="../assets/js/data-portability.js"></script><script src="../assets/js/drive-sync.js"></script><script src="../assets/js/i18n.js"></script><script src="../assets/js/ui.js"></script><script src="../assets/js/auth.js"></script><script src="../assets/js/db.js"></script><script src="../assets/js/utils.js"></script><script src="../assets/js/layout.js"></script><script src="../assets/js/install.js"></script>
+<script src="../assets/js/page-guide.js"></script>
+<script src="../assets/js/assistant.js"></script>
 <script>(()=>{'use strict';const $=id=>document.getElementById(id);const esc=v=>UI.esc(v??'');const msg=e=>PlatformManagement.clean(e);const size=n=>{n=Number(n||0);if(n<1024)return `${n} B`;if(n<1048576)return `${(n/1024).toFixed(1)} KiB`;if(n<1073741824)return `${(n/1048576).toFixed(1)} MiB`;return `${(n/1073741824).toFixed(2)} GiB`;};const date=v=>v?new Date(v).toLocaleString():'—';
 function showError(error){$('storage-error').textContent=msg(error);$('storage-error').classList.remove('hidden');}
 function posture(percent,warn,critical){if(percent>=critical)return['Critical','text-red-600','#dc2626'];if(percent>=warn)return['Warning','text-amber-600','#d97706'];return['Healthy','text-emerald-700','#16a34a'];}

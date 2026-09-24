@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="app-version" content="14.0">
-    <title>Settings, Resilience & Backup | DramaConnect Enterprise</title>
+    <title>Settings | DramaConnect Enterprise</title>
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -12,6 +12,10 @@
     <link rel="stylesheet" href="../assets/css/style.css">
     <link rel="stylesheet" href="../assets/css/fallback.css">
     <script src="../assets/js/boot.js"></script>
+    <style>
+        .cp-tile{transition:box-shadow .15s ease,transform .15s ease;display:block}
+        .cp-tile:hover{box-shadow:0 10px 24px rgba(15,23,42,.10);transform:translateY(-2px)}
+    </style>
 </head>
 <body class="bg-slate-50 min-h-screen app-shell">
     <div id="app-sidebar"></div>
@@ -23,145 +27,93 @@
             Apply <code>database/complete-schema.sql</code>. It is the all-inclusive, safe-to-rerun production installer; no other SQL is required afterward.
         </div>
 
+        <!-- ===================== ADMINISTRATION CONTROL PLANE =====================
+             Every high-risk function is owned by exactly ONE page. Settings does not
+             duplicate any of them: it shows their live status and routes into them.
+             ======================================================================= -->
         <section class="glass-card p-6 mb-6" aria-labelledby="control-title">
             <h2 id="control-title" class="text-lg font-extrabold text-slate-800 dark-text">Administration control plane</h2>
-            <p class="text-sm text-slate-500 mt-1 mb-4">Each high-risk function now has a dedicated, auditable workspace. This Settings page retains branding, appearance and compatibility controls.</p>
-            <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <a href="admin-data.html" class="rounded-xl border border-blue-200 bg-blue-50 p-4 hover:shadow-md transition"><i class="fas fa-database text-blue-700"></i><strong class="block mt-2 text-blue-950">Admin Data</strong><span class="text-xs text-blue-800">Archives, Drive, vault and recovery</span></a>
-                <a href="storage-manager.html" class="rounded-xl border border-violet-200 bg-violet-50 p-4 hover:shadow-md transition"><i class="fas fa-hard-drive text-violet-700"></i><strong class="block mt-2 text-violet-950">Storage Manager</strong><span class="text-xs text-violet-800">Quota, inventory and retention</span></a>
-                <a href="platform-health.html" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 hover:shadow-md transition"><i class="fas fa-heart-pulse text-emerald-700"></i><strong class="block mt-2 text-emerald-950">Platform Health</strong><span class="text-xs text-emerald-800">Resilience, security and audit</span></a>
-                <a href="roles-status.html" class="rounded-xl border border-amber-200 bg-amber-50 p-4 hover:shadow-md transition"><i class="fas fa-user-shield text-amber-700"></i><strong class="block mt-2 text-amber-950">Roles & Status</strong><span class="text-xs text-amber-800">Approvals and least privilege</span></a>
-                <a href="site-license.html" class="rounded-xl border border-cyan-200 bg-cyan-50 p-4 hover:shadow-md transition"><i class="fas fa-certificate text-cyan-700"></i><strong class="block mt-2 text-cyan-950">Site License</strong><span class="text-xs text-cyan-800">Lifetime ownership and entitlement</span></a>
-                <a href="settings.html" class="rounded-xl border border-slate-200 bg-slate-50 p-4"><i class="fas fa-gear text-slate-700"></i><strong class="block mt-2 text-slate-950">Settings</strong><span class="text-xs text-slate-600">Branding, device and compatibility</span></a>
+            <p class="text-sm text-slate-500 mt-1 mb-4">
+                Each high-risk function has one dedicated, auditable workspace. This Settings page owns branding, device profile
+                and system information only — the controls below live on their own pages, shown here with live status so you
+                always know where to go.
+            </p>
+            <div id="control-plane" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <a href="admin-data.html"     class="cp-tile rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <i class="fas fa-database text-blue-700"></i>
+                    <strong class="block mt-2 text-blue-950">Admin Data</strong>
+                    <span class="block text-xs text-blue-800 mb-2">Archives, Drive, vault and recovery</span>
+                    <span data-cp="admin-data" class="text-[11px] font-bold text-blue-900/70">Loading…</span>
+                </a>
+                <a href="storage-manager.html" class="cp-tile rounded-xl border border-violet-200 bg-violet-50 p-4">
+                    <i class="fas fa-hard-drive text-violet-700"></i>
+                    <strong class="block mt-2 text-violet-950">Storage Manager</strong>
+                    <span class="block text-xs text-violet-800 mb-2">Quota, inventory and retention</span>
+                    <span data-cp="storage-manager" class="text-[11px] font-bold text-violet-900/70">Loading…</span>
+                </a>
+                <a href="platform-health.html" class="cp-tile rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <i class="fas fa-heart-pulse text-emerald-700"></i>
+                    <strong class="block mt-2 text-emerald-950">Platform Health</strong>
+                    <span class="block text-xs text-emerald-800 mb-2">Heartbeat, resilience and security</span>
+                    <span data-cp="platform-health" class="text-[11px] font-bold text-emerald-900/70">Loading…</span>
+                </a>
+                <a href="roles-status.html"    class="cp-tile rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <i class="fas fa-user-shield text-amber-700"></i>
+                    <strong class="block mt-2 text-amber-950">Roles &amp; Status</strong>
+                    <span class="block text-xs text-amber-800 mb-2">Approvals and least privilege</span>
+                    <span data-cp="roles-status" class="text-[11px] font-bold text-amber-900/70">Loading…</span>
+                </a>
+                <a href="site-license.html"    class="cp-tile rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                    <i class="fas fa-certificate text-cyan-700"></i>
+                    <strong class="block mt-2 text-cyan-950">Site License</strong>
+                    <span class="block text-xs text-cyan-800 mb-2">Lifetime ownership and entitlement</span>
+                    <span data-cp="site-license" class="text-[11px] font-bold text-cyan-900/70">Lifetime ownership</span>
+                </a>
+                <a href="help.html"            class="cp-tile rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <i class="fas fa-circle-question text-slate-700"></i>
+                    <strong class="block mt-2 text-slate-950">Help Centre</strong>
+                    <span class="block text-xs text-slate-600 mb-2">Every page guide, FAQ and fix</span>
+                    <span class="text-[11px] font-bold text-slate-700/70">Always available</span>
+                </a>
             </div>
-        </section>
-
-        <section class="glass-card p-6 md:p-8 mb-6 animate-fade-in admin-only" aria-labelledby="health-title">
-            <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-                <div>
-                    <h2 id="health-title" class="text-lg font-bold text-slate-800"><i class="fas fa-heart-pulse text-emerald-600 mr-2"></i> Supabase Free-Tier Resilience</h2>
-                    <p class="text-xs text-slate-500 mt-1">Source-aware, five-minute-throttled heartbeats. No database secret is exposed here.</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <button id="heartbeat-btn" class="dc-btn dc-btn-primary"><i class="fas fa-satellite-dish mr-1"></i> Manual Heartbeat</button>
-                    <button id="health-refresh" class="dc-btn bg-slate-700 text-white"><i class="fas fa-rotate mr-1"></i> Refresh</button>
-                </div>
-            </div>
-            <div id="health-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5" aria-live="polite"></div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead><tr class="text-left text-xs uppercase text-slate-400 border-b"><th class="p-2">Layer/source</th><th class="p-2">Last accepted ping</th><th class="p-2">Count</th><th class="p-2">State</th></tr></thead>
-                    <tbody id="heartbeat-rows"></tbody>
-                </table>
-            </div>
-            <p class="text-xs text-slate-500 mt-4">External layers are configured outside this page: GitHub Actions, public Edge Function monitor, Vercel Cron, cron-job.org, Apps Script and the Management API recovery watchdog. Internal <code>pg_cron</code> adds activity but cannot wake an already-paused project.</p>
+            <p class="text-xs text-slate-400 mt-3">
+                Looking for something that used to be here? Backups, Google Drive, restores and disaster recovery are on
+                <strong>Admin Data</strong>; heartbeats and security on <strong>Platform Health</strong>; retention on
+                <strong>Storage Manager</strong>; approvals on <strong>Roles &amp; Status</strong>. Press
+                <kbd class="rounded bg-slate-100 px-1">Ctrl</kbd>+<kbd class="rounded bg-slate-100 px-1">K</kbd> to search pages.
+            </p>
         </section>
 
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="local-title">
-                <h2 id="local-title" class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-file-shield text-blue-600 mr-2"></i> Verified Portable Archive</h2>
-                <p class="text-xs text-slate-500 mb-5">Exports all 25 application/configuration tables with stable pagination, row counts, per-table hashes and a full SHA-256 seal. Auth passwords/sessions and Storage object bytes are not included.</p>
-                <div class="flex flex-wrap gap-2 mb-5">
-                    <button id="backup-btn" class="dc-btn dc-btn-primary"><i class="fas fa-download mr-1"></i> Download Verified JSON</button>
-                    <select id="csv-table" class="dc-input max-w-[190px]" aria-label="CSV table"></select>
-                    <button id="csv-export" class="dc-btn bg-slate-700 text-white"><i class="fas fa-file-csv mr-1"></i> CSV</button>
-                </div>
-                <div class="border-t border-slate-100 pt-5">
-                    <h3 class="font-bold text-slate-700 mb-2">Verify and restore an archive</h3>
-                    <p class="text-xs text-amber-700 mb-3">Restore is merge/upsert only: it does not delete newer rows and is not a single transaction. The archive is verified before any write. Keep an additional pg_dump for disaster recovery.</p>
-                    <input type="file" id="restore-file" accept="application/json,.json" class="dc-input mb-3">
-                    <div class="flex flex-wrap gap-2">
-                        <select id="restore-mode" class="dc-input max-w-[260px]">
-                            <option value="merge">Normal merge (Auth users already exist)</option>
-                            <option value="degraded">Degraded recovery (skip identity-linked rows)</option>
-                        </select>
-                        <button id="verify-file" class="dc-btn bg-slate-700 text-white"><i class="fas fa-shield-halved mr-1"></i> Verify</button>
-                        <button id="restore-file-btn" class="dc-btn bg-amber-600 text-white"><i class="fas fa-clock-rotate-left mr-1"></i> Restore</button>
-                    </div>
-                </div>
-                <pre id="restore-report" class="hidden mt-4 max-h-72 overflow-auto rounded-lg bg-slate-900 p-4 text-xs text-emerald-200 whitespace-pre-wrap" aria-live="polite"></pre>
-            </section>
-
-            <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="drive-title">
-                <div class="flex items-start justify-between gap-3 mb-4">
-                    <div>
-                        <h2 id="drive-title" class="text-lg font-bold text-slate-800"><i class="fab fa-google-drive text-green-600 mr-2"></i> Google Drive Backup & Sync</h2>
-                        <p class="text-xs text-slate-500 mt-1">Google Identity Services with least-privilege <code>drive.file</code>; access tokens remain in memory only.</p>
-                    </div>
-                    <span id="drive-badge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">Disconnected</span>
-                </div>
-
-                <form id="drive-settings" class="space-y-3 mb-4">
-                    <div><label class="block text-xs font-bold text-slate-500 mb-1" for="drive-client-id">OAuth Web Client ID (public identifier, not a secret)</label><input id="drive-client-id" class="dc-input" autocomplete="off" placeholder="123456-abc.apps.googleusercontent.com"></div>
-                    <div><label class="block text-xs font-bold text-slate-500 mb-1" for="drive-folder">Dedicated Drive folder</label><input id="drive-folder" class="dc-input" value="DramaConnect Backups" maxlength="120"></div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div><label class="block text-xs font-bold text-slate-500 mb-1" for="drive-interval">Interval (days)</label><input id="drive-interval" type="number" min="1" max="30" class="dc-input" value="7"></div>
-                        <div><label class="block text-xs font-bold text-slate-500 mb-1" for="drive-retention">Keep archives</label><input id="drive-retention" type="number" min="1" max="50" class="dc-input" value="12"></div>
-                        <div><label class="block text-xs font-bold text-slate-500 mb-1" for="drive-grace">Grace (hours)</label><input id="drive-grace" type="number" min="0" max="168" class="dc-input" value="24"></div>
-                    </div>
-                    <label class="flex items-center gap-2 text-sm text-slate-700"><input id="drive-schedule" type="checkbox" class="h-4 w-4"> Enable visit-triggered scheduled backup</label>
-                    <button class="dc-btn dc-btn-primary" type="submit"><i class="fas fa-floppy-disk mr-1"></i> Save Drive Settings</button>
-                </form>
-                <div id="drive-due" class="mb-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600" aria-live="polite">Schedule status loading…</div>
-                <div class="flex flex-wrap gap-2 mb-4">
-                    <button id="drive-connect" class="dc-btn bg-green-600 text-white"><i class="fab fa-google mr-1"></i> Connect Google Drive</button>
-                    <button id="drive-disconnect" class="dc-btn bg-slate-600 text-white"><i class="fas fa-link-slash mr-1"></i> Disconnect</button>
-                    <button id="drive-backup" class="dc-btn dc-btn-primary"><i class="fas fa-cloud-arrow-up mr-1"></i> Backup Now</button>
-                    <button id="drive-refresh" class="dc-btn bg-slate-700 text-white"><i class="fas fa-rotate mr-1"></i> List</button>
-                </div>
-                <p class="text-xs text-slate-500 mb-3"><strong>No surprise popups:</strong> automatic checks use only a still-valid token. If authorization is absent or expired, an overdue warning asks an administrator to reconnect manually.</p>
-                <div id="drive-files" class="space-y-2 max-h-80 overflow-auto" aria-live="polite"></div>
-            </section>
-
-            <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="vault-title">
-                <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
-                    <div>
-                        <h2 id="vault-title" class="text-lg font-bold text-slate-800"><i class="fas fa-vault text-purple-600 mr-2"></i> Private Supabase Archive Vault</h2>
-                        <p class="text-xs text-slate-500 mt-1">Administrator-only Storage bucket for quick secondary copies. It is not off-site if the Supabase project is lost.</p>
-                    </div>
-                    <div class="flex gap-2"><button id="vault-upload" class="dc-btn bg-purple-600 text-white"><i class="fas fa-cloud-arrow-up mr-1"></i> Create</button><button id="vault-refresh" class="dc-btn bg-slate-700 text-white"><i class="fas fa-rotate mr-1"></i> List</button></div>
-                </div>
-                <div id="vault-files" class="space-y-2 max-h-80 overflow-auto" aria-live="polite"></div>
-            </section>
-
-            <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="runs-title">
-                <h2 id="runs-title" class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-list-check text-cyan-600 mr-2"></i> Recent Backup / Restore Runs</h2>
-                <div id="backup-runs" class="space-y-2 max-h-96 overflow-auto" aria-live="polite"></div>
-            </section>
-
+            <!-- ========================= GLOBAL APP BRANDING ========================= -->
             <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="branding-title">
                 <h2 id="branding-title" class="text-lg font-bold text-slate-800 mb-5"><i class="fas fa-globe text-blue-600 mr-2"></i> Global App Branding</h2>
                 <div class="space-y-4">
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Application Name</label><input id="saas-app" class="dc-input" placeholder="DramaConnect Enterprise"></div>
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Organization / Province</label><input id="saas-org" class="dc-input" placeholder="RCCG LP 25"></div>
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Logo URL</label><input id="saas-logo" class="dc-input" placeholder="../assets/img/rccg_logo.png"></div>
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Primary Theme Color</label><input id="saas-color" type="color" class="h-10 w-full rounded border-slate-200" value="#003399"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="saas-app">Application Name</label><input id="saas-app" class="dc-input" placeholder="DramaConnect Enterprise"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="saas-org">Organization / Province</label><input id="saas-org" class="dc-input" placeholder="RCCG LP 25"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="saas-logo">Logo URL</label><input id="saas-logo" class="dc-input" placeholder="../assets/img/rccg_logo.png"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="saas-color">Primary Theme Color</label><input id="saas-color" type="color" class="h-10 w-full rounded border-slate-200" value="#003399"></div>
                     <button id="saas-save" class="dc-btn dc-btn-primary w-full">Apply Branding</button>
                 </div>
             </section>
 
+            <!-- ===================== DEVICE PROFILE & APPEARANCE ===================== -->
             <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="profile-title">
-                <h2 id="profile-title" class="text-lg font-bold text-slate-800 mb-5"><i class="fas fa-church text-blue-600 mr-2"></i> Device Profile & Appearance</h2>
+                <h2 id="profile-title" class="text-lg font-bold text-slate-800 mb-5"><i class="fas fa-church text-blue-600 mr-2"></i> Device Profile &amp; Appearance</h2>
                 <div class="space-y-4">
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Department Name</label><input id="d-name" class="dc-input"></div>
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Province</label><input id="d-prov" class="dc-input"></div>
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Leader / Coordinator</label><input id="d-leader" class="dc-input"></div>
-                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1">Contact</label><input id="d-contact" class="dc-input"></div>
-                    <div class="flex flex-wrap gap-2"><button id="d-save" class="dc-btn dc-btn-primary">Save Device Profile</button><button id="theme-toggle" class="dc-btn bg-slate-800 text-white"><i class="fas fa-circle-half-stroke mr-1"></i> Toggle Theme</button></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="d-name">Department Name</label><input id="d-name" class="dc-input"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="d-prov">Province</label><input id="d-prov" class="dc-input"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="d-leader">Leader / Coordinator</label><input id="d-leader" class="dc-input"></div>
+                    <div><label class="block text-xs font-bold text-gray-400 uppercase mb-1" for="d-contact">Contact</label><input id="d-contact" class="dc-input"></div>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="d-save" class="dc-btn dc-btn-primary">Save Device Profile</button>
+                        <button id="theme-toggle" class="dc-btn bg-slate-800 text-white"><i class="fas fa-circle-half-stroke mr-1"></i> Toggle Theme</button>
+                    </div>
                     <p class="text-xs text-slate-400">Device profile and theme remain in local browser storage; no personal data is sent to Google.</p>
                 </div>
             </section>
 
-            <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="recovery-title">
-                <h2 id="recovery-title" class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-life-ring text-red-600 mr-2"></i> Recovery & Deployment Guides</h2>
-                <ul class="space-y-3 text-sm text-slate-700">
-                    <li><a class="text-blue-700 font-semibold hover:underline" href="../docs/SUPABASE_FREE_TIER_PROTECTION.md" target="_blank" rel="noopener">Supabase protection layers & setup</a></li>
-                    <li><a class="text-blue-700 font-semibold hover:underline" href="../docs/BACKUP_AND_RECOVERY.md" target="_blank" rel="noopener">Backup, Drive, restore and disaster recovery</a></li>
-                    <li><a class="text-blue-700 font-semibold hover:underline" href="../docs/RESILIENCE_RUNBOOK.md" target="_blank" rel="noopener">Incident runbook and verification checklist</a></li>
-                </ul>
-                <div class="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-900"><strong>Critical:</strong> portable JSON cannot recreate Supabase Auth passwords, sessions, MFA factors or Storage bytes. Keep the encrypted unattended <code>pg_dump</code> copy and your media originals off-site.</div>
-            </section>
-
+            <!-- ========================== SYSTEM INFORMATION ========================== -->
             <section class="glass-card p-6 md:p-8 animate-fade-in admin-only" aria-labelledby="system-title">
                 <h2 id="system-title" class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-circle-info text-blue-600 mr-2"></i> System Information</h2>
                 <ul class="text-sm text-slate-600 space-y-2">
@@ -172,6 +124,14 @@
                     <li><strong>Your role:</strong> <span id="sys-role"></span></li>
                     <li><strong>Installed as app:</strong> <span id="sys-pwa"></span></li>
                 </ul>
+                <div class="mt-5 pt-4 border-t border-slate-100">
+                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Documentation</p>
+                    <p class="text-sm text-slate-600">
+                        Runbooks, the Google Drive setup guide and the disaster-recovery procedure are indexed in the
+                        <a href="help.html" class="font-bold text-blue-600 hover:underline">Help Centre</a>, and summarised by the
+                        💬 assistant on any page.
+                    </p>
+                </div>
             </section>
         </div>
     </main>
@@ -188,34 +148,28 @@
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
+<script src="../assets/js/page-guide.js"></script>
+<script src="../assets/js/assistant.js"></script>
     <script>
         let me = null;
-        let selectedArchive = null;
-        let latestHealth = null;
 
         const $ = id => document.getElementById(id);
         const formatDate = value => value ? new Date(value).toLocaleString() : 'Never';
-        const formatBytes = value => {
-            const bytes = Number(value || 0);
-            if (!bytes) return '0 B';
-            const units = ['B', 'KB', 'MB', 'GB'];
-            const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-            return `${(bytes / (1024 ** index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+        const ago = value => {
+            if (!value) return 'never';
+            const ms = Date.now() - new Date(value).getTime();
+            if (ms < 0) return 'just now';
+            const h = Math.round(ms / 3_600_000);
+            if (h < 1) return 'moments ago';
+            if (h < 48) return `${h}h ago`;
+            return `${Math.round(h / 24)}d ago`;
         };
-        const statusPill = (text, tone = 'slate') => {
-            const span = document.createElement('span');
-            span.className = `rounded-full bg-${tone}-100 px-2 py-1 text-xs font-bold text-${tone}-700`;
-            span.textContent = text;
-            return span;
-        };
-        function showReport(value) {
-            $('restore-report').classList.remove('hidden');
-            $('restore-report').textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-        }
+
         function migrationFailed(error) {
             const message = String(error?.message || error || '');
             if (/dc_(keep_alive|heartbeat|backup)|resilience_and_backup|schema cache|could not find/i.test(message)) $('migration-warning').classList.remove('hidden');
         }
+
         async function action(label, task, successMessage) {
             UI.showLoader(label);
             try {
@@ -236,15 +190,13 @@
             if (!me) return;
             document.querySelectorAll('.admin-only').forEach(element => { element.style.display = 'block'; });
             Layout.renderSidebar('settings', me);
-            $('page-header').innerHTML = Layout.renderHeader('Settings, Resilience & Backup', 'Protection, verified archives and recovery controls');
+            $('page-header').innerHTML = Layout.renderHeader('Settings', 'Branding, appearance and system information');
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
 
             bindControls();
             fillStaticSettings();
-            populateCsvTables();
-            await Promise.allSettled([loadBranding(), refreshHealth(), refreshVault()]);
-            renderDriveStatus();
+            await Promise.allSettled([loadBranding(), refreshControlPlane()]);
         }
 
         function fillStaticSettings() {
@@ -261,15 +213,6 @@
             $('sys-pwa').textContent = (matchMedia('(display-mode: standalone)').matches || navigator.standalone) ? 'Yes' : 'No';
         }
 
-        function populateCsvTables() {
-            for (const table of DataPortability.TABLES) {
-                const option = document.createElement('option');
-                option.value = table.name;
-                option.textContent = table.name;
-                $('csv-table').appendChild(option);
-            }
-        }
-
         async function loadBranding() {
             try {
                 const ts = await DB.getTenantSettings();
@@ -281,224 +224,67 @@
             } catch (error) { console.warn('Branding settings unavailable:', error); }
         }
 
-        async function refreshHealth() {
+        /**
+         * Populate the control plane with LIVE status from each owning page's own API.
+         * Settings reads this data for routing only — it never edits it here.
+         */
+        async function refreshControlPlane() {
+            const set = (key, text) => {
+                const el = document.querySelector(`[data-cp="${key}"]`);
+                if (el) el.textContent = text;
+            };
+
+            // Admin Data — last verified backup
             try {
-                latestHealth = await Resilience.getHealth();
+                const health = await Resilience.getHealth();
                 $('migration-warning').classList.add('hidden');
-                renderHealth(latestHealth);
-                fillDriveSettings(latestHealth.settings);
-                renderRuns(latestHealth.runs);
-                renderDriveSchedule(latestHealth.settings);
+                const lastBackup = health.settings?.last_success_at;
+                set('admin-data', lastBackup
+                    ? `Last verified backup ${ago(lastBackup)}`
+                    : 'No verified backup yet — open Admin Data');
+                const fresh = health.heartbeats.filter(row =>
+                    Date.now() - new Date(row.last_ping_at).getTime() < 72 * 3_600_000).length;
+                set('platform-health', fresh === 0
+                    ? '⚠ No fresh heartbeat in 72h'
+                    : fresh === 1
+                        ? '⚠ 1 fresh source — single point of failure'
+                        : `${fresh} heartbeat sources fresh`);
             } catch (error) {
                 migrationFailed(error);
-                $('health-summary').textContent = 'Health data unavailable until the resilience migration is applied.';
-                throw error;
+                set('admin-data', 'Status unavailable');
+                set('platform-health', 'Status unavailable');
             }
-        }
 
-        function renderHealth(health) {
-            const expected = ['site-visit', 'github-actions', 'edge-ping', 'pg-cron', 'manual-button', 'vercel-cron', 'apps-script', 'cron-job-org', 'auto-restore', 'database-backup'];
-            const bySource = new Map(health.heartbeats.map(row => [row.source, row]));
-            const now = Date.now();
-            const active = health.heartbeats.filter(row => now - new Date(row.last_ping_at).getTime() < 4 * 86_400_000).length;
-            const last = health.heartbeats[0]?.last_ping_at;
-            const cards = [
-                ['Configured sources seen', `${health.heartbeats.length}/${expected.length}`],
-                ['Active in 4 days', String(active)],
-                ['Latest heartbeat', last ? formatDate(last) : 'Never'],
-                ['Last Drive backup', formatDate(health.settings?.last_success_at)]
-            ];
-            $('health-summary').replaceChildren(...cards.map(([label, value]) => {
-                const div = document.createElement('div');
-                div.className = 'rounded-xl bg-slate-50 p-3';
-                const small = document.createElement('div'); small.className = 'text-[11px] uppercase font-bold text-slate-400'; small.textContent = label;
-                const strong = document.createElement('div'); strong.className = 'mt-1 text-sm font-bold text-slate-800'; strong.textContent = value;
-                div.append(small, strong); return div;
-            }));
-
-            $('heartbeat-rows').replaceChildren(...expected.map(source => {
-                const row = bySource.get(source);
-                const tr = document.createElement('tr'); tr.className = 'border-b border-slate-100';
-                const values = [source, row ? formatDate(row.last_ping_at) : 'Never', row ? String(row.ping_count) : '0'];
-                values.forEach(value => { const td = document.createElement('td'); td.className = 'p-2'; td.textContent = value; tr.appendChild(td); });
-                const age = row ? now - new Date(row.last_ping_at).getTime() : Infinity;
-                const state = !row ? ['Not seen', 'slate'] : age < 4 * 86_400_000 ? ['Healthy', 'emerald'] : ['Stale', 'amber'];
-                const td = document.createElement('td'); td.className = 'p-2'; td.appendChild(statusPill(state[0], state[1])); tr.appendChild(td);
-                return tr;
-            }));
-        }
-
-        function fillDriveSettings(settings) {
-            if (!settings) return;
-            $('drive-client-id').value = settings.google_client_id || '';
-            $('drive-folder').value = settings.drive_folder_name || 'DramaConnect Backups';
-            $('drive-interval').value = settings.interval_days || 7;
-            $('drive-retention').value = settings.retention_count || 12;
-            $('drive-grace').value = settings.overdue_grace_hours ?? 24;
-            $('drive-schedule').checked = Boolean(settings.schedule_enabled);
-        }
-
-        function renderDriveSchedule(settings) {
-            if (!settings) { $('drive-due').textContent = 'Apply the resilience migration to configure scheduling.'; return; }
-            const state = DriveSync.scheduleState(settings);
-            const last = settings.last_success_at ? formatDate(settings.last_success_at) : 'Never';
-            const stateText = !state.enabled ? 'Disabled' : state.overdue ? 'OVERDUE — reconnect and back up' : state.due ? 'Due now' : `Next due ${formatDate(state.dueAt)}`;
-            $('drive-due').textContent = `Schedule: ${stateText}. Last verified Drive backup: ${last}.`;
-            $('drive-due').className = `mb-4 rounded-lg p-3 text-xs ${state.overdue && state.enabled ? 'bg-amber-100 text-amber-900' : 'bg-slate-50 text-slate-600'}`;
-        }
-
-        function renderRuns(runs = []) {
-            const container = $('backup-runs'); container.replaceChildren();
-            if (!runs.length) { container.textContent = 'No recorded runs yet.'; return; }
-            runs.forEach(run => {
-                const div = document.createElement('div'); div.className = 'rounded-lg border border-slate-100 p-3 text-xs';
-                const top = document.createElement('div'); top.className = 'flex justify-between gap-2';
-                const name = document.createElement('strong'); name.textContent = `${run.destination} · ${run.trigger_source}`;
-                const tone = run.status === 'succeeded' ? 'emerald' : run.status === 'failed' ? 'red' : run.status === 'running' ? 'blue' : 'slate';
-                top.append(name, statusPill(run.status, tone));
-                const meta = document.createElement('div'); meta.className = 'mt-1 text-slate-500';
-                meta.textContent = `${formatDate(run.started_at)}${run.archive_rows != null ? ` · ${run.archive_rows} rows` : ''}${run.archive_size != null ? ` · ${formatBytes(run.archive_size)}` : ''}`;
-                div.append(top, meta);
-                if (run.error_message) { const err = document.createElement('div'); err.className = 'mt-1 text-red-700'; err.textContent = run.error_message; div.appendChild(err); }
-                container.appendChild(div);
-            });
-        }
-
-        function renderDriveStatus() {
-            const state = DriveSync.status();
-            $('drive-badge').textContent = state.connected ? `Connected${state.account?.emailAddress ? ` · ${state.account.emailAddress}` : ''}` : 'Disconnected';
-            $('drive-badge').className = `rounded-full px-3 py-1 text-xs font-bold ${state.connected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`;
-        }
-
-        function fileCard(file, source) {
-            const div = document.createElement('div'); div.className = 'rounded-lg border border-slate-200 p-3';
-            const top = document.createElement('div'); top.className = 'flex flex-wrap items-start justify-between gap-2';
-            const info = document.createElement('div');
-            const name = document.createElement('div'); name.className = 'font-semibold text-sm text-slate-800 break-all'; name.textContent = file.name;
-            const meta = document.createElement('div'); meta.className = 'text-xs text-slate-500';
-            meta.textContent = `${formatDate(file.createdTime || file.created_at || file.updated_at)} · ${formatBytes(file.size || file.metadata?.size)}`;
-            info.append(name, meta);
-            const buttons = document.createElement('div'); buttons.className = 'flex flex-wrap gap-1';
-            const make = (label, classes, handler) => { const button = document.createElement('button'); button.className = `dc-btn ${classes} text-xs`; button.textContent = label; button.onclick = handler; return button; };
-            if (source === 'drive') {
-                buttons.append(
-                    make('Download', 'bg-slate-700 text-white', () => action('Verifying Drive archive…', () => DriveSync.download(file.id), 'Verified archive downloaded.').catch(() => {})),
-                    make('Restore', 'bg-amber-600 text-white', () => restoreRemote('drive', file.id, file.name)),
-                    make('Delete', 'bg-red-600 text-white', () => deleteRemote('drive', file.id, file.name))
-                );
-            } else {
-                buttons.append(
-                    make('Download', 'bg-slate-700 text-white', () => downloadVaultFile(file.name)),
-                    make('Restore', 'bg-amber-600 text-white', () => restoreRemote('vault', file.name, file.name)),
-                    make('Delete', 'bg-red-600 text-white', () => deleteRemote('vault', file.name, file.name))
-                );
+            // Storage Manager — quota usage
+            try {
+                const overview = await PlatformManagement.storageOverview();
+                const pct = Number(overview?.storagePercent || overview?.databasePercent || 0);
+                const warn = Number(overview?.warningPercent || 70);
+                const crit = Number(overview?.criticalPercent || 90);
+                set('storage-manager', pct >= crit
+                    ? `⚠ ${pct}% used — critical`
+                    : pct >= warn
+                        ? `⚠ ${pct}% used — approaching quota`
+                        : `${pct}% of quota used`);
+            } catch (error) {
+                migrationFailed(error);
+                set('storage-manager', 'Status unavailable');
             }
-            top.append(info, buttons); div.appendChild(top); return div;
-        }
 
-        async function refreshDriveFiles() {
-            renderDriveStatus();
-            const container = $('drive-files'); container.textContent = 'Loading…';
+            // Roles & Status — pending approvals
             try {
-                const files = await DriveSync.listBackups();
-                container.replaceChildren(...files.map(file => fileCard(file, 'drive')));
-                if (!files.length) container.textContent = 'No DramaConnect archives found in the dedicated folder.';
-            } catch (error) { container.textContent = error.message; throw error; }
-        }
-
-        async function refreshVault() {
-            const container = $('vault-files'); container.textContent = 'Loading…';
-            try {
-                const files = await DataPortability.listVault();
-                container.replaceChildren(...files.map(file => fileCard(file, 'vault')));
-                if (!files.length) container.textContent = 'No archives in the private vault.';
-            } catch (error) { container.textContent = error.message; migrationFailed(error); throw error; }
-        }
-
-        async function restoreRemote(source, id, name) {
-            const mode = $('restore-mode').value;
-            if (prompt(`Type RESTORE to merge verified archive “${name}”. This does not delete newer rows.`) !== 'RESTORE') return;
-            try {
-                const report = await action('Verifying and restoring archive…', () => source === 'drive' ? DriveSync.restore(id, mode) : DataPortability.restoreVault(id, mode));
-                showReport(report);
-                UI.toast(report.ok ? 'Restore completed.' : 'Restore completed with row failures; review the report.', report.ok ? 'success' : 'warning', 9000);
-                await refreshHealth();
-            } catch (error) { if (error.restoreReport) showReport(error.restoreReport); }
-        }
-
-        async function deleteRemote(source, id, name) {
-            if (!confirm(`Permanently delete “${name}”? This cannot be undone.`)) return;
-            try {
-                await action('Deleting archive…', () => source === 'drive' ? DriveSync.remove(id) : DataPortability.deleteVault(id), 'Archive deleted.');
-                if (source === 'drive') await refreshDriveFiles(); else await refreshVault();
-            } catch (_) {}
-        }
-
-        async function downloadVaultFile(path) {
-            try {
-                const result = await action('Verifying vault archive…', () => DataPortability.downloadVault(path));
-                const url = URL.createObjectURL(new Blob([result.text], { type: 'application/json' }));
-                const link = document.createElement('a'); link.href = url; link.download = path; document.body.appendChild(link); link.click(); link.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-                UI.toast('Verified vault archive downloaded.', 'success');
-            } catch (_) {}
+                const rows = await PlatformManagement.listMemberAccess();
+                const pending = (rows || []).filter(r => String(r.status || '').toLowerCase() === 'pending').length;
+                set('roles-status', pending > 0
+                    ? `⚠ ${pending} awaiting approval`
+                    : 'No pending approvals');
+            } catch (error) {
+                migrationFailed(error);
+                set('roles-status', 'Status unavailable');
+            }
         }
 
         function bindControls() {
-            $('health-refresh').onclick = () => action('Refreshing resilience health…', refreshHealth).catch(() => {});
-            $('heartbeat-btn').onclick = () => action('Sending heartbeat…', () => Resilience.ping('manual-button'), 'Heartbeat accepted.').then(refreshHealth).catch(() => {});
-            $('backup-btn').onclick = () => action('Exporting 25 tables and sealing archive…', () => DataPortability.downloadLocal(), 'Verified portable archive downloaded.').then(refreshHealth).catch(() => {});
-            $('csv-export').onclick = () => action('Exporting CSV…', () => DataPortability.downloadTableCsv($('csv-table').value)).then(count => UI.toast(`${count} row(s) exported.`, 'success')).catch(() => {});
-            $('restore-file').onchange = () => { selectedArchive = null; $('restore-report').classList.add('hidden'); };
-            $('verify-file').onclick = async () => {
-                try {
-                    selectedArchive = await action('Verifying archive integrity…', async () => {
-                        const archive = await DataPortability.parseArchiveFile($('restore-file').files[0]);
-                        const verification = await DataPortability.verifyArchive(archive);
-                        if (!verification.ok) throw new Error(verification.errors.join(' '));
-                        showReport(verification);
-                        return archive;
-                    });
-                    UI.toast('Archive seal, table hashes and row counts are valid.', 'success');
-                } catch (_) { selectedArchive = null; }
-            };
-            $('restore-file-btn').onclick = async () => {
-                if (prompt('Type RESTORE to merge this verified archive. Existing rows may be updated; newer rows are not deleted.') !== 'RESTORE') return;
-                try {
-                    const file = $('restore-file').files[0];
-                    const archive = selectedArchive || await DataPortability.parseArchiveFile(file);
-                    const report = await action('Verifying and restoring rows…', () => DataPortability.restoreVerifiedArchive(archive, $('restore-mode').value));
-                    showReport(report);
-                    UI.toast(report.ok ? 'Restore completed.' : 'Restore has row failures; review the report.', report.ok ? 'success' : 'warning', 9000);
-                    await refreshHealth();
-                } catch (error) { if (error.restoreReport) showReport(error.restoreReport); }
-            };
-
-            $('drive-settings').onsubmit = async event => {
-                event.preventDefault();
-                try {
-                    await action('Saving Drive configuration…', () => Resilience.saveBackupSettings({
-                        google_client_id: $('drive-client-id').value,
-                        drive_folder_name: $('drive-folder').value,
-                        schedule_enabled: $('drive-schedule').checked,
-                        interval_days: $('drive-interval').value,
-                        retention_count: $('drive-retention').value,
-                        overdue_grace_hours: $('drive-grace').value
-                    }), 'Drive settings saved.');
-                    DriveSync.disconnect(); renderDriveStatus(); await refreshHealth();
-                } catch (_) {}
-            };
-            $('drive-connect').onclick = () => action('Connecting to Google…', DriveSync.connect, 'Google Drive connected for this tab.').then(() => { renderDriveStatus(); return refreshDriveFiles(); }).catch(() => {});
-            $('drive-disconnect').onclick = () => { DriveSync.disconnect(); renderDriveStatus(); $('drive-files').textContent = 'Disconnected.'; UI.toast('Google Drive disconnected.', 'info'); };
-            $('drive-refresh').onclick = () => action('Listing Drive archives…', refreshDriveFiles).catch(() => {});
-            $('drive-backup').onclick = () => action('Exporting, uploading and re-verifying…', () => DriveSync.backup('manual'), 'Drive archive uploaded and verified.').then(async result => {
-                if (result.warnings?.length) UI.toast(`Backup succeeded; retention warnings: ${result.warnings.join(' ')}`, 'warning', 9000);
-                await Promise.all([refreshDriveFiles(), refreshHealth()]);
-            }).catch(() => {});
-
-            $('vault-upload').onclick = () => action('Creating verified vault archive…', DataPortability.uploadVault, 'Private vault archive created.').then(async () => { await Promise.all([refreshVault(), refreshHealth()]); }).catch(() => {});
-            $('vault-refresh').onclick = () => action('Listing vault archives…', refreshVault).catch(() => {});
-
             $('d-save').onclick = () => {
                 const profile = { name: $('d-name').value.trim(), prov: $('d-prov').value.trim(), leader: $('d-leader').value.trim(), contact: $('d-contact').value.trim() };
                 // localStorage throws when site data is blocked; report it instead of
@@ -512,10 +298,7 @@
             };
             $('theme-toggle').onclick = UI.toggleTheme;
             $('saas-save').onclick = saveBranding;
-            window.addEventListener('dc:drive-connected', renderDriveStatus);
-            window.addEventListener('dc:drive-disconnected', renderDriveStatus);
-            window.addEventListener('dc:backup-run-finished', () => refreshHealth().catch(() => {}));
-            window.addEventListener('dc:drive-overdue', () => renderDriveSchedule(latestHealth?.settings));
+            window.addEventListener('dc:backup-run-finished', () => refreshControlPlane().catch(() => {}));
         }
 
         async function saveBranding() {
