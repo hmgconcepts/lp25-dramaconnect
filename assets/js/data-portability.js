@@ -52,6 +52,51 @@
     'profiles', 'cast_list', 'attendance', 'inbox', 'tasks', 'poll_votes', 'event_rsvps'
   ]);
 
+  /* ------------------------------------------------------------------------
+   * V15 DISASTER RECOVERY MODE
+   *
+   * Restoring an archive onto a BRAND-NEW Supabase project is not the same
+   * job as restoring onto the project the archive came from. On a fresh
+   * project the Supabase Auth users behind `profiles` no longer exist, so
+   * every foreign key that points at a member will be rejected — and a single
+   * rejected row used to sink the whole batch.
+   *
+   * The legacy `degraded` mode solved this by DROPPING ENTIRE TABLES. That was
+   * a serious data-loss bug: it silently discarded every attendance record,
+   * cast assignment, task, inbox message, poll vote and event RSVP — which is
+   * precisely the operational history a recovery exists to save.
+   *
+   * `recovery` mode instead:
+   *   1. keeps the rows, and neutralises ONLY the account-reference columns;
+   *   2. records every neutralised reference in a RECOVERY LEDGER so the
+   *      human link is not lost — it is deferred;
+   *   3. offers a RE-LINK PASS: once members re-register on the new project,
+   *      the ledger plus an email->new-uuid map restores the original links.
+   *
+   * Net effect: attendance dates, status, casting, task content, votes and
+   * RSVPs all survive. Only the pointer to WHO is temporarily null, and it
+   * can be rebuilt in one pass instead of retyped by hand.
+   * ---------------------------------------------------------------------- */
+
+  // Tables whose rows cannot exist without a live auth user. Re-created by
+  // sign-up and re-approval, never imported.
+  const RECOVERY_SKIP_TABLES = new Set(['profiles']);
+
+  // Column-level neutralisation. Ownership/audit metadata only — never drama
+  // data such as names, dates, status, amounts or script assignments.
+  const RECOVERY_FK_COLUMNS = Object.freeze({
+    attendance: ['member_id'],
+    cast_list: ['member_id'],
+    dc_platform_settings: ['updated_by'],
+    dc_retention_settings: ['updated_by'],
+    dc_site_license: ['updated_by'],
+    event_rsvps: ['member_id'],
+    inbox: ['recipient_id', 'sender_id'],
+    poll_votes: ['voter_id'],
+    suggestions: ['author_id'],
+    tasks: ['assignee_id']
+  });
+
   const db = () => window.supabaseClient;
 
   function assertDependencies() {
@@ -336,11 +381,52 @@
     return parsed;
   }
 
-  function degradedRows(table, rows) {
-    if (DEGRADED_SKIP_TABLES.has(table)) return [];
-    if (table === 'suggestions') return rows.map(row => ({ ...row, author_id: null }));
-    if (table === 'gallery') return rows.map(row => ({ ...row, uploaded_by_id: null }));
-    return rows;
+  /**
+   * Prepare rows for a restore in the requested mode.
+   *
+   * 'merge'    - verbatim upsert. Correct when restoring onto the SAME project.
+   * 'degraded' - legacy behaviour, preserved for older callers. NOTE: this mode
+   *              drops whole tables and is retained only so existing scripts
+   *              keep working; use 'recovery' for a fresh database.
+   * 'recovery' - fresh-database restore. Keeps every row, neutralises only the
+   *              account-reference columns, and records the severed links in a
+   *              ledger so they can be re-attached later instead of lost.
+   *
+   * `ledger` is an optional array that, when supplied, receives one entry per
+   * neutralised reference: { table, rowId, column, previousUserId }.
+   */
+  function prepareRows(table, rows, mode, ledger) {
+    if (mode === 'degraded') {
+      if (DEGRADED_SKIP_TABLES.has(table)) return [];
+      if (table === 'suggestions') return rows.map(row => ({ ...row, author_id: null }));
+      if (table === 'gallery') return rows.map(row => ({ ...row, uploaded_by_id: null }));
+      return rows;
+    }
+
+    if (mode !== 'recovery') return rows;
+
+    if (RECOVERY_SKIP_TABLES.has(table)) return [];
+
+    const columns = RECOVERY_FK_COLUMNS[table];
+    if (!columns) return rows;
+
+    const definition = TABLE_BY_NAME.get(table);
+    return rows.map(row => {
+      const next = { ...row };
+      for (const column of columns) {
+        if (next[column] == null) continue;
+        if (ledger) {
+          ledger.push({
+            table,
+            rowId: row[definition ? definition.key : 'id'] ?? null,
+            column,
+            previousUserId: next[column]
+          });
+        }
+        next[column] = null;
+      }
+      return next;
+    });
   }
 
   async function upsertBatch(definition, rows, report) {
@@ -362,6 +448,9 @@
       return;
     }
 
+    // Bisect until the offending row is isolated. This is the row-level retry:
+    // it costs O(log n) requests instead of one request per row, and it still
+    // guarantees that a single bad row cannot sink the other 199.
     if (rows.length > 1) {
       const midpoint = Math.ceil(rows.length / 2);
       await upsertBatch(definition, rows.slice(0, midpoint), report);
@@ -369,6 +458,9 @@
       return;
     }
 
+    // Binary splitting has already reduced the batch to a single row, so this
+    // is the exact row that is genuinely bad. Record it and let the caller
+    // continue: one malformed row must never cost the rest of the table.
     report.failedRows += 1;
     if (report.errors.length < 25) {
       report.errors.push({ key: String(rows[0]?.[definition.key] ?? ''), message: String(error.message || error).slice(0, 300) });
@@ -376,7 +468,7 @@
   }
 
   async function restoreVerifiedArchive(archive, mode = 'merge', options = {}) {
-    if (!['merge', 'degraded'].includes(mode)) throw new Error('Unsupported restore mode.');
+    if (!['merge', 'degraded', 'recovery'].includes(mode)) throw new Error('Unsupported restore mode.');
     const verification = await verifyArchive(archive);
     if (!verification.ok) {
       const failure = new Error(`Archive verification failed: ${verification.errors.join(' ')}`);
@@ -396,14 +488,23 @@
       archiveRows: verification.totalRows,
       warnings: [...verification.warnings],
       tables: [],
-      totals: { restored: 0, failed: 0, skipped: 0 }
+      totals: { restored: 0, failed: 0, skipped: 0 },
+      recovery: mode === 'recovery'
+        ? { ledger: [], severedReferences: 0, affectedTables: [] }
+        : null
     };
 
     try {
       for (const definition of TABLES) {
         const sourceRows = archive.data[definition.name] || [];
-        const rows = mode === 'degraded' ? degradedRows(definition.name, sourceRows) : sourceRows;
+        const rows = prepareRows(
+          definition.name,
+          sourceRows,
+          mode,
+          report.recovery ? report.recovery.ledger : null
+        );
         const tableReport = {
+          recoveryMode: mode === 'recovery',
           table: definition.name,
           inputRows: sourceRows.length,
           restoredRows: 0,
@@ -423,7 +524,16 @@
       }
 
       if (mode === 'degraded') {
-        report.warnings.push('Identity-linked records were skipped because Supabase Auth users must be recreated separately.');
+        report.warnings.push('Identity-linked records were skipped because Supabase Auth users must be recreated separately. Use recovery mode to keep these rows.');
+      }
+
+      if (report.recovery) {
+        const ledger = report.recovery.ledger;
+        report.recovery.severedReferences = ledger.length;
+        report.recovery.affectedTables = [...new Set(ledger.map(entry => entry.table))].sort();
+        report.recovery.hint = ledger.length
+          ? `${ledger.length} member link(s) were deferred, not deleted. Download the re-link manifest, then run the re-link pass after members re-register.`
+          : 'No member links needed deferring.';
       }
       report.ok = report.totals.failed === 0;
       report.completedAt = new Date().toISOString();
@@ -526,6 +636,108 @@
     return rows.length;
   }
 
+  /* ======================================================================
+   * RE-LINK PASS — the step that makes recovery better than "restore".
+   *
+   * A conventional recovery nulls account references and the human link is
+   * gone forever: you know someone attended on 4 March, but not who. The
+   * re-link pass closes that gap automatically.
+   *
+   * After members re-register on the fresh project, each person has a NEW
+   * Supabase Auth UUID but the SAME email address. Email is therefore a
+   * stable bridge between the old identity and the new one. This pass:
+   *   1. reads the ledger produced by recovery mode;
+   *   2. resolves each severed old UUID to an email using the archive;
+   *   3. resolves each email to the new UUID using live profiles;
+   *   4. rewrites the neutralised columns in place.
+   *
+   * Nothing is guessed. Rows whose email has no match are reported as
+   * unmatched so the administrator can see exactly what still needs a human.
+   * ==================================================================== */
+
+  function buildRecoveryManifest(report, archive) {
+    const ledger = report?.recovery?.ledger || [];
+    const emailById = new Map();
+    for (const profile of (archive?.data?.profiles || [])) {
+      if (profile?.id && profile?.email) emailById.set(profile.id, String(profile.email).toLowerCase());
+    }
+    const entries = ledger.map(entry => ({
+      ...entry,
+      email: emailById.get(entry.previousUserId) || null
+    }));
+    return {
+      format: 'dramaconnect-recovery-manifest',
+      version: 1,
+      createdAt: report?.completedAt || new Date().toISOString(),
+      archiveDigest: report?.archiveDigest || null,
+      severedReferences: entries.length,
+      entries
+    };
+  }
+
+  function downloadRecoveryManifest(report, archive) {
+    const manifest = buildRecoveryManifest(report, archive);
+    downloadBlob(
+      new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }),
+      `dramaconnect-relink-${new Date().toISOString().slice(0, 10)}.json`
+    );
+    return manifest;
+  }
+
+  /**
+   * Re-attach severed member links by matching email addresses.
+   * Returns { matched, unmatched, updated, tables } so the UI can report
+   * precisely instead of claiming blanket success.
+   */
+  async function relinkRecoveryManifest(manifest, options = {}) {
+    assertDependencies();
+    const entries = manifest?.entries || [];
+    if (!entries.length) throw new Error('The re-link manifest contains no deferred references.');
+
+    const { data: profiles, error } = await db().from('profiles').select('id,email');
+    if (error) throw new Error(`Cannot read the new member list: ${error.message}`);
+
+    const newIdByEmail = new Map();
+    for (const profile of profiles || []) {
+      if (profile?.id && profile?.email) newIdByEmail.set(String(profile.email).toLowerCase(), profile.id);
+    }
+
+    const updates = new Map();
+    let matched = 0;
+    let unmatched = 0;
+
+    for (const entry of entries) {
+      const email = entry.email ? String(entry.email).toLowerCase() : null;
+      const newId = email ? newIdByEmail.get(email) : null;
+      if (!newId) { unmatched += 1; continue; }
+      matched += 1;
+      if (!updates.has(entry.table)) updates.set(entry.table, []);
+      updates.get(entry.table).push({ rowId: entry.rowId, column: entry.column, value: newId });
+    }
+
+    const tables = [];
+    let updated = 0;
+    for (const [table, changes] of updates) {
+      const definition = TABLE_BY_NAME.get(table);
+      if (!definition) { tables.push({ table, applied: 0, error: 'Table is not in the portable allow-list.' }); continue; }
+      let applied = 0;
+      const errors = [];
+      for (const change of changes) {
+        if (change.rowId == null) { errors.push('Row identifier missing.'); continue; }
+        const { error: updateError } = await db().from(table)
+          .update({ [change.column]: change.value })
+          .eq(definition.key, change.rowId);
+        if (updateError) errors.push(String(updateError.message).slice(0, 200));
+        else applied += 1;
+      }
+      updated += applied;
+      tables.push({ table, applied, failed: changes.length - applied, errors: errors.slice(0, 5) });
+      options.onProgress?.({ phase: 'relink', table, applied });
+    }
+
+    return { matched, unmatched, updated, tables };
+  }
+
   window.DataPortability = Object.freeze({
     FORMAT,
     FORMAT_VERSION,
@@ -551,6 +763,9 @@
     restoreVault,
     deleteVault,
     downloadTableCsv,
-    rowsToCsv
+    rowsToCsv,
+    buildRecoveryManifest,
+    downloadRecoveryManifest,
+    relinkRecoveryManifest
   });
 })();

@@ -311,6 +311,30 @@
     return DataPortability.restoreVerifiedArchive(archive, mode, { ...options, destination: 'drive-restore' });
   }
 
+  /* ====================================================================
+   * Disaster recovery: restore a Drive backup onto a FRESH database.
+   *
+   * This is deliberately a different verb from `restore`, because it makes
+   * a different promise. `restore` merges into the database you are already
+   * using; `recoverToNewProject` assumes the accounts are gone and preserves
+   * the operational history instead.
+   *
+   * It returns BOTH the report and the archive, because the archive is what
+   * lets the re-link pass resolve a severed member UUID back to an email
+   * address. Returning only the report would make re-linking impossible.
+   * ================================================================== */
+  async function recoverToNewProject(fileId, options = {}) {
+    const { archive, verification } = await fetchArchive(fileId);
+    if (!verification?.ok) {
+      throw new Error(`Refusing to recover: the archive failed its integrity check. ${(verification?.errors || []).join(' ')}`);
+    }
+    const report = await DataPortability.restoreVerifiedArchive(archive, 'recovery', {
+      ...options,
+      destination: 'drive-disaster-recovery'
+    });
+    return { archive, report };
+  }
+
   async function download(fileId) {
     const { archive } = await fetchArchive(fileId);
     const serialized = DataPortability.serializeArchive(archive);
@@ -442,6 +466,7 @@
     backup,
     fetchArchive,
     restore,
+    recoverToNewProject,
     download,
     remove,
     scheduleState,

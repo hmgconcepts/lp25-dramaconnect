@@ -20,7 +20,7 @@
 -- COMPONENT MANIFEST (the builder verifies these source digests):
 -- 01 database/repair_and_upgrade.sql  sha256:ff81eda256cc670de00d24f93b059676a457a0e25559b256b59c6796620e3be0
 -- 02 database/security_hardening.sql  sha256:8dbd18438c93351a2ad07d625c83026539bf107db974ff382bd89d8cb9174d60
--- 03 database/resilience_and_backup.sql  sha256:f56b3811a30b96ad66c33f49772159709c94d6543ed7616a1db1dfb09f648554
+-- 03 database/resilience_and_backup.sql  sha256:356b048ca214188600e40619e693d2fe26ceeb559963969e7cfbf9e71b196d8e
 -- 04 database/platform_management.sql  sha256:e55223de561dc8d1752a6b23df601f3317f8679e1b67d602b36f94cf56522323
 -- 05 database/post_install_selfheal.sql  sha256:dc0f41e0bfc17332db078952142345b3c65a18fcd646f6c834ec819894432f53
 -- ============================================================================
@@ -1966,6 +1966,116 @@ EXCEPTION
     RAISE NOTICE 'pg_cron scheduling skipped: %', SQLERRM;
 END;
 $$;
+
+-- ============================================================================
+-- LAYER 11 — Heartbeat quorum and dead-scheduler detection.
+--
+-- Why this exists. A single "last heartbeat" timestamp is dangerously
+-- reassuring. If UptimeRobot keeps pinging while your GitHub Actions
+-- scheduler dies silently (the 60-day inactivity freeze), the platform still
+-- reports "healthy" — yet you have quietly fallen from four independent
+-- schedulers to one. One bad week later that single scheduler fails too and
+-- the project pauses with no warning.
+--
+-- DramaConnect records each heartbeat SOURCE separately, so the database can
+-- tell the difference between "the database is alive" and "all my safety
+-- nets are alive". This function reports both, and names the sources that
+-- have gone quiet so you can repair them before you need them.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.dc_heartbeat_health()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  -- Supabase pauses a free-tier project after this much inactivity.
+  c_pause_after_hours constant numeric := 168;      -- 7 days
+  -- A scheduler is "fresh" if it has run within this window. Slack is
+  -- generous: a weekly cron is not stale after eight days.
+  c_source_stale_hours constant numeric := 192;     -- 8 days
+  v_now timestamptz := pg_catalog.clock_timestamp();
+  v_newest timestamptz;
+  v_hours numeric;
+  v_remaining numeric;
+  v_sources jsonb;
+  v_fresh int := 0;
+  v_total int := 0;
+  v_status text;
+BEGIN
+  SELECT pg_catalog.jsonb_agg(
+           pg_catalog.jsonb_build_object(
+             'source',      s.source,
+             'lastPingAt',  s.last_ping_at,
+             'ageHours',    round((extract(epoch FROM (v_now - s.last_ping_at)) / 3600.0)::numeric, 1),
+             'pingCount',   s.ping_count,
+             'fresh',       (s.last_ping_at >= v_now - make_interval(hours => c_source_stale_hours::int))
+           )
+           ORDER BY s.last_ping_at DESC
+         )
+  INTO v_sources
+  FROM public.dc_heartbeat_sources s;
+
+  IF v_sources IS NULL THEN
+    RETURN pg_catalog.jsonb_build_object(
+      'ok', true,
+      'status', 'no-heartbeat',
+      'message', 'No heartbeat has been recorded yet. Run one heartbeat layer before relying on this report.',
+      'pauseAfterHours', c_pause_after_hours,
+      'hoursUntilPause', null,
+      'sources', '[]'::jsonb
+    );
+  END IF;
+
+  SELECT count(*) INTO v_total FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+   WHERE (e.value ->> 'source') IS NOT NULL;
+
+  SELECT count(*) INTO v_fresh FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+   WHERE (e.value ->> 'fresh') = 'true';
+
+  SELECT max((e.value ->> 'lastPingAt')::timestamptz) INTO v_newest
+  FROM pg_catalog.jsonb_array_elements(v_sources) AS e;
+
+  v_hours := round((extract(epoch FROM (v_now - v_newest)) / 3600.0)::numeric, 1);
+  v_remaining := round(c_pause_after_hours - v_hours, 1);
+
+  v_status := CASE
+    WHEN v_hours <= 72    THEN 'healthy'
+    WHEN v_hours <= 120   THEN 'warning'
+    WHEN v_hours <  c_pause_after_hours THEN 'critical'
+    ELSE 'paused'
+  END;
+
+  RETURN pg_catalog.jsonb_build_object(
+    'ok', true,
+    'status', v_status,
+    'lastHeartbeatAt', v_newest,
+    'hoursSinceHeartbeat', v_hours,
+    'pauseAfterHours', c_pause_after_hours,
+    'hoursUntilPause', greatest(v_remaining, 0),
+    'daysUntilPause', round(greatest(v_remaining, 0) / 24.0, 1),
+    'sourcesTotal', v_total,
+    'sourcesFresh', v_fresh,
+    -- The number that matters most: how many INDEPENDENT safety nets are
+    -- actually running. Two or more means a single failure cannot pause you.
+    'quorum', (v_fresh >= 2),
+    'singlePointOfFailure', (v_fresh = 1),
+    'silentSources', COALESCE((
+      SELECT pg_catalog.jsonb_agg(e.value ->> 'source' ORDER BY e.value ->> 'source')
+      FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+      WHERE (e.value ->> 'fresh') = 'false'
+    ), '[]'::jsonb),
+    'sources', v_sources
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION public.dc_heartbeat_health() IS
+  'Layer 11: reports per-source heartbeat freshness, pause countdown and scheduler quorum. Detects a silently dead keep-alive scheduler even while other layers keep the database warm.';
+
+GRANT EXECUTE ON FUNCTION public.dc_heartbeat_health() TO authenticated;
 
 
 -- ============================================================================

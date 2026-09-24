@@ -38,7 +38,7 @@
 
   async function getHealth() {
     const db = assertClient();
-    const [heartbeats, settings, runs] = await Promise.all([
+    const [heartbeats, settings, runs, quorum] = await Promise.all([
       db.from('dc_heartbeat_sources')
         .select('source,last_ping_at,ping_count,updated_at')
         .order('last_ping_at', { ascending: false }),
@@ -49,7 +49,14 @@
       db.from('dc_backup_runs')
         .select('id,destination,trigger_source,status,started_at,completed_at,archive_sha256,archive_size,archive_rows,error_code,error_message')
         .order('started_at', { ascending: false })
-        .limit(20)
+        .limit(20),
+      // Layer 11. Never let this rejection break the whole health report:
+      // on a database installed before this function existed, the call fails
+      // and the page must still render every other panel.
+      db.rpc('dc_heartbeat_health').then(
+        result => (result.error ? null : result.data),
+        () => null
+      )
     ]);
 
     const firstError = heartbeats.error || settings.error || runs.error;
@@ -57,7 +64,8 @@
     return {
       heartbeats: heartbeats.data || [],
       settings: settings.data || null,
-      runs: runs.data || []
+      runs: runs.data || [],
+      quorum: quorum || null
     };
   }
 
