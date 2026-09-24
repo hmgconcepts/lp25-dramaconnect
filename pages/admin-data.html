@@ -30,8 +30,69 @@
     </div>
     <div id="archive-review" class="card p-6 hidden">
       <h2 class="font-extrabold text-lg dark-text">Archive preflight</h2><div id="archive-summary" class="mt-3 text-sm"></div>
-      <div class="mt-4 grid md:grid-cols-3 gap-3 items-end"><label class="text-sm font-bold">Restore mode<select id="restore-mode" class="form-input mt-1 w-full"><option value="merge">Merge/upsert all safe rows</option><option value="degraded">Degraded recovery (skip identity-linked tables)</option></select></label><label class="text-sm font-bold">Type RESTORE<input id="restore-confirm" class="form-input mt-1 w-full" autocomplete="off"></label><button id="local-restore" class="btn btn-danger">Restore verified archive</button></div>
+      <div class="mt-4 grid md:grid-cols-3 gap-3 items-end"><label class="text-sm font-bold">Restore mode<select id="restore-mode" class="form-input mt-1 w-full"><option value="merge">Merge/upsert all safe rows (same database)</option><option value="recovery">Disaster recovery — restore onto a FRESH database (recommended)</option><option value="degraded">Legacy degraded (skips whole tables — loses attendance &amp; casting)</option></select></label><label class="text-sm font-bold">Type RESTORE<input id="restore-confirm" class="form-input mt-1 w-full" autocomplete="off"></label><button id="local-restore" class="btn btn-danger">Restore verified archive</button></div>
+      <div id="recovery-result" class="mt-4 hidden">
+        <div id="recovery-summary" class="text-sm"></div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button id="relink-download" class="btn btn-secondary">⬇ Download re-link manifest</button>
+          <label class="btn btn-outline">⬆ Re-link manifest (after members re-register)<input type="file" accept=".json" hidden id="relink-file"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Recovery keeps every row and defers only the member links. After members re-register on the new project, upload this manifest to rebuild the links automatically by email.</p>
+      </div>
     </div>
+    <!-- ============================================================
+         🚑 DISASTER RECOVERY WIZARD
+         Rebuild the whole ministry on a brand-new Supabase project.
+         Free tools only. Roughly 30–45 minutes end to end.
+         ============================================================ -->
+    <div class="card p-6" style="border:2px solid #38bdf8" data-admin-only>
+      <h2 class="font-extrabold text-lg dark-text">
+        <span aria-hidden="true">🚑</span> Disaster Recovery Wizard
+        <span class="text-sm font-bold text-slate-500">— restore DramaConnect onto a completely FRESH database</span>
+      </h2>
+
+      <div style="background:#fff7ed;border-left:4px solid #f97316;padding:.85rem 1rem;margin-top:1rem;border-radius:6px">
+        <p class="font-bold text-orange-800">Read this before you touch anything.</p>
+        <p class="text-sm text-slate-700 mt-1">
+          If the old project is merely <strong>paused</strong>, <strong>do not use this wizard</strong>.
+          Go to supabase.com, restore the project, then press the 💓 heartbeat button on
+          <a class="underline" href="platform-health.html">Platform Health</a>.
+          This wizard is for the case where the old project is <strong>genuinely gone</strong> — deleted,
+          unrecoverable, or paused past the point of no return.
+        </p>
+      </div>
+
+      <p class="text-sm text-slate-600 mt-3">
+        You will rebuild every production, member record, attendance history, casting decision, task,
+        poll, event and announcement on a brand-new database. Member <em>links</em> are deferred rather
+        than destroyed, and the re-link pass restores them automatically once people re-register.
+      </p>
+
+      <ol class="mt-4 text-sm space-y-3" style="counter-reset:dr-step;list-style:none;padding:0">
+        <li style="counter-increment:dr-step" class="dr-step"><strong>1. Create the fresh project.</strong> At supabase.com create a new project (any region). Copy the new <span class="mono">Project URL</span> and <span class="mono">anon / publishable key</span> from <em>Settings → API</em>. Keep the old tab open; you will come back to it.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>2. Install the schema.</strong> In the new project open <em>SQL Editor → New query</em>, paste the <strong>entire</strong> contents of <span class="mono">database/complete-schema.sql</span>, press <em>Run</em>, and wait for <span class="text-emerald-700 font-bold">installed successfully ✅</span>. The script is cumulative and safe to re-run, so a partial run is not fatal — just run it again.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>3. Point the site at the new database.</strong> Edit <span class="mono">assets/js/config.js</span> and replace the URL and anon key with step 1's values. Push to GitHub; Vercel redeploys the very same site automatically.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>4. Create your own account first.</strong> Open the site, choose <em>Login → Request access</em> and sign up. Then in <em>Table Editor → profiles</em> set your own row to <span class="mono">role = 'super_admin'</span> and <span class="mono">status = 'approved'</span>. You are now the owner of the rebuilt site.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>5. Reconnect Google Drive.</strong> Go to the <em>Drive</em> tab here and paste your <strong>existing</strong> OAuth Client ID. OAuth credentials are scoped to your deployed URL, not to the database — the same Client ID works against the new project with no change at Google.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>6. Run the recovery.</strong> Still on the <em>Drive</em> tab, press <span class="mono">📂 List backups</span>, authorise, and on the <strong>newest</strong> backup click <strong>🚑 Recover to new project</strong>. Alternatively use the <em>Local</em> tab above: select the archive file, choose <strong>Disaster recovery</strong> as the mode, type <span class="mono">RESTORE</span> and press restore. Either path verifies the SHA-256 seal <em>before the first write</em>, keeps every operational row, defers only the member links, and retries row-by-row so one bad row cannot sink the other 199.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>7. Re-onboard people, then re-link.</strong> Broadcast the new address and approve everyone on <a class="underline" href="approvals.html">Approvals</a>. Then upload the re-link manifest you downloaded at the end of step 6 — every deferred attendance, casting, task, vote and RSVP link is rebuilt automatically by email, and you get an honest report of anything still unmatched.</li>
+        <li style="counter-increment:dr-step" class="dr-step"><strong>8. Re-arm every safeguard.</strong> The heartbeat, the two GitHub secrets, UptimeRobot, Drive auto-sync and one fresh backup. Visit <a class="underline" href="platform-health.html">Platform Health</a> and do not stop until every tile is green. A rebuilt site with no heartbeat will simply pause again.</li>
+      </ol>
+
+      <style>.dr-step{padding-left:2.1rem;position:relative;line-height:1.6}
+      .dr-step::before{content:counter(dr-step);position:absolute;left:0;top:.05rem;width:1.5rem;height:1.5rem;border-radius:9999px;background:#0ea5e9;color:#fff;font-size:.75rem;font-weight:800;display:flex;align-items:center;justify-content:center}</style>
+
+      <div class="mt-4 pt-3 border-t grid sm:grid-cols-3 gap-3 text-xs">
+        <div><strong class="text-emerald-700">Survives</strong><p class="text-slate-600 mt-1">Productions, scenes, scripts, members, attendance history, casting, schedules, tasks, polls, events, announcements, gallery metadata, settings, licence state.</p></div>
+        <div><strong class="text-amber-700">Rebuilt, not copied</strong><p class="text-slate-600 mt-1">Login accounts (people re-register), and the member↔record links, which the re-link pass restores by email.</p></div>
+        <div><strong class="text-red-700">Not in the archive</strong><p class="text-slate-600 mt-1">Passwords and sessions (Supabase Auth), uploaded photo/video bytes (Supabase Storage). Keep a separate Storage copy if photos matter.</p></div>
+      </div>
+
+      <p class="text-xs text-slate-500 mt-3">
+        Printable companion: <span class="mono">docs/DISASTER-RECOVERY-RUNBOOK.md</span>.
+      </p>
+    </div>
+
     <p id="local-status" class="status-line text-sm text-slate-600"></p>
   </section>
 
@@ -53,6 +114,8 @@
 (() => {
   'use strict';
   let selectedArchive = null;
+  let lastRecovery = null;   // report from the most recent restore
+  let lastArchive = null;    // archive that produced it (needed to resolve emails)
   const $ = id => document.getElementById(id);
   const busy = (button, on, text) => { if (!button) return; if (on) button.dataset.label = button.textContent; button.disabled = on; button.textContent = on ? text : (button.dataset.label || button.textContent); };
   const bytes = n => { const v=Number(n||0); if(v<1024)return `${v} B`; if(v<1048576)return `${(v/1024).toFixed(1)} KiB`; return `${(v/1048576).toFixed(1)} MiB`; };
@@ -60,12 +123,54 @@
   const status = (id, message, type='info') => { const el=$(id); if(!el)return; el.textContent=message; el.className=`status-line text-sm mt-3 ${type==='error'?'text-red-600':type==='ok'?'text-emerald-700':'text-slate-600'}`; };
   const err = e => PlatformManagement.clean(e);
 
+  /**
+   * Render the outcome of a restore. In recovery mode this is more than a
+   * row count: it tells the administrator exactly how many member links were
+   * deferred, which tables they live in, and that they can be rebuilt.
+   */
+  function showRecoveryResult(report, archive, mode) {
+    const box = $('recovery-result');
+    const out = $('recovery-summary');
+    if (!box || !out) return;
+    if (mode !== 'recovery') { box.classList.add('hidden'); return; }
+
+    const r = report.recovery || { severedReferences: 0, affectedTables: [] };
+    let html = `<p class="font-bold text-emerald-700">Recovery complete — ${Number(report.totals?.restored || 0).toLocaleString()} row(s) restored.</p>`;
+    html += `<p class="mt-1">${r.hint || 'No member links needed deferring.'}</p>`;
+    if (r.severedReferences) {
+      html += `<p class="mt-2"><strong>${r.severedReferences}</strong> deferred link(s) across <strong>${r.affectedTables.length}</strong> table(s): <span class="mono text-xs">${UI.esc(r.affectedTables.join(', '))}</span>.</p>`;
+    }
+    const failed = report.tables?.filter(t => t.failedRows) || [];
+    if (failed.length) {
+      html += `<p class="mt-2 text-amber-700 font-bold">${failed.reduce((n, t) => n + t.failedRows, 0)} row(s) could not be written:</p>`;
+      html += `<ul class="text-xs mt-1">${failed.map(t => `<li>${UI.esc(t.table)}: ${t.failedRows} — ${UI.esc(t.errors?.[0]?.message || 'unknown')}</li>`).join('')}</ul>`;
+    }
+    out.innerHTML = html;
+    box.classList.remove('hidden');
+  }
+
   function tabs() { document.querySelectorAll('.tab-btn').forEach(b => b.onclick=()=>{ document.querySelectorAll('.tab-btn').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.tab-panel').forEach(x=>x.classList.add('hidden')); $(`tab-${b.dataset.tab}`).classList.remove('hidden'); if(b.dataset.tab==='history') loadHistory(); }); }
 
   async function loadSettings() { const s=await DriveSync.getSettings(true); $('google-client-id').value=s?.google_client_id||''; $('drive-folder').value=s?.drive_folder_name||'DramaConnect Backups'; $('interval-days').value=s?.interval_days||7; $('retention-count').value=s?.retention_count||12; $('grace-hours').value=s?.overdue_grace_hours||24; $('schedule-enabled').checked=Boolean(s?.schedule_enabled); syncDrivePill(); }
   function syncDrivePill(){ const s=DriveSync.status(); $('drive-pill').textContent=s.connected?'Connected':'Disconnected'; $('drive-pill').className=`badge ${s.connected?'badge-success':'badge-warning'}`; }
 
-  async function loadDrive(){ const body=$('drive-list'); body.innerHTML='<tr><td colspan="4" class="p-5 text-slate-400">Loading…</td></tr>'; try { const rows=await DriveSync.listBackups(); body.innerHTML=rows.length?'':'<tr><td colspan="4" class="p-5 text-slate-400">No DramaConnect backups found.</td></tr>'; rows.forEach(f=>{ const tr=document.createElement('tr'); tr.className='border-t'; tr.innerHTML=`<td class="p-3 font-bold dark-text">${UI.esc(f.name)}</td><td class="p-3">${UI.esc(date(f.createdTime))}</td><td class="p-3">${UI.esc(bytes(f.size))}</td><td class="p-3 text-right whitespace-nowrap"><button class="btn btn-secondary btn-sm verify">Verify</button> <button class="btn btn-secondary btn-sm download">Download</button> <button class="btn btn-danger btn-sm restore">Restore</button></td>`; tr.querySelector('.verify').onclick=async()=>{ try{status('drive-status','Downloading and verifying…');const r=await DriveSync.fetchArchive(f.id);status('drive-status',`Verified ${r.verification.totalRows} rows; SHA-256 seal is valid.`,'ok');}catch(e){status('drive-status',err(e),'error');}}; tr.querySelector('.download').onclick=()=>DriveSync.download(f.id).catch(e=>status('drive-status',err(e),'error')); tr.querySelector('.restore').onclick=async()=>{if(prompt(`Type RESTORE to merge verified data from ${f.name}`)!=='RESTORE')return;try{status('drive-status','Verifying then restoring…');const r=await DriveSync.restore(f.id,'merge');status('drive-status',`Restore completed: ${r.totals?.restored||0} row(s).`,'ok');loadHistory();}catch(e){status('drive-status',err(e),'error');}}; body.appendChild(tr); }); } catch(e){body.innerHTML=`<tr><td colspan="4" class="p-5 text-red-600">${UI.esc(err(e))}</td></tr>`;} }
+  async function loadDrive(){ const body=$('drive-list'); body.innerHTML='<tr><td colspan="4" class="p-5 text-slate-400">Loading…</td></tr>'; try { const rows=await DriveSync.listBackups(); body.innerHTML=rows.length?'':'<tr><td colspan="4" class="p-5 text-slate-400">No DramaConnect backups found.</td></tr>'; rows.forEach(f=>{ const tr=document.createElement('tr'); tr.className='border-t'; tr.innerHTML=`<td class="p-3 font-bold dark-text">${UI.esc(f.name)}</td><td class="p-3">${UI.esc(date(f.createdTime))}</td><td class="p-3">${UI.esc(bytes(f.size))}</td><td class="p-3 text-right whitespace-nowrap"><button class="btn btn-secondary btn-sm verify">Verify</button> <button class="btn btn-secondary btn-sm download">Download</button> <button class="btn btn-danger btn-sm restore">Restore</button><button class="btn btn-sm recover" style="background:#0ea5e9;color:#fff" title="Restore this backup onto a FRESH database, keeping every row and deferring member links so they can be re-linked later">🚑 Recover to new project</button></td>`; tr.querySelector('.verify').onclick=async()=>{ try{status('drive-status','Downloading and verifying…');const r=await DriveSync.fetchArchive(f.id);status('drive-status',`Verified ${r.verification.totalRows} rows; SHA-256 seal is valid.`,'ok');}catch(e){status('drive-status',err(e),'error');}}; tr.querySelector('.download').onclick=()=>DriveSync.download(f.id).catch(e=>status('drive-status',err(e),'error')); tr.querySelector('.restore').onclick=async()=>{if(prompt(`Type RESTORE to merge verified data from ${f.name}`)!=='RESTORE')return;try{status('drive-status','Verifying then restoring…');const r=await DriveSync.restore(f.id,'merge');status('drive-status',`Restore completed: ${r.totals?.restored||0} row(s).`,'ok');loadHistory();}catch(e){status('drive-status',err(e),'error');}};
+
+    tr.querySelector('.recover').onclick=async()=>{
+      const ok=confirm(`DISASTER RECOVERY\n\nRestore ${f.name}\n${UI.esc(date(f.createdTime))} — ${UI.esc(bytes(f.size))}\n\nThis is for a FRESH database only.\nIt keeps every operational row and defers only member links so they can be re-linked after people re-register.\n\nType RESTORE to continue.`);
+      if(!ok)return;
+      if(prompt('Type RESTORE to confirm the disaster recovery')!=='RESTORE')return;
+      try{
+        status('drive-status','Verifying SHA-256 seal, then recovering…');
+        const res=await DriveSync.recoverToNewProject(f.id);
+        lastRecovery=res.report; lastArchive=res.archive;
+        showRecoveryResult(res.report,res.archive,'recovery');
+        status('drive-status',`Recovery complete: ${res.report.totals?.restored||0} row(s), ${res.report.recovery?.severedReferences||0} link(s) deferred. Download the re-link manifest from the Local tab.`,'ok');
+        document.querySelector('.tab-btn[data-tab=local]')?.click();
+      }catch(e){status('drive-status',err(e),'error');}
+    };
+
+    body.appendChild(tr); }); } catch(e){body.innerHTML=`<tr><td colspan="4" class="p-5 text-red-600">${UI.esc(err(e))}</td></tr>`;} }
 
   async function loadVault(){ const body=$('vault-list'); try{const rows=await DataPortability.listVault();body.innerHTML=rows.length?'':'<tr><td colspan="4" class="p-5 text-slate-400">Vault is empty.</td></tr>';rows.forEach(f=>{const tr=document.createElement('tr');tr.className='border-t';tr.innerHTML=`<td class="p-3 font-bold mono text-xs">${UI.esc(f.name)}</td><td class="p-3">${UI.esc(date(f.updated_at||f.created_at))}</td><td class="p-3">${UI.esc(bytes(f.metadata?.size))}</td><td class="p-3 text-right"><button class="btn btn-secondary btn-sm download">Verify/download</button> <button class="btn btn-danger btn-sm restore">Restore</button></td>`;tr.querySelector('.download').onclick=()=>DataPortability.downloadVault(f.name).then(()=>status('vault-status','Verified vault archive downloaded.','ok')).catch(e=>status('vault-status',err(e),'error'));tr.querySelector('.restore').onclick=async()=>{if(prompt('Type RESTORE to merge this verified vault archive')!=='RESTORE')return;try{const r=await DataPortability.restoreVault(f.name,'merge');status('vault-status',`Restored ${r.totals?.restored||0} row(s).`,'ok');}catch(e){status('vault-status',err(e),'error');}};body.appendChild(tr);});}catch(e){body.innerHTML=`<tr><td colspan="4" class="p-5 text-red-600">${UI.esc(err(e))}</td></tr>`;} }
 
@@ -74,7 +179,32 @@
   async function init(){const me=await Auth.requireAdmin();if(!me)return;Layout.renderSidebar('admin-data',me);$('page-header').innerHTML=Layout.renderHeader('Admin Data','Verified archives, Google Drive sync, private vault and recovery history');Layout.setDate();Layout.loadSaaSBranding?.();Layout.registerPWA();tabs();DataPortability.TABLES.forEach(t=>{const o=document.createElement('option');o.value=t.name;o.textContent=t.name;$('csv-table').appendChild(o);});
     $('local-export').onclick=async e=>{busy(e.currentTarget,true,'Building & verifying…');try{const r=await DataPortability.downloadLocal({onProgress:p=>status('local-status',p.table?`Reading ${p.table}: ${p.rows||0} rows…`:'Building archive…')});status('local-status',`Downloaded ${r.filename}; ${r.metadata.rows} rows; ${r.metadata.sha256}.`,'ok');}catch(x){status('local-status',err(x),'error');}finally{busy(e.currentTarget,false);}};
     $('archive-file').onchange=async e=>{selectedArchive=null;try{const a=await DataPortability.parseArchiveFile(e.target.files[0]);const v=await DataPortability.verifyArchive(a);selectedArchive=a;$('archive-review').classList.remove('hidden');$('archive-summary').innerHTML=`<p class="text-emerald-700 font-bold">Integrity verified</p><p>${Number(v.totalRows).toLocaleString()} rows across ${v.tableCount} tables.</p><p class="mono text-xs break-all mt-1">${UI.esc(a.seal.digest)}</p>`;}catch(x){$('archive-review').classList.add('hidden');status('local-status',err(x),'error');}};
-    $('local-restore').onclick=async e=>{if(!selectedArchive)return;if($('restore-confirm').value!=='RESTORE'){UI.toast('Type RESTORE exactly.','warning');return;}busy(e.currentTarget,true,'Restoring…');try{const r=await DataPortability.restoreVerifiedArchive(selectedArchive,$('restore-mode').value);status('local-status',`Restore completed: ${r.totals?.restored||0} row(s).`,'ok');loadHistory();}catch(x){status('local-status',err(x),'error');}finally{busy(e.currentTarget,false);}};
+    $('local-restore').onclick=async e=>{if(!selectedArchive)return;if($('restore-confirm').value!=='RESTORE'){UI.toast('Type RESTORE exactly.','warning');return;}busy(e.currentTarget,true,'Restoring…');try{
+      const mode=$('restore-mode').value;
+      lastArchive=selectedArchive;
+      if(mode==='degraded'&&!confirm('Legacy degraded mode DISCARDS every attendance, casting, task, poll vote, RSVP and inbox row.\n\nDisaster recovery mode keeps all of them. Continue with degraded anyway?')){busy(e.currentTarget,false);return;}
+      lastRecovery=await DataPortability.restoreVerifiedArchive(selectedArchive,mode);
+      showRecoveryResult(lastRecovery,selectedArchive,mode);
+      status('local-status',`Restore completed: ${lastRecovery.totals?.restored||0} row(s).`,'ok');loadHistory();
+    }catch(x){status('local-status',err(x),'error');}finally{busy(e.currentTarget,false);}};
+
+    $('relink-download').onclick=()=>{try{DataPortability.downloadRecoveryManifest(lastRecovery,lastArchive);status('local-status','Re-link manifest downloaded.','ok');}catch(x){status('local-status',err(x),'error');}};
+
+    $('relink-file').onchange=async ev=>{
+      const f=ev.target.files&&ev.target.files[0];if(!f)return;
+      const btn=document.querySelector('label[for=relink-file]');if(btn)busy(btn,true,'Re-linking…');
+      try{
+        const manifest=JSON.parse(await f.text());
+        if(manifest.format!=='dramaconnect-recovery-manifest')throw new Error('That file is not a DramaConnect re-link manifest.');
+        const res=await DataPortability.relinkRecoveryManifest(manifest);
+        let html=`<p class="font-bold ${res.unmatched?'text-amber-700':'text-emerald-700'}">Re-link finished: ${res.updated} link(s) rebuilt, ${res.unmatched} still unmatched.</p>`;
+        html+=`<ul class="text-xs mt-1 space-y-1">${res.tables.map(t=>`<li>${UI.esc(t.table)}: ${t.applied} rebuilt${t.failed?`, ${t.failed} failed`:''}</li>`).join('')}</ul>`;
+        if(res.unmatched)html+=`<p class="text-xs text-slate-600 mt-2">Unmatched rows belong to people who have not re-registered yet. Upload the same manifest again once they have — the pass is safe to re-run.</p>`;
+        $('recovery-summary').innerHTML=html;$('recovery-result').classList.remove('hidden');
+        status('local-status',`Re-link complete: ${res.updated} rebuilt, ${res.unmatched} unmatched.`,res.unmatched?'error':'ok');
+      }catch(x){status('local-status',err(x),'error');}
+      finally{if(btn)busy(btn,false);ev.target.value='';}
+    };
     $('csv-export').onclick=()=>DataPortability.downloadTableCsv($('csv-table').value).then(n=>status('local-status',`Downloaded ${n} row(s).`,'ok')).catch(e=>status('local-status',err(e),'error'));
     $('drive-connect').onclick=async()=>{try{status('drive-status','Opening Google authorization…');await DriveSync.connect();syncDrivePill();status('drive-status','Drive connected for this browser session.','ok');loadDrive();}catch(e){status('drive-status',err(e),'error');}};$('drive-disconnect').onclick=()=>{DriveSync.disconnect();syncDrivePill();status('drive-status','Local Google token cleared.');};
     $('drive-backup').onclick=async e=>{busy(e.currentTarget,true,'Building, uploading & reading back…');try{const r=await DriveSync.backup('manual',{onProgress:p=>status('drive-status',p.table?`Reading ${p.table}…`:'Preparing…')});status('drive-status',`Drive backup verified by read-back: ${r.metadata.sha256}.`,'ok');loadDrive();loadHistory();}catch(x){status('drive-status',err(x),'error');}finally{busy(e.currentTarget,false);}};
