@@ -283,6 +283,15 @@ BEGIN
     updated_at = NOW(), updated_by = auth.uid()
   WHERE id = 1 RETURNING * INTO v_row;
 
+  -- Retention has ONE owner: public.dc_retention_settings (edited on the Storage Manager
+  -- page). dc_retention_preview()/dc_apply_retention() read login_audit_days from there,
+  -- so a value written only to dc_platform_settings would silently do nothing. Mirror it
+  -- to keep the two tables consistent for any caller that still supplies this argument.
+  UPDATE public.dc_retention_settings SET
+    login_audit_days = greatest(7, least(730, p_login_audit_retention_days)),
+    updated_at = NOW(), updated_by = auth.uid()
+  WHERE id = 1;
+
   INSERT INTO public.dc_login_audit (user_id, email, event_type, metadata)
   SELECT auth.uid(), p.email, 'security_changed',
     jsonb_build_object('lockdownEnabled', v_row.lockdown_enabled, 'idleTimeoutMinutes', v_row.idle_timeout_minutes)

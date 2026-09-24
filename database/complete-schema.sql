@@ -21,7 +21,7 @@
 -- 01 database/repair_and_upgrade.sql  sha256:ff81eda256cc670de00d24f93b059676a457a0e25559b256b59c6796620e3be0
 -- 02 database/security_hardening.sql  sha256:8dbd18438c93351a2ad07d625c83026539bf107db974ff382bd89d8cb9174d60
 -- 03 database/resilience_and_backup.sql  sha256:356b048ca214188600e40619e693d2fe26ceeb559963969e7cfbf9e71b196d8e
--- 04 database/platform_management.sql  sha256:e55223de561dc8d1752a6b23df601f3317f8679e1b67d602b36f94cf56522323
+-- 04 database/platform_management.sql  sha256:c2c231bb12776453bbc80f856beaa7eb6bd0e57d34794782591f96a65af121a7
 -- 05 database/post_install_selfheal.sql  sha256:dc0f41e0bfc17332db078952142345b3c65a18fcd646f6c834ec819894432f53
 -- ============================================================================
 
@@ -2366,6 +2366,15 @@ BEGIN
     login_audit_retention_days = p_login_audit_retention_days,
     updated_at = NOW(), updated_by = auth.uid()
   WHERE id = 1 RETURNING * INTO v_row;
+
+  -- Retention has ONE owner: public.dc_retention_settings (edited on the Storage Manager
+  -- page). dc_retention_preview()/dc_apply_retention() read login_audit_days from there,
+  -- so a value written only to dc_platform_settings would silently do nothing. Mirror it
+  -- to keep the two tables consistent for any caller that still supplies this argument.
+  UPDATE public.dc_retention_settings SET
+    login_audit_days = greatest(7, least(730, p_login_audit_retention_days)),
+    updated_at = NOW(), updated_by = auth.uid()
+  WHERE id = 1;
 
   INSERT INTO public.dc_login_audit (user_id, email, event_type, metadata)
   SELECT auth.uid(), p.email, 'security_changed',
