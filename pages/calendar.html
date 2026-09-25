@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+        .cal-cell { min-height: 6.5rem; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: .35rem; background: #fff; cursor: pointer; }
+        .cal-cell:nth-child(7n) { border-right: 0; }
+        .cal-cell.other { background: #f8fafc; color: #94a3b8; }
+        .cal-cell.today .num { background: var(--rccg-blue, #1e3a8a); color: #fff; }
+        .cal-cell.sel { outline: 2px solid var(--rccg-blue, #1e3a8a); outline-offset: -2px; }
+        .num { display: inline-flex; width: 1.6rem; height: 1.6rem; align-items: center; justify-content: center; border-radius: 999px; font-size: .75rem; font-weight: 800; }
+        .chip { display: block; font-size: .66rem; line-height: 1.2; padding: .1rem .3rem; border-radius: .35rem; margin-top: .15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+        .k-rehearsal { background: #dbeafe; color: #1e40af; } .k-event { background: #fce7f3; color: #9d174d; }
+        .k-program { background: #dcfce7; color: #166534; } .k-birthday { background: #fef3c7; color: #92400e; } .k-duty { background: #ede9fe; color: #5b21b6; }
+        .legend-btn { padding: .3rem .7rem; border-radius: 999px; font-size: .75rem; font-weight: 700; border: 2px solid transparent; }
+        .legend-btn.off { opacity: .4; text-decoration: line-through; }
+        @media (max-width: 640px) { .cal-cell { min-height: 3.6rem; } .chip { display: none; } .dots { display: flex !important; } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+            <button id="prev" class="dc-btn bg-white border border-slate-200 text-slate-700" aria-label="Previous month"><i class="fas fa-chevron-left"></i></button>
+            <h2 id="month-label" class="text-xl font-extrabold text-slate-800 min-w-[11rem] text-center"></h2>
+            <button id="next" class="dc-btn bg-white border border-slate-200 text-slate-700" aria-label="Next month"><i class="fas fa-chevron-right"></i></button>
+            <button id="today" class="dc-btn bg-slate-100 text-slate-700">Today</button>
+            <div class="ml-auto flex flex-wrap gap-2">
+                <button id="ics" class="dc-btn bg-slate-800 text-white"><i class="fas fa-file-export mr-1"></i> Export month (.ics)</button>
+                <button id="print" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-print mr-1"></i> Print</button>
+            </div>
+        </div>
+        <div id="legend" class="flex flex-wrap gap-2 mb-3"></div>
+        <div class="grid xl:grid-cols-[1fr_20rem] gap-4 items-start">
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                <div class="cal-grid bg-slate-50 text-center text-[11px] font-bold uppercase text-slate-500 border-b border-slate-200" id="dow"></div>
+                <div class="cal-grid" id="grid"></div>
+            </div>
+            <aside class="bg-white rounded-2xl border border-slate-200 p-5">
+                <h3 id="day-title" class="font-bold text-slate-800 mb-3"></h3>
+                <ul id="day-list" class="space-y-2 text-sm"></ul>
+                <h3 class="font-bold text-slate-800 mt-6 mb-2">Coming up (next 14 days)</h3>
+                <ul id="upcoming" class="space-y-2 text-sm"></ul>
+            </aside>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/page-guide.js"></script>
+    <script src="../assets/js/assistant.js"></script>
+    <script src="../assets/js/dc-codes.js"></script>
+    <script>
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const KINDS = {
+            rehearsal: { label: 'Rehearsals', icon: 'fa-masks-theater', href: 'rehearsals.html' },
+            event: { label: 'Events', icon: 'fa-calendar-day', href: 'events.html' },
+            program: { label: 'Programmes', icon: 'fa-star', href: 'programs.html' },
+            birthday: { label: 'Birthdays', icon: 'fa-cake-candles', href: 'birthdays.html' },
+            duty: { label: 'My duties', icon: 'fa-clipboard-user', href: 'roster.html' }
+        };
+        const PREF = 'dc_calendar_hidden';
+        let me = null, cursor = new Date(), selected = null, items = [], hidden = new Set();
+        try { hidden = new Set(JSON.parse(localStorage.getItem(PREF) || '[]')); } catch (e) { /* ignore */ }
+        cursor.setDate(1);
+        const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        // Date-only columns ("2026-09-25") must be read as LOCAL dates, not UTC midnight.
+        const localDate = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s)); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s); };
+        const timeOf = (s) => /T|\s\d/.test(String(s)) ? new Date(s).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+        async function safe(q) { try { const { data, error } = await q; return error ? [] : (data || []); } catch (e) { return []; } }
+
+        async function load() {
+            const from = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 20), to = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 14);
+            const upTo = new Date(Math.max(to.getTime(), Date.now() + 15 * 864e5));
+            const iso = (d) => key(d);
+            const [reh, ev, pr, bd, duty] = await Promise.all([
+                safe(sb.from('rehearsal_schedule').select('id,rehearsal_date,notes').gte('rehearsal_date', iso(from)).lte('rehearsal_date', iso(upTo))),
+                safe(sb.from('events').select('id,title,event_date,location,description').gte('event_date', from.toISOString()).lte('event_date', upTo.toISOString())),
+                safe(sb.from('dc_programs').select('id,title,slug,starts_at,venue,status').neq('status', 'draft').gte('starts_at', from.toISOString()).lte('starts_at', upTo.toISOString())),
+                safe(sb.from('member_directory').select('id,full_name,birth_month,birth_day').not('birth_month', 'is', null)),
+                safe(sb.from('dc_duty_roster').select('id,duty_date,service_label,duty_role,status').eq('member_id', me.id).gte('duty_date', iso(from)).lte('duty_date', iso(upTo)))
+            ]);
+            items = [];
+            reh.forEach(r => items.push({ kind: 'rehearsal', date: localDate(r.rehearsal_date), title: 'Rehearsal', detail: r.notes || '', raw: r }));
+            ev.forEach(e => items.push({ kind: 'event', date: new Date(e.event_date), time: timeOf(e.event_date), title: e.title, detail: e.location || '', raw: e }));
+            pr.forEach(p => items.push({ kind: 'program', date: new Date(p.starts_at), time: timeOf(p.starts_at), title: p.title, detail: p.venue || '', raw: p, link: DCCodes.registerUrl(p.slug, 'calendar') }));
+            duty.forEach(d => items.push({ kind: 'duty', date: localDate(d.duty_date), title: `${d.duty_role} — ${d.service_label}`, detail: d.status.replace('_', ' '), raw: d }));
+            // Birthdays recur every year: place them in every year the window touches (29 Feb → 28 Feb in non-leap years).
+            for (let y = from.getFullYear(); y <= upTo.getFullYear(); y += 1) {
+                bd.forEach(b => {
+                    let day = b.birth_day, mon = b.birth_month - 1;
+                    if (mon === 1 && day === 29 && new Date(y, 1, 29).getMonth() !== 1) day = 28;
+                    const d = new Date(y, mon, day);
+                    if (d >= from && d <= upTo) items.push({ kind: 'birthday', date: d, title: `${b.full_name}'s birthday`, detail: '', raw: b });
+                });
+            }
+            items.sort((a, b) => a.date - b.date);
+            render();
+        }
+        const visible = () => items.filter(i => !hidden.has(i.kind));
+        function render() {
+            document.getElementById('month-label').textContent = cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+            const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+            const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7)); // weeks start Monday
+            const byDay = {}; visible().forEach(i => { (byDay[key(i.date)] = byDay[key(i.date)] || []).push(i); });
+            const todayKey = key(new Date()); let html = '';
+            for (let n = 0; n < 42; n += 1) {
+                const d = new Date(start); d.setDate(start.getDate() + n);
+                const k = key(d), list = byDay[k] || [];
+                html += `<div class="cal-cell ${d.getMonth() !== cursor.getMonth() ? 'other' : ''} ${k === todayKey ? 'today' : ''} ${selected === k ? 'sel' : ''}" data-day="${k}" tabindex="0" role="button" aria-label="${esc(d.toDateString())}: ${list.length} item(s)">
+                    <span class="num">${d.getDate()}</span>
+                    ${list.slice(0, 3).map(i => `<span class="chip k-${i.kind}" title="${esc(i.title)}">${i.time ? esc(i.time) + ' ' : ''}${esc(i.title)}</span>`).join('')}
+                    ${list.length > 3 ? `<span class="chip text-slate-500">+${list.length - 3} more</span>` : ''}
+                    <span class="dots hidden gap-0.5 mt-1 flex-wrap">${list.slice(0, 5).map(i => `<i class="k-${i.kind} w-2 h-2 rounded-full inline-block"></i>`).join('')}</span></div>`;
+            }
+            document.getElementById('grid').innerHTML = html;
+            document.getElementById('legend').innerHTML = Object.entries(KINDS).map(([k, v]) => `<button class="legend-btn k-${k} ${hidden.has(k) ? 'off' : ''}" data-kind="${k}" aria-pressed="${!hidden.has(k)}"><i class="fas ${v.icon} mr-1"></i>${v.label} (${items.filter(i => i.kind === k && i.date.getMonth() === cursor.getMonth() && i.date.getFullYear() === cursor.getFullYear()).length})</button>`).join('');
+            showDay(selected || (cursor.getMonth() === new Date().getMonth() && cursor.getFullYear() === new Date().getFullYear() ? todayKey : key(first)));
+            const now = new Date(); now.setHours(0, 0, 0, 0); const end = new Date(now.getTime() + 14 * 864e5);
+            const up = visible().filter(i => i.date >= now && i.date <= end).slice(0, 25);
+            document.getElementById('upcoming').innerHTML = up.length ? up.map(row).join('') : '<li class="text-slate-400">Nothing scheduled.</li>';
+        }
+        function row(i) {
+            const k = KINDS[i.kind];
+            const target = i.link || k.href;
+            return `<li class="flex gap-2 items-start"><span class="chip k-${i.kind} !mt-0 w-7 text-center"><i class="fas ${k.icon}"></i></span>
+                <a class="min-w-0 hover:underline" href="${esc(target)}"${i.link ? ' target="_blank" rel="noopener"' : ''}><b class="block truncate">${esc(i.title)}</b>
+                <span class="text-xs text-slate-500">${esc(i.date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }))}${i.time ? ' · ' + esc(i.time) : ''}${i.detail ? ' · ' + esc(i.detail) : ''}</span></a></li>`;
+        }
+        function showDay(k) {
+            selected = k;
+            document.querySelectorAll('.cal-cell').forEach(c => c.classList.toggle('sel', c.dataset.day === k));
+            document.getElementById('day-title').textContent = localDate(k).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            const list = visible().filter(i => key(i.date) === k);
+            document.getElementById('day-list').innerHTML = list.length ? list.map(row).join('') : '<li class="text-slate-400">Nothing on this day.</li>';
+        }
+        function exportIcs() {
+            const month = visible().filter(i => i.date.getMonth() === cursor.getMonth() && i.date.getFullYear() === cursor.getFullYear());
+            if (!month.length) return UI.toast('Nothing to export for this month.', 'error');
+            const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+            const clean = (s) => String(s || '').replace(/[\\,;]/g, (m) => '\\' + m).replace(/\r?\n/g, '\\n');
+            const ymd = (d) => key(d).replace(/-/g, '');
+            const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//DramaConnect//Calendar//EN', 'CALSCALE:GREGORIAN'];
+            month.forEach(i => {
+                lines.push('BEGIN:VEVENT', `UID:${i.kind}-${i.raw.id}-${ymd(i.date)}@dramaconnect`, 'DTSTAMP:' + stamp);
+                if (i.time) { const s = i.date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); const e = new Date(i.date.getTime() + 2 * 3600e3).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); lines.push('DTSTART:' + s, 'DTEND:' + e); }
+                else { const nx = new Date(i.date); nx.setDate(nx.getDate() + 1); lines.push('DTSTART;VALUE=DATE:' + ymd(i.date), 'DTEND;VALUE=DATE:' + ymd(nx)); }
+                lines.push('SUMMARY:' + clean(i.title), 'DESCRIPTION:' + clean(i.detail), 'CATEGORIES:' + KINDS[i.kind].label.toUpperCase(), 'END:VEVENT');
+            });
+            lines.push('END:VCALENDAR');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar' }));
+            a.download = `calendar-${key(cursor).slice(0, 7)}.ics`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+            UI.toast(`${month.length} item(s) exported. Open the file to add them to Google/Apple/Outlook calendar.`);
+        }
+        function move(delta) { cursor = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1); selected = null; load(); }
+
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('calendar', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Calendar', 'Rehearsals, events, programmes, birthdays and your duties in one place');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            document.getElementById('dow').innerHTML = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<div class="py-2">${d}</div>`).join('');
+            document.getElementById('prev').addEventListener('click', () => move(-1));
+            document.getElementById('next').addEventListener('click', () => move(1));
+            document.getElementById('today').addEventListener('click', () => { cursor = new Date(); cursor.setDate(1); selected = key(new Date()); load(); });
+            document.getElementById('ics').addEventListener('click', exportIcs);
+            document.getElementById('print').addEventListener('click', () => window.print());
+            const grid = document.getElementById('grid');
+            grid.addEventListener('click', (e) => { const c = e.target.closest('.cal-cell'); if (c) showDay(c.dataset.day); });
+            grid.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.day) { e.preventDefault(); showDay(e.target.dataset.day); } });
+            document.getElementById('legend').addEventListener('click', (e) => {
+                const b = e.target.closest('[data-kind]'); if (!b) return;
+                hidden.has(b.dataset.kind) ? hidden.delete(b.dataset.kind) : hidden.add(b.dataset.kind);
+                try { localStorage.setItem(PREF, JSON.stringify([...hidden])); } catch (err) { /* ignore */ }
+                render();
+            });
+            document.addEventListener('keydown', (e) => { if (e.target.tagName === 'INPUT') return; if (e.key === 'ArrowLeft' && e.altKey) move(-1); if (e.key === 'ArrowRight' && e.altKey) move(1); });
+            load();
+        }
+        init();
+    </script>
+</body>
+</html>

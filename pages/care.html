@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Care &amp; Follow-up | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        .pill { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+        .c-open { background: #fee2e2; color: #991b1b; } .c-contacted { background: #fef3c7; color: #92400e; } .c-visited { background: #dbeafe; color: #1e40af; } .c-resolved { background: #dcfce7; color: #166534; }
+        .tab[aria-selected="true"] { background: #1e293b; color: #fff; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+        <div id="schema-warning" class="hidden mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"></div>
+
+        <div id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+
+        <div class="flex flex-wrap gap-2 mb-4" role="tablist">
+            <button class="tab dc-btn bg-white border border-slate-200" role="tab" aria-selected="true" data-tab="cases"><i class="fas fa-hand-holding-heart mr-1"></i>Care cases</button>
+            <button class="tab dc-btn bg-white border border-slate-200" role="tab" aria-selected="false" data-tab="absent"><i class="fas fa-user-clock mr-1"></i>Missing members</button>
+            <button id="new-case" class="dc-btn dc-btn-primary ml-auto"><i class="fas fa-plus mr-1"></i>Open a case</button>
+        </div>
+
+        <section id="tab-cases" class="bg-white rounded-2xl border border-slate-200 p-5">
+            <div class="flex flex-wrap gap-2 mb-3">
+                <input id="q" class="dc-input flex-1 min-w-[12rem]" placeholder="Search name or summary…" aria-label="Search">
+                <select id="f-status" class="dc-input w-auto" aria-label="Status"><option value="active">Still active</option><option value="">All</option><option value="open">Open</option><option value="contacted">Contacted</option><option value="visited">Visited</option><option value="resolved">Resolved</option></select>
+                <select id="f-reason" class="dc-input w-auto" aria-label="Reason"><option value="">Any reason</option></select>
+                <button id="csv" class="dc-btn bg-emerald-600 text-white"><i class="fas fa-file-csv mr-1"></i>CSV</button>
+            </div>
+            <div id="cases" class="grid md:grid-cols-2 gap-3"></div>
+        </section>
+
+        <section id="tab-absent" class="hidden bg-white rounded-2xl border border-slate-200 p-5">
+            <div class="flex flex-wrap gap-2 items-center mb-3">
+                <p class="text-sm text-slate-500 mr-auto">Members who missed their most recent marked rehearsals in a row. Only rehearsals with attendance recorded are counted, and only since the member joined.</p>
+                <label class="text-xs font-bold text-slate-500">Missed at least
+                    <select id="min" class="dc-input w-auto inline-block ml-1"><option>2</option><option selected>3</option><option>4</option><option>6</option><option>8</option></select></label>
+            </div>
+            <div id="absent"></div>
+        </section>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/page-guide.js"></script>
+    <script src="../assets/js/assistant.js"></script>
+    <script>
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const REASONS = { absence: 'Absence', welfare: 'Welfare', illness: 'Illness', bereavement: 'Bereavement', celebration: 'Celebration', new_member: 'New member', other: 'Other' };
+        const STATUS = { open: 'Open', contacted: 'Contacted', visited: 'Visited', resolved: 'Resolved' };
+        let me = null, cases = [], members = [], leaders = [];
+        const person = (id) => members.find(m => m.id === id) || {};
+        const when = (t) => t ? new Date(t).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const ageDays = (t) => Math.floor((Date.now() - new Date(t).getTime()) / 864e5);
+        function contactLinks(m, text) {
+            const out = [];
+            if (m.phone) out.push(`<a class="dc-btn bg-slate-100 text-slate-700 text-xs" href="tel:${esc(String(m.phone).replace(/[^\d+]/g, ''))}"><i class="fas fa-phone mr-1"></i>Call</a>`);
+            if (m.whatsapp || m.phone) out.push(`<a class="dc-btn bg-emerald-50 text-emerald-700 text-xs" target="_blank" rel="noopener" href="${esc(Utils.whatsappLink(m.whatsapp || m.phone, text))}"><i class="fab fa-whatsapp mr-1"></i>WhatsApp</a>`);
+            return out.join(' ');
+        }
+
+        async function loadCases() {
+            const { data, error } = await sb.from('dc_care_cases').select('*').order('updated_at', { ascending: false }).limit(1000);
+            if (error) {
+                if (/PGRST205|42P01|does not exist|could not find/i.test(error.message)) {
+                    const w = document.getElementById('schema-warning'); w.classList.remove('hidden');
+                    w.innerHTML = '<b>Care &amp; follow-up is not installed yet.</b> An administrator must run <code>database/complete-schema.sql</code> in the Supabase SQL Editor (safe to re-run).';
+                } else UI.toast(error.message, 'error');
+                cases = [];
+            } else cases = data || [];
+            renderKpis(); renderCases();
+        }
+        function renderKpis() {
+            const active = cases.filter(c => c.status !== 'resolved');
+            const stale = active.filter(c => ageDays(c.updated_at) >= 7).length;
+            const resolved30 = cases.filter(c => c.resolved_at && ageDays(c.resolved_at) <= 30).length;
+            const k = [['Active cases', active.length, 'fa-folder-open', 'text-rose-600'], ['High priority', active.filter(c => c.priority === 'high').length, 'fa-triangle-exclamation', 'text-amber-600'],
+                ['No update for 7+ days', stale, 'fa-hourglass-half', 'text-slate-600'], ['Resolved (30 days)', resolved30, 'fa-circle-check', 'text-emerald-600']];
+            document.getElementById('kpis').innerHTML = k.map(([l, v, i, c]) => `<div class="bg-white rounded-2xl border border-slate-200 p-4"><i class="fas ${i} ${c}"></i><div class="text-2xl font-extrabold text-slate-800">${v}</div><div class="text-xs text-slate-500">${l}</div></div>`).join('');
+        }
+        function renderCases() {
+            const q = document.getElementById('q').value.trim().toLowerCase();
+            const st = document.getElementById('f-status').value, rs = document.getElementById('f-reason').value;
+            const list = cases.filter(c => (st === 'active' ? c.status !== 'resolved' : !st || c.status === st) && (!rs || c.reason === rs)
+                && (!q || (person(c.member_id).full_name || '').toLowerCase().includes(q) || c.summary.toLowerCase().includes(q)));
+            document.getElementById('cases').innerHTML = list.length ? list.map(c => {
+                const m = person(c.member_id), last = (c.followup_log || []).slice(-1)[0];
+                return `<article class="border ${c.priority === 'high' && c.status !== 'resolved' ? 'border-rose-300' : 'border-slate-200'} rounded-xl p-4">
+                    <div class="flex items-start gap-2"><div class="mr-auto"><b>${esc(m.full_name || 'Former member')}</b> <span class="text-xs text-slate-400">${esc(m.unit || '')}</span>
+                        <div class="text-xs text-slate-500">${esc(REASONS[c.reason])} · opened ${esc(when(c.created_at))}${c.assigned_to ? ' · with ' + esc(person(c.assigned_to).full_name || 'a leader') : ''}</div></div>
+                        ${c.priority === 'high' ? '<span class="pill bg-rose-100 text-rose-700">High</span>' : ''}<span class="pill c-${c.status}">${STATUS[c.status]}</span></div>
+                    <p class="text-sm text-slate-700 mt-2">${esc(c.summary)}</p>
+                    ${last ? `<p class="text-xs text-slate-500 mt-2"><i class="fas fa-clock-rotate-left mr-1"></i>${esc(when(last.at))} — ${esc(last.by)}: ${esc(last.note || ('marked ' + (STATUS[last.status] || '')))}</p>` : ''}
+                    <div class="flex flex-wrap gap-2 mt-3"><button class="dc-btn dc-btn-primary text-xs" data-open="${esc(c.id)}"><i class="fas fa-folder-open mr-1"></i>Open</button>
+                        ${contactLinks(m, `Hello ${m.full_name || ''}, we have been thinking about you at the drama team. How are you doing?`)}</div></article>`;
+            }).join('') : '<p class="text-sm text-slate-400">No cases match. Use “Missing members” to find people who may need a call.</p>';
+        }
+        function openCase(id) {
+            const c = cases.find(x => x.id === id); if (!c) return;
+            const m = person(c.member_id);
+            const log = (c.followup_log || []).slice().reverse();
+            const ov = UI.modal(`<div class="p-6 space-y-4">
+                <div class="flex items-center"><h2 class="text-lg font-extrabold mr-auto">${esc(m.full_name || 'Former member')}</h2><button class="text-2xl text-slate-400" data-x aria-label="Close">&times;</button></div>
+                <p class="text-sm text-slate-600">${esc(REASONS[c.reason])} · <span class="pill c-${c.status}">${STATUS[c.status]}</span> — ${esc(c.summary)}</p>
+                <div class="flex flex-wrap gap-2">${contactLinks(m, `Hello ${m.full_name || ''}, checking in from the drama team. How are you?`)}</div>
+                <form id="note-form" class="space-y-2 border-t pt-3"><textarea name="note" class="dc-input" rows="3" maxlength="500" placeholder="What happened? e.g. Called — she was ill, visiting Saturday."></textarea>
+                    <div class="flex flex-wrap gap-2 items-center"><select name="status" class="dc-input w-auto"><option value="">Keep status</option>${Object.keys(STATUS).map(s => `<option value="${s}">Mark ${STATUS[s]}</option>`).join('')}</select>
+                    <button class="dc-btn dc-btn-primary ml-auto"><i class="fas fa-floppy-disk mr-1"></i>Save follow-up</button></div></form>
+                <div class="grid sm:grid-cols-2 gap-2 border-t pt-3">
+                    <label class="text-xs font-bold text-slate-500">Assigned to<select id="assign" class="dc-input mt-1"><option value="">Unassigned</option>${leaders.map(l => `<option value="${esc(l.id)}"${c.assigned_to === l.id ? ' selected' : ''}>${esc(l.full_name)}</option>`).join('')}</select></label>
+                    <label class="text-xs font-bold text-slate-500">Priority<select id="prio" class="dc-input mt-1"><option value="normal">Normal</option><option value="high"${c.priority === 'high' ? ' selected' : ''}>High</option></select></label></div>
+                <h3 class="font-bold text-sm">History</h3>
+                <ol class="space-y-2 text-sm">${log.length ? log.map(l => `<li class="border-l-2 border-slate-200 pl-3"><span class="text-xs text-slate-400">${esc(when(l.at))} · ${esc(l.by)}</span>${l.status ? ` <span class="pill c-${esc(l.status)}">${esc(STATUS[l.status] || l.status)}</span>` : ''}<br>${esc(l.note || '')}</li>`).join('') : '<li class="text-slate-400">No follow-ups yet.</li>'}</ol>
+                ${Auth.isAdmin(me) ? '<div class="border-t pt-3 text-right"><button class="dc-btn bg-red-50 text-red-600 text-xs" data-del><i class="fas fa-trash mr-1"></i>Delete case</button></div>' : ''}
+            </div>`, 'max-w-2xl');
+            ov.querySelector('[data-x]').addEventListener('click', () => ov.remove());
+            ov.querySelector('#note-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const f = e.target.elements;
+                const { error } = await sb.rpc('dc_care_add_note', { p_case_id: c.id, p_note: f.note.value, p_status: f.status.value || null });
+                if (error) return UI.toast(error.message, 'error');
+                ov.remove(); UI.toast('Follow-up saved.'); await loadCases(); openCase(c.id);
+            });
+            const patch = async (vals) => { const { error } = await sb.from('dc_care_cases').update(vals).eq('id', c.id); if (error) UI.toast(error.message, 'error'); else { UI.toast('Updated.'); loadCases(); } };
+            ov.querySelector('#assign').addEventListener('change', (e) => patch({ assigned_to: e.target.value || null }));
+            ov.querySelector('#prio').addEventListener('change', (e) => patch({ priority: e.target.value }));
+            const del = ov.querySelector('[data-del]');
+            if (del) del.addEventListener('click', async () => {
+                if (!await UI.confirm('Delete this care case and its history permanently? Resolving keeps the record instead.', 'Delete case')) return;
+                const { error } = await sb.from('dc_care_cases').delete().eq('id', c.id);
+                if (error) return UI.toast(error.message, 'error'); ov.remove(); loadCases();
+            });
+        }
+        function newCase(preset = {}) {
+            const ov = UI.modal(`<form class="p-6 space-y-3"><h2 class="text-lg font-extrabold">Open a care case</h2>
+                <label class="block text-xs font-bold text-slate-500">Member *<select name="member_id" class="dc-input mt-1" required><option value="">Choose…</option>${members.map(m => `<option value="${esc(m.id)}"${preset.member_id === m.id ? ' selected' : ''}>${esc(m.full_name)}${m.unit ? ' — ' + esc(m.unit) : ''}</option>`).join('')}</select></label>
+                <div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold text-slate-500">Reason<select name="reason" class="dc-input mt-1">${Object.keys(REASONS).map(r => `<option value="${r}"${(preset.reason || 'absence') === r ? ' selected' : ''}>${REASONS[r]}</option>`).join('')}</select></label>
+                <label class="text-xs font-bold text-slate-500">Priority<select name="priority" class="dc-input mt-1"><option value="normal">Normal</option><option value="high">High</option></select></label></div>
+                <label class="block text-xs font-bold text-slate-500">Summary *<textarea name="summary" class="dc-input mt-1" rows="3" required minlength="3" maxlength="300">${esc(preset.summary || '')}</textarea></label>
+                <label class="block text-xs font-bold text-slate-500">Assign to<select name="assigned_to" class="dc-input mt-1"><option value="">Me</option>${leaders.filter(l => l.id !== me.id).map(l => `<option value="${esc(l.id)}">${esc(l.full_name)}</option>`).join('')}</select></label>
+                <div class="flex justify-end gap-2"><button type="button" class="dc-btn bg-slate-100" data-x>Cancel</button><button class="dc-btn dc-btn-primary">Open case</button></div></form>`);
+            ov.querySelector('[data-x]').addEventListener('click', () => ov.remove());
+            ov.querySelector('form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const f = e.target.elements;
+                const row = { member_id: f.member_id.value, reason: f.reason.value, priority: f.priority.value, summary: f.summary.value.trim(), assigned_to: f.assigned_to.value || me.id, opened_by: me.id };
+                const { error } = await sb.from('dc_care_cases').insert(row);
+                if (error) return UI.toast(/row-level|42501/i.test(error.message) ? 'You can only open cases for members of your own unit.' : error.message, 'error');
+                ov.remove(); UI.toast('Case opened.'); loadCases(); if (!document.getElementById('tab-absent').classList.contains('hidden')) loadAbsent();
+            });
+        }
+        async function loadAbsent() {
+            const box = document.getElementById('absent');
+            box.innerHTML = '<p class="text-sm text-slate-400">Checking attendance…</p>';
+            const { data, error } = await sb.rpc('dc_absentee_candidates', { p_min_missed: Number(document.getElementById('min').value) });
+            if (error) { box.innerHTML = `<p class="text-sm text-red-600">${esc(error.message)}</p>`; return; }
+            box.innerHTML = (data || []).length ? `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="text-xs text-slate-500 text-left"><tr><th class="p-2">Member</th><th class="p-2">Missed in a row</th><th class="p-2">Last present</th><th class="p-2"></th></tr></thead><tbody>
+                ${data.map(r => `<tr class="border-t border-slate-100"><td class="p-2"><b>${esc(r.full_name)}</b><div class="text-xs text-slate-400">${esc(r.unit || '')}</div></td>
+                    <td class="p-2"><span class="pill ${r.missed_in_a_row >= 6 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}">${r.missed_in_a_row}</span></td>
+                    <td class="p-2">${r.last_present ? esc(new Date(r.last_present + 'T00:00:00').toLocaleDateString()) : '<span class="text-slate-400">Not since joining</span>'}</td>
+                    <td class="p-2 text-right whitespace-nowrap">${contactLinks(Object.assign({}, person(r.member_id), { phone: r.phone }), `Hello ${r.full_name}, we have missed you at rehearsals. Is everything okay?`)}
+                        ${r.open_case ? '<span class="pill bg-slate-100 text-slate-600">Case open</span>' : `<button class="dc-btn dc-btn-primary text-xs" data-case="${esc(r.member_id)}" data-n="${r.missed_in_a_row}"><i class="fas fa-folder-plus mr-1"></i>Open case</button>`}</td></tr>`).join('')}
+                </tbody></table></div>` : '<p class="text-sm text-emerald-700"><i class="fas fa-circle-check mr-1"></i>Nobody has missed that many rehearsals in a row. 🎉</p>';
+        }
+
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            if (!(Auth.isAdmin(me) || Auth.isUnitLeader(me))) { UI.toast('Care & follow-up is for unit leaders and administrators.', 'error'); window.location.replace('dashboard.html'); return; }
+            Layout.renderSidebar('care', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Care & Follow-up', 'Notice who is missing, reach out, and record every follow-up until it is resolved');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            const { data } = await sb.from('member_directory').select('id,full_name,unit,phone,whatsapp,role,is_unit_leader').order('full_name').limit(2000);
+            members = data || [];
+            leaders = members.filter(m => m.role === 'admin' || m.is_unit_leader);
+            document.getElementById('f-reason').insertAdjacentHTML('beforeend', Object.keys(REASONS).map(r => `<option value="${r}">${REASONS[r]}</option>`).join(''));
+            document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t)));
+                document.getElementById('tab-cases').classList.toggle('hidden', t.dataset.tab !== 'cases');
+                document.getElementById('tab-absent').classList.toggle('hidden', t.dataset.tab !== 'absent');
+                if (t.dataset.tab === 'absent') loadAbsent();
+            }));
+            ['q', 'f-status', 'f-reason'].forEach(id => document.getElementById(id).addEventListener(id === 'q' ? 'input' : 'change', renderCases));
+            document.getElementById('min').addEventListener('change', loadAbsent);
+            document.getElementById('new-case').addEventListener('click', () => newCase());
+            document.getElementById('cases').addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b) openCase(b.dataset.open); });
+            document.getElementById('absent').addEventListener('click', (e) => { const b = e.target.closest('[data-case]'); if (b) newCase({ member_id: b.dataset.case, reason: 'absence', summary: `Missed ${b.dataset.n} rehearsals in a row.` }); });
+            document.getElementById('csv').addEventListener('click', () => Utils.exportToCSV(cases.map(c => ({ member: person(c.member_id).full_name || '', unit: person(c.member_id).unit || '', reason: REASONS[c.reason], priority: c.priority, status: STATUS[c.status], summary: c.summary, assigned_to: person(c.assigned_to).full_name || '', opened: c.created_at, resolved: c.resolved_at || '', followups: (c.followup_log || []).length })), 'care-cases.csv'));
+            loadCases();
+        }
+        init();
+    </script>
+</body>
+</html>

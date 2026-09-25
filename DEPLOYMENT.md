@@ -1,13 +1,15 @@
-# DramaConnect v14.0 Deployment Guide
+# DramaConnect v14.1 Deployment Guide
 
 The canonical step-by-step guide is **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. Use **[docs/SETUP_CHECKLIST.md](docs/SETUP_CHECKLIST.md)** for final verification.
+
+**Upgrading an existing v14.0 site?** Follow *Upgrading an existing v14.0 site to v14.1* in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#upgrading-an-existing-v140-site-to-v141). It lists the exact order, which matters.
 
 ## Required order
 
 1. Create a Supabase project. Put only its Project URL and anon/publishable key in `assets/js/config.js`; never put privileged secrets in browser code.
-2. In SQL Editor run **all of `database/complete-schema.sql` once**. It is the canonical cumulative installer, is safe to rerun, and includes the repaired schema, least-privilege security, resilience/backup and v14 management control plane. Do not run the component SQL files afterward.
+2. In SQL Editor run **all of `database/complete-schema.sql` once**. It is the canonical cumulative installer, is safe to rerun, and includes the repaired schema, least-privilege security, resilience/backup, the v14 management control plane and the v14.1 identity/programmes layer (ID cards, verification, programmes and public registration, duty roster, care). Do not run the component SQL files afterward.
 3. Register the first account, then use the controlled SQL in the canonical guide to set both `role = 'admin'` and `status = 'approved'` for that exact email.
-4. Deploy this static project with `index.html` at the site root; deploy matching service worker cache `dramaconnect-v14.0`.
+4. Deploy this static project with `index.html` at the site root; deploy matching service worker cache `dramaconnect-v14.1`.
 5. Configure at least one daily external heartbeat using **[Supabase protection](docs/SUPABASE_FREE_TIER_PROTECTION.md)**.
 6. Configure and rehearse an encrypted off-site backup using **[Backup and recovery](docs/BACKUP_AND_RECOVERY.md)**.
 7. Fill in the private/offline copy of the **[resilience runbook](docs/RESILIENCE_RUNBOOK.md)** and complete every applicable setup check.

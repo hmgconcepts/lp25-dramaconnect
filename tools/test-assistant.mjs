@@ -151,7 +151,9 @@ const TOPICS = [
   'license', 'approve a member', 'roles', 'attendance', 'casting',
   'storage full', 'retention', 'audit trail', 'forgot password',
   'install the app', 'export csv', 'notifications', 'dark mode',
-  'where did the backup controls go', 'contact support'
+  'where did the backup controls go', 'contact support',
+  'register people for a special programme', 'barcode will not scan', 'duty roster swap',
+  'download calendar ics', 'follow up absent members'
 ];
 for (const t of TOPICS) {
   const res = A.answer(t);
@@ -166,6 +168,11 @@ const lic = A.answer('do we have to pay a subscription');
 check('B4. licensing query resolves to Site License', /site-license|Site License/i.test(lic.r));
 const rl = A.answer('why did attendance lose names after recovery');
 check('B4. re-link query resolves to Admin Data', /admin-data|Admin Data/i.test(rl.r));
+
+const pr = A.answer('how do we share a registration link on social media');
+check('B4. programme query resolves to Programmes', /Programmes/.test(pr.r) && /src=/.test(pr.r));
+const bc = A.answer('my barcode is not scanning');
+check('B4. barcode query resolves to ID cards', /Code 128/.test(bc.r));
 
 // "this page" must resolve to the page in the sandbox location.
 const thisPage = A.answer('explain this page');

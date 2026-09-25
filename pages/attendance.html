@@ -21,18 +21,43 @@
             <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Select Rehearsal</label>
             <div class="flex flex-wrap gap-4 items-center">
                 <select id="reh-select" class="dc-input flex-1 max-w-md"><option value="">— Choose —</option></select>
-                <button id="qr-scan-btn" class="dc-btn bg-indigo-600 text-white admin-only hidden whitespace-nowrap"><i class="fas fa-qrcode mr-2"></i> Scan ID Card</button>
+                <button id="qr-scan-btn" class="dc-btn bg-indigo-600 text-white hidden whitespace-nowrap" type="button"><i class="fas fa-qrcode mr-2"></i> Scan ID Cards</button>
             </div>
         </div>
         
-        <!-- QR Scanner Container -->
-        <div id="qr-reader-container" class="hidden glass-card p-6 mb-6 admin-only text-center border-l-4 border-indigo-600">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-camera text-indigo-600 mr-2"></i> QR Check-In Scanner</h3>
-                <button id="qr-close-btn" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times text-xl"></i></button>
+        <!-- Card scanning desk (administrators + unit leaders). Resolved server-side by dc_scan_attendance. -->
+        <div id="qr-reader-container" class="hidden glass-card p-6 mb-6 border-l-4 border-indigo-600" aria-live="polite">
+            <div class="flex justify-between items-center mb-4 gap-3">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-id-card text-indigo-600 mr-2"></i> ID Card Scanning Desk</h3>
+                <button id="qr-close-btn" type="button" class="text-slate-400 hover:text-slate-700" aria-label="Close scanner"><i class="fas fa-times text-xl"></i></button>
             </div>
-            <div id="qr-reader" class="mx-auto overflow-hidden rounded-xl border border-slate-200" style="max-width: 400px;"></div>
-            <p class="text-xs text-slate-500 mt-3">Point the camera at a member's digital ID Card to instantly check them in.</p>
+            <div class="grid md:grid-cols-2 gap-5 items-start">
+                <div>
+                    <div class="relative mx-auto overflow-hidden rounded-xl border border-slate-200 bg-slate-900" style="max-width:420px;aspect-ratio:4/3">
+                        <video id="qr-video" class="w-full h-full object-cover" playsinline muted></video>
+                        <div class="absolute inset-[18%] border-2 border-white/70 rounded-lg pointer-events-none"></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 justify-center mt-3">
+                        <button id="cam-toggle" type="button" class="dc-btn bg-indigo-600 text-white text-sm py-2"><i class="fas fa-camera mr-1"></i> Start camera</button>
+                        <button id="torch-btn" type="button" class="dc-btn bg-slate-100 text-slate-700 text-sm py-2 hidden"><i class="fas fa-lightbulb mr-1"></i> Torch</button>
+                    </div>
+                    <p id="scan-status" class="text-xs text-slate-500 mt-2 text-center">Reads the QR code on the back and the barcode on the front of every DramaConnect ID card.</p>
+                </div>
+                <div>
+                    <label for="scan-manual" class="block text-xs font-bold text-gray-400 uppercase mb-1">USB scanner or typed member number</label>
+                    <div class="flex gap-2">
+                        <input id="scan-manual" class="dc-input flex-1" placeholder="e.g. DC-000123" autocomplete="off" spellcheck="false">
+                        <button id="scan-manual-btn" type="button" class="dc-btn bg-slate-800 text-white text-sm">Check in</button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">A keyboard-style barcode scanner works anywhere on this page while the desk is open.</p>
+                    <div id="scan-result" class="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-slate-500">Waiting for the first card…</div>
+                    <div class="flex justify-between items-center mt-3 text-xs text-slate-500">
+                        <span>Checked in this session: <b id="scan-count">0</b></span>
+                        <button id="scan-undo" type="button" class="underline hidden">Undo last (admin)</button>
+                    </div>
+                    <ol id="scan-log" class="mt-2 space-y-1 text-xs max-h-40 overflow-auto"></ol>
+                </div>
+            </div>
         </div>
 
         <!-- Member self check-in -->
@@ -84,10 +109,11 @@
     <script src="../assets/js/install.js"></script>
 <script src="../assets/js/page-guide.js"></script>
 <script src="../assets/js/assistant.js"></script>
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="../assets/js/dc-codes.js"></script>
     <script>
         let me = null, members = [], current = null, rehearsalsCache = [];
-        let html5QrcodeScanner = null;
+        let scanner = null, unwireWedge = null, scanBusy = false, scanCount = 0, lastScan = null;
+        const recentScans = new Map();
 
         async function init() {
             me = await Auth.checkSession();
@@ -97,13 +123,26 @@
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
             const isAdmin = Auth.isAdmin(me);
-            if (isAdmin) {
-                document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
-                document.getElementById('all-present').onclick = markAll;
-                
-                // QR Scanner Init
-                document.getElementById('qr-scan-btn').onclick = startScanner;
+            if (Auth.canManage(me)) {
+                // Administrators and unit leaders run the card-scanning desk.
+                const btn = document.getElementById('qr-scan-btn');
+                btn.classList.remove('hidden');
+                btn.onclick = startScanner;
                 document.getElementById('qr-close-btn').onclick = stopScanner;
+                document.getElementById('cam-toggle').onclick = toggleCamera;
+                document.getElementById('torch-btn').onclick = () => scanner && scanner.toggleTorch().catch(() => false);
+                document.getElementById('scan-manual-btn').onclick = () => {
+                    const input = document.getElementById('scan-manual');
+                    const value = input.value.trim(); input.value = '';
+                    if (value) handleScan(value, 'keyboard');
+                };
+                document.getElementById('scan-undo').onclick = undoLast;
+                window.addEventListener('pagehide', () => scanner && scanner.stop());
+                document.addEventListener('visibilitychange', () => { if (document.hidden && scanner && scanner.running) { scanner.stop(); setCamButton(false); } });
+            }
+            if (isAdmin) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.classList.contains('flex') ? 'flex' : 'block');
+                document.getElementById('all-present').onclick = markAll;
                 document.getElementById('open-code').onclick = () => setCode(true);
                 document.getElementById('close-code').onclick = () => setCode(false);
                 document.getElementById('gen-code').onclick = () => {
@@ -195,7 +234,7 @@
                                  <option value="absent" ${st === 'absent' ? 'selected' : ''}>Absent</option>
                                  <option value="excused" ${st === 'excused' ? 'selected' : ''}>Excused</option>
                                </select>`
-                            : `<span class="badge ${st === 'present' ? 'badge-green' : st === 'excused' ? 'badge-yellow' : 'badge-red'}">${st}</span>`}
+                            : `<span data-mid="${m.id}" class="badge ${st === 'present' ? 'badge-green' : st === 'excused' ? 'badge-yellow' : 'badge-red'}">${st}</span>`}
                     </div>`;
                 }).join('') + `</div>`;
             } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
@@ -213,60 +252,134 @@
             } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
         }
 
-        // QR Scanner Logic
+        // ---------------------------------------------------------------
+        // ID card scanning desk. All decoding lives in dc-codes.js; the
+        // server (dc_scan_attendance) resolves QR tokens, Code 128 member
+        // numbers and pre-v14.1 cards, refuses revoked/suspended cards and
+        // writes attendance + the activity log atomically.
+        // ---------------------------------------------------------------
+        const SCAN_VIEW = {
+            checked_in:     ['bg-green-50 border-green-300 text-green-800', 'fa-circle-check', 'Checked in — present'],
+            already:        ['bg-blue-50 border-blue-300 text-blue-800', 'fa-circle-info', 'Already marked present'],
+            card_revoked:   ['bg-red-50 border-red-300 text-red-800', 'fa-ban', 'Card REVOKED — do not admit on this card'],
+            card_suspended: ['bg-amber-50 border-amber-300 text-amber-800', 'fa-user-lock', 'Member is not approved/active'],
+            not_found:      ['bg-red-50 border-red-300 text-red-800', 'fa-circle-question', 'No member has this card'],
+            invalid:        ['bg-slate-50 border-slate-300 text-slate-700', 'fa-triangle-exclamation', 'Not a DramaConnect ID card code']
+        };
+
+        function setCamButton(on) {
+            const b = document.getElementById('cam-toggle');
+            b.innerHTML = on ? '<i class="fas fa-stop mr-1"></i> Stop camera' : '<i class="fas fa-camera mr-1"></i> Start camera';
+        }
+
         function startScanner() {
             if (!current) { UI.toast('Please select a rehearsal first.', 'warning'); return; }
+            if (!window.DCCodes) { UI.toast('The scanner library did not load. Refresh the page.', 'error'); return; }
             document.getElementById('qr-reader-container').classList.remove('hidden');
-            
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "qr-reader",
-                { fps: 10, qrbox: {width: 250, height: 250} },
-                /* verbose= */ false
-            );
-            
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+            if (!unwireWedge) unwireWedge = DCCodes.wireWedge(document.getElementById('scan-manual'), (code) => handleScan(code, 'keyboard'));
+            if (DCCodes.cameraSupported()) toggleCamera();
+            else document.getElementById('scan-status').textContent = 'No camera available here — use a USB barcode scanner or type the member number.';
+            document.getElementById('qr-reader-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
-        async function onScanSuccess(decodedText, decodedResult) {
-            // decodedText should be: "dramaconnect:verify:UUID"
-            if (!decodedText.startsWith("dramaconnect:verify:")) {
-                UI.toast('Invalid QR code format.', 'warning');
-                return;
-            }
-            
-            const scannedId = decodedText.split(':')[2];
-            const member = members.find(m => m.id === scannedId);
-            
-            if (member) {
-                // Pause scanner temporarily to avoid spam
-                html5QrcodeScanner.pause();
-                try {
-                    await DB.markAttendance(current, member.id, 'present');
-                    UI.toast(`${member.full_name} marked PRESENT! ✅`, 'success', 3000);
-                    // visually update the UI without full reload
-                    const select = document.getElementById(`att-${member.id}`);
-                    if (select) select.value = 'present';
-                    
-                    // Resume after 2 seconds
-                    setTimeout(() => { html5QrcodeScanner.resume(); }, 2000);
-                } catch (e) {
-                    UI.toast(e.message, 'error');
-                    html5QrcodeScanner.resume();
+        async function toggleCamera() {
+            const status = document.getElementById('scan-status');
+            if (scanner && scanner.running) { scanner.stop(); setCamButton(false); status.textContent = 'Camera stopped.'; return; }
+            scanner = scanner || DCCodes.createScanner({
+                video: document.getElementById('qr-video'),
+                cooldownMs: 4000,
+                onStatus: (t) => { status.textContent = t; },
+                onResult: (text, format) => handleScan(text, format)
+            });
+            try {
+                await scanner.start();
+                setCamButton(true);
+                status.textContent = 'Scanning with ' + scanner.engine + ' — hold the card steady inside the frame.';
+                document.getElementById('torch-btn').classList.remove('hidden');
+            } catch (e) { status.textContent = e.message; setCamButton(false); }
+        }
+
+        async function handleScan(code, format) {
+            if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
+            const key = current + '|' + String(code).trim().toUpperCase();
+            const seen = recentScans.get(key);
+            if (seen && Date.now() - seen < 4000) return;           // duplicate-read guard
+            if (scanBusy) return;
+            scanBusy = true; recentScans.set(key, Date.now());
+            const box = document.getElementById('scan-result');
+            box.className = 'mt-4 rounded-xl border border-slate-200 p-4 text-sm text-slate-500';
+            box.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Checking card…';
+            try {
+                const { data, error } = await sb.rpc('dc_scan_attendance', { p_rehearsal_id: current, p_code: String(code).trim() });
+                if (error) throw error;
+                renderScan(data || { result: 'invalid' }, format, String(code).trim());
+            } catch (e) {
+                const missing = e && (e.code === 'PGRST202' || e.code === '42883' || /dc_scan_attendance/.test(e.message || ''));
+                box.className = 'mt-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800';
+                box.textContent = missing
+                    ? 'The scanning function is not installed yet. An administrator must run database/complete-schema.sql once in the Supabase SQL Editor.'
+                    : ('Could not check in: ' + (e.message || e));
+                recentScans.delete(key);
+            } finally { scanBusy = false; }
+        }
+
+        function renderScan(res, format, code) {
+            const view = SCAN_VIEW[res.result] || SCAN_VIEW.invalid;
+            const box = document.getElementById('scan-result');
+            box.className = 'mt-4 rounded-xl border-2 p-4 text-sm ' + view[0];
+            const safePhoto = Utils.safeImageUrl(res.avatar_url);
+            const photo = safePhoto
+                ? `<img src="${UI.esc(safePhoto)}" alt="" class="h-16 w-16 rounded-xl object-cover border">`
+                : (res.full_name ? `<div class="h-16 w-16 rounded-xl rccg-blue text-white flex items-center justify-center text-lg font-bold">${UI.esc(Utils.initials(res.full_name))}</div>` : '');
+            box.innerHTML = `<div class="flex gap-3 items-center">${photo}<div>
+                <div class="font-extrabold"><i class="fas ${view[1]} mr-1"></i>${view[2]}</div>
+                ${res.full_name ? `<div class="text-base font-bold text-slate-900">${UI.esc(res.full_name)}</div>` : ''}
+                ${res.member_no ? `<div class="text-xs">${UI.esc(res.member_no)}${res.unit ? ' · ' + UI.esc(res.unit) : ''}${res.role ? ' · ' + UI.esc(res.role) : ''}</div>` : ''}
+                ${res.expired_warning || res.status === 'expired' ? '<div class="text-xs font-bold text-amber-700 mt-1"><i class="fas fa-clock mr-1"></i>Card has expired — admitted, but ask an administrator to extend it on the ID Card page.</div>' : ''}
+                </div></div>
+                ${res.full_name ? '<p class="text-[11px] mt-2 opacity-80">Compare the photo with the person in front of you.</p>' : ''}`;
+            if (res.result === 'checked_in' || res.result === 'already') {
+                reflectPresent(res.member_id);
+                if (res.result === 'checked_in') {
+                    scanCount += 1;
+                    lastScan = { member_id: res.member_id, previous: res.previous || null, name: res.full_name };
+                    document.getElementById('scan-count').textContent = scanCount;
+                    document.getElementById('scan-undo').classList.toggle('hidden', !Auth.isAdmin(me));
                 }
-            } else {
-                UI.toast('Member not found in directory.', 'error');
             }
+            const li = document.createElement('li');
+            li.className = 'flex justify-between gap-2 border-b border-slate-100 pb-1';
+            li.innerHTML = `<span>${UI.esc(res.full_name || String(code || '').slice(0, 40) || res.result)}</span><span class="text-slate-400">${UI.esc(view[2].split(' — ')[0])} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+            const log = document.getElementById('scan-log');
+            log.prepend(li);
+            while (log.children.length > 50) log.lastChild.remove();
         }
 
-        function onScanFailure(error) { /* handle quietly */ }
+        function reflectPresent(memberId) {
+            if (!memberId) return;
+            document.querySelectorAll(`[data-mid="${CSS.escape(memberId)}"]`).forEach((el) => {
+                if (el.tagName === 'SELECT') el.value = 'present';
+                else { el.textContent = 'present'; el.className = 'badge badge-green'; }
+            });
+        }
+
+        async function undoLast() {
+            if (!lastScan || !Auth.isAdmin(me)) return;
+            const ok = await UI.confirm(`Undo the check-in for ${lastScan.name}?`);
+            if (!ok) return;
+            try {
+                await DB.markAttendance(current, lastScan.member_id, lastScan.previous || 'absent');
+                UI.toast('Check-in undone.', 'success');
+                lastScan = null; document.getElementById('scan-undo').classList.add('hidden');
+                loadAtt(current);
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
 
         function stopScanner() {
-            const container = document.getElementById('qr-reader-container');
-            const hide = () => { if (container) container.classList.add('hidden'); };
-            if (!html5QrcodeScanner) { hide(); return; }
-            // clear() rejects if the scanner was never started or is already torn down.
-            // Hide the panel either way, and never leave the rejection unhandled.
-            Promise.resolve(html5QrcodeScanner.clear()).catch(() => {}).then(hide);
+            if (scanner) scanner.stop();
+            setCamButton(false);
+            if (unwireWedge) { unwireWedge(); unwireWedge = null; }
+            document.getElementById('qr-reader-container').classList.add('hidden');
         }
 
         window.mark = mark;

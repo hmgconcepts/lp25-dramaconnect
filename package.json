@@ -9,19 +9,26 @@
     "test:schema": "node tools/test-complete-schema.mjs",
     "test:js": "node tools/test-javascript.mjs",
     "test:browser": "node tools/test-browser.mjs",
-    "test": "npm run build:schema && npm run test:schema && npm run test:selfheal && npm run test:checkin && npm run test:dates && npm run test:storage && npm run test:recovery && npm run test:heartbeat && npm run test:js && npm run test:assistant",
+    "test": "npm run build:css && npm run build:schema && npm run test:schema && npm run test:selfheal && npm run test:checkin && npm run test:cards && npm run test:codes && npm run test:dates && npm run test:storage && npm run test:recovery && npm run test:heartbeat && npm run test:js && npm run test:assistant",
     "test:selfheal": "node tools/test-selfheal.mjs",
     "test:checkin": "node tools/test-checkin.mjs",
     "test:dates": "node tools/test-dates.mjs",
     "test:storage": "node tools/test-storage-guard.mjs",
     "test:recovery": "node tools/test-recovery-mode.mjs",
     "test:heartbeat": "node tools/test-heartbeat-quorum.mjs",
-    "test:assistant": "node tools/test-assistant.mjs"
+    "test:assistant": "node tools/test-assistant.mjs",
+    "test:cards": "node tools/test-cards-programs.mjs",
+    "build:css": "tailwindcss -c tailwind.offline.config.cjs -o assets/css/tailwind-offline.css --minify",
+    "test:codes": "node tools/test-codes.mjs",
+    "smoke:browser": "node tools/smoke-browser-cards.mjs",
+    "smoke:tablet": "node tools/smoke-tablet-layout.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.10",
+    "@zxing/library": "0.21.3",
     "esbuild": "^0.25.9",
     "jsdom": "26.1.0",
-    "playwright": "^1.55.0"
+    "playwright": "^1.55.0",
+    "tailwindcss": "3.4.19"
   }
 }

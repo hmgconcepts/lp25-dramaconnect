@@ -173,6 +173,27 @@ console.log('\nG. Unauthenticated callers cannot invent sources');
   check('a hostile source name collapses into the external bucket', r.rows[0].n === 1, `n=${r.rows[0].n}`);
 }
 
+/* ---------------- 8. human traffic must not mask dead schedulers ---------------- */
+console.log('\nH. Human traffic alone does not count as unattended protection');
+{
+  await db.query('DELETE FROM public.dc_heartbeat_sources');
+  for (const src of ['site-visit', 'manual-button']) await db.query('SELECT public.dc_keep_alive($1)', [src]);
+  let h = await health();
+  check('legacy quorum semantics unchanged (two fresh human sources)', h.quorum === true);
+  check('automatedSourcesFresh is zero', h.automatedSourcesFresh === 0, String(h.automatedSourcesFresh));
+  check('automatedQuorum is withheld', h.automatedQuorum === false);
+  check('neverReported names the dead schedulers',
+    Array.isArray(h.neverReported) && h.neverReported.includes('github-actions') && h.neverReported.includes('pg-cron'),
+    JSON.stringify(h.neverReported));
+
+  for (const src of ['github-actions', 'vercel-cron']) await db.query('SELECT public.dc_keep_alive($1)', [src]);
+  h = await health();
+  check('two schedulers grant automatedQuorum', h.automatedQuorum === true && h.automatedSourcesFresh === 2,
+    String(h.automatedSourcesFresh));
+  check('reporting schedulers leave the neverReported list',
+    !h.neverReported.includes('github-actions') && !h.neverReported.includes('vercel-cron'), JSON.stringify(h.neverReported));
+}
+
 await db.close();
 console.log(`\n${fail === 0 ? 'PASS' : 'FAIL'} — heartbeat quorum: ${pass} passed, ${fail} failed.\n`);
 process.exit(fail === 0 ? 0 : 1);

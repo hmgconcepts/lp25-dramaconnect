@@ -1,4 +1,7 @@
-// Public monitor entry point. Deploy with --no-verify-jwt, then set PING_SECRET.
+// Public monitor entry point (Layer 3). Deploy with --no-verify-jwt.
+// v14.1: PING_SECRET is OPTIONAL hardening. Without it the endpoint still
+// works (dc_keep_alive exposes no data and is throttled per source), so an
+// UptimeRobot / cron-job.org monitor protects the project with zero setup.
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store, max-age=0',
@@ -15,8 +18,7 @@ Deno.serve(async (request: Request) => {
 
   const expected = Deno.env.get('PING_SECRET') || '';
   const supplied = new URL(request.url).searchParams.get('token') || request.headers.get('x-ping-secret') || '';
-  if (!expected) return new Response(JSON.stringify({ ok: false, error: 'ping_secret_not_configured' }), { status: 503, headers: jsonHeaders });
-  if (supplied !== expected) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: jsonHeaders });
+  if (expected && supplied !== expected) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: jsonHeaders });
 
   const requestedSource = new URL(request.url).searchParams.get('source') || 'edge-ping';
   const source = requestedSource === 'cron-job-org' ? 'cron-job-org' : 'edge-ping';
@@ -33,7 +35,7 @@ Deno.serve(async (request: Request) => {
         apikey: anonKey,
         authorization: `Bearer ${anonKey}`,
         'content-type': 'application/json',
-        'user-agent': 'DramaConnect-Edge-Ping/14.0'
+        'user-agent': 'DramaConnect-Edge-Ping/14.1'
       },
       body: JSON.stringify({ p_source: source }),
       signal: controller.signal

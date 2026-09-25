@@ -3,21 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My ID Card | DramaConnect Enterprise</title>
+    <title>ID Cards | DramaConnect Enterprise</title>
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/style.css">
     <link rel="stylesheet" href="../assets/css/fallback.css">
     <script src="../assets/js/boot.js"></script>
     <style>
-        .id-card { width: 340px; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.15); background:#fff; }
-        .id-top { background: var(--rccg-blue); color:#fff; padding: 16px; text-align:center; }
-        .id-body { padding: 16px; }
-        .id-photo { width: 86px; height: 86px; border-radius: 50%; object-fit: cover; border: 3px solid var(--rccg-blue); background:#fff; }
-        @media print { .no-print { display:none !important; } body { background:#fff; } .id-card { box-shadow:none; border:1px solid #ccc; } }
+        /* ------------------------------------------------------------------
+           The card is laid out in real millimetres at ISO/IEC 7810 ID-1 size
+           (85.6 × 54 mm — a bank/driving-licence card) so the printout fits a
+           standard PVC sleeve or lanyard holder and the barcode prints at a
+           known module width (0.33 mm, readable by every scanner class).
+           ------------------------------------------------------------------ */
+        :root { --card-brand: var(--rccg-blue, #1e3a8a); --card-accent: #f59e0b; }
+        .card-stage { zoom: 1.45; }
+        @media (max-width: 640px) { .card-stage { zoom: 1.05; } }
+        .dc-card { width: 85.6mm; height: 54mm; border-radius: 3.2mm; overflow: hidden; position: relative;
+                   background: #fff; color: #0f172a; box-shadow: 0 6px 22px rgba(15,23,42,.18);
+                   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+                   -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .dc-card * { box-sizing: border-box; }
+        .dc-card .band { height: 11.5mm; display: flex; align-items: center; gap: 2mm; padding: 0 3mm; background: var(--card-brand); color: #fff; }
+        .dc-card .band img { width: 8mm; height: 8mm; border-radius: 50%; background: #fff; padding: .5mm; object-fit: contain; }
+        .dc-card .band .org { font-weight: 800; font-size: 2.55mm; line-height: 1.1; letter-spacing: .1mm; text-transform: uppercase; }
+        .dc-card .band .kind { font-size: 1.75mm; opacity: .85; letter-spacing: .45mm; text-transform: uppercase; }
+        .dc-card .front-body { display: flex; gap: 3mm; padding: 2.4mm 3mm 0; }
+        .dc-card .photo { width: 19mm; height: 23mm; border-radius: 1.6mm; object-fit: cover; border: .5mm solid var(--card-brand);
+                          background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 7mm; color: var(--card-brand); flex-shrink: 0; }
+        .dc-card .name { font-weight: 800; font-size: 3.5mm; line-height: 1.1; max-height: 8mm; overflow: hidden; }
+        .dc-card .meta { font-size: 2.1mm; color: #475569; line-height: 1.35; }
+        .dc-card .meta b { color: #0f172a; }
+        .dc-card .no { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 800; font-size: 2.6mm; letter-spacing: .3mm; color: var(--card-brand); margin-top: .6mm; }
+        .dc-card .barcode { position: absolute; left: 3mm; right: 3mm; bottom: 2mm; height: 11.5mm; background: #fff; border-radius: 1mm;
+                            display: flex; align-items: center; justify-content: center; }
+        .dc-card .barcode svg { height: 10.5mm; }
+        .dc-card .back-body { display: flex; gap: 3mm; padding: 3mm; height: 100%; }
+        .dc-card .qr { width: 27mm; flex-shrink: 0; text-align: center; }
+        .dc-card .qr .box { width: 27mm; height: 27mm; background: #fff; border-radius: 1.2mm; }
+        .dc-card .qr svg { width: 27mm; height: 27mm; display: block; }
+        .dc-card .qr p { font-size: 1.7mm; font-weight: 800; letter-spacing: .3mm; text-transform: uppercase; margin-top: .8mm; }
+        .dc-card .back-text { font-size: 1.95mm; line-height: 1.4; color: #334155; display: flex; flex-direction: column; min-width: 0; }
+        .dc-card .back-text h4 { font-size: 2.3mm; font-weight: 800; color: var(--card-brand); margin: 0 0 .6mm; }
+        .dc-card .sig { margin-top: auto; }
+        .dc-card .sig img { height: 6mm; max-width: 30mm; object-fit: contain; display: block; }
+        .dc-card .sig .line { border-top: .25mm solid #94a3b8; padding-top: .4mm; font-size: 1.8mm; }
+        .dc-card .foot { position: absolute; left: 0; right: 0; bottom: 0; font-size: 1.5mm; text-align: center; color: #94a3b8; padding: .6mm; }
+        .dc-card .ribbon { position: absolute; top: 15mm; left: -4mm; right: -4mm; transform: rotate(-14deg); background: rgba(220,38,38,.9);
+                           color: #fff; text-align: center; font-weight: 900; letter-spacing: 1.5mm; font-size: 4mm; padding: 1mm 0; z-index: 5; }
+        /* Templates — codes always sit on white so contrast never breaks scanning. */
+        .tpl-royal { background: linear-gradient(160deg, #0b1f4d 0%, #13306e 100%); color: #f8fafc; }
+        .tpl-royal .band { background: transparent; border-bottom: .5mm solid #d4a73c; }
+        .tpl-royal .meta, .tpl-royal .back-text { color: #cbd5e1; } .tpl-royal .meta b { color: #fff; }
+        .tpl-royal .no, .tpl-royal .back-text h4 { color: #f3c969; } .tpl-royal .photo { border-color: #d4a73c; }
+        .tpl-royal .qr p { color: #f3c969; }
+        .tpl-stage { background: radial-gradient(circle at 20% 0%, #4c0519 0%, #111827 65%); color: #f9fafb; }
+        .tpl-stage .band { background: linear-gradient(90deg, #9f1239, #be123c); }
+        .tpl-stage .meta, .tpl-stage .back-text { color: #e5e7eb; } .tpl-stage .meta b { color: #fff; }
+        .tpl-stage .no, .tpl-stage .back-text h4 { color: #fda4af; } .tpl-stage .photo { border-color: #fb7185; }
+        .tpl-minimal { border: .3mm solid #cbd5e1; }
+        .tpl-minimal .band { background: #fff; color: #0f172a; border-bottom: .6mm solid var(--card-brand); }
+        .tpl-minimal .band img { border: .2mm solid #e2e8f0; }
+
+        .dc-tab { padding: .5rem 1rem; border-radius: .75rem; font-weight: 700; font-size: .85rem; color: #475569; }
+        .dc-tab.active { background: var(--rccg-blue, #1e3a8a); color: #fff; }
+
+        #print-sheet { display: none; }
+        @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body * { visibility: hidden !important; }
+            #print-sheet, #print-sheet * { visibility: visible !important; }
+            #print-sheet { display: block !important; position: absolute; left: 0; top: 0; width: 190mm; }
+            .print-row { display: flex; gap: 6mm; margin-bottom: 4mm; break-inside: avoid; page-break-inside: avoid; }
+            .print-page { break-after: page; page-break-after: always; display: grid; grid-template-columns: 85.6mm 85.6mm; column-gap: 6mm; row-gap: 4mm; justify-content: center; }
+            .print-page:last-child { break-after: auto; page-break-after: auto; }
+            .dc-card { box-shadow: none !important; outline: .1mm dashed #cbd5e1; }
+            .app-sidebar, #app-sidebar, .no-print { display: none !important; }
+        }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen app-shell">
@@ -25,44 +89,108 @@
     <main class="app-main">
         <div id="page-header"></div>
 
-        <div class="flex flex-col items-center gap-6">
-            <div id="card" class="id-card">
-                <div class="id-top">
-                    <img src="../assets/img/rccg_logo.png" alt="RCCG" style="height:40px;width:40px;background:#fff;border-radius:50%;padding:3px;margin:0 auto 6px;display:block;">
-                    <p style="font-weight:800;font-size:14px;letter-spacing:.5px;">RCCG LP 25 DRAMA</p>
-                    <p style="font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:2px;">Member Identity Card</p>
-                </div>
-                <div class="id-body">
-                    <div class="flex items-center gap-4">
-                        <div id="id-avatar"></div>
-                        <div class="min-w-0">
-                            <p id="id-name" class="font-extrabold text-slate-800 text-lg leading-tight">—</p>
-                            <p id="id-role" class="text-xs text-slate-500">—</p>
-                            <p id="id-unit" class="text-xs text-slate-400">—</p>
-                        </div>
-                    </div>
-                    <div class="mt-4 flex items-end justify-between">
-                        <div class="text-[11px] text-slate-500 leading-relaxed">
-                            <p id="id-phone"></p>
-                            <p id="id-parish"></p>
-                            <p id="id-id" class="text-slate-300"></p>
-                        </div>
-                        <div id="qr"></div>
-                    </div>
-                    <p class="text-[9px] text-slate-400 text-center mt-3">Powered by HMG Concepts · DramaConnect</p>
-                    <div class="mt-4 flex flex-col items-center justify-center border-t border-slate-200 pt-3">
-                        <div id="qrcode" class="p-1 bg-white border border-slate-200 rounded"></div>
-                        <p class="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-widest text-center">Scan to Verify</p>
-                    </div>
-                </div>
-            </div>
+        <div id="schema-warning" class="hidden no-print mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"></div>
 
-            <div class="flex gap-3 no-print">
-                <button onclick="window.print()" class="dc-btn dc-btn-primary"><i class="fas fa-print mr-1"></i> Print / Save PDF</button>
-                <a href="profile.html" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-pen mr-1"></i> Edit My Details</a>
-            </div>
-            <p class="text-xs text-slate-400 no-print">Tip: in the print dialog choose "Save as PDF" to keep a digital copy.</p>
+        <div id="tabs" class="no-print flex flex-wrap gap-2 mb-5">
+            <button class="dc-tab active" data-tab="mine"><i class="fas fa-id-card mr-1"></i> My Card</button>
+            <button class="dc-tab hidden dc-admin-only" data-tab="register"><i class="fas fa-address-book mr-1"></i> Card Register</button>
+            <button class="dc-tab hidden dc-admin-only" data-tab="design"><i class="fas fa-palette mr-1"></i> Card Design &amp; Policy</button>
         </div>
+
+        <!-- ============================== MY CARD ============================== -->
+        <section id="tab-mine">
+            <div class="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
+                <div class="flex flex-col items-center gap-5">
+                    <div class="flex gap-2 no-print">
+                        <button class="dc-btn bg-slate-100 text-slate-700 side-btn" data-side="both">Both sides</button>
+                        <button class="dc-btn bg-slate-100 text-slate-700 side-btn" data-side="front">Front</button>
+                        <button class="dc-btn bg-slate-100 text-slate-700 side-btn" data-side="back">Back</button>
+                    </div>
+                    <div id="my-card" class="card-stage flex flex-col xl:flex-row gap-4 items-center"></div>
+                    <div class="flex flex-wrap justify-center gap-3 no-print">
+                        <button id="btn-print-mine" class="dc-btn dc-btn-primary"><i class="fas fa-print mr-1"></i> Print / Save PDF</button>
+                        <button id="btn-copy-verify" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-link mr-1"></i> Copy verification link</button>
+                        <a id="btn-open-verify" target="_blank" rel="noopener" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-shield-halved mr-1"></i> Test verification</a>
+                        <a href="profile.html" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-pen mr-1"></i> Edit My Details</a>
+                    </div>
+                    <p class="text-xs text-slate-400 no-print text-center max-w-md">Tip: in the print dialog choose “Save as PDF” to keep a digital copy. Print at 100% scale (not “fit to page”) so the card is exactly bank-card size.</p>
+                </div>
+                <aside class="dc-card-panel no-print bg-white rounded-2xl border border-slate-200 p-5 text-sm">
+                    <h3 class="font-bold text-slate-800 mb-3"><i class="fas fa-circle-info text-blue-600 mr-1"></i> Card status</h3>
+                    <dl id="my-status" class="space-y-2 text-slate-600"></dl>
+                    <hr class="my-4">
+                    <h4 class="font-bold text-slate-700 mb-2">How your card is checked</h4>
+                    <ul class="list-disc pl-5 space-y-1 text-slate-500 text-xs">
+                        <li><b>QR code (back)</b> — any phone camera opens a secure verification page showing your photo and whether the card is valid right now.</li>
+                        <li><b>Barcode (front)</b> — Code 128 of your member number. Rehearsal and programme check-in desks scan it with a phone camera or a USB/Bluetooth scanner.</li>
+                        <li>If the card is lost, an administrator can <b>re-issue</b> it: the old QR stops working immediately.</li>
+                    </ul>
+                </aside>
+            </div>
+        </section>
+
+        <!-- =========================== CARD REGISTER =========================== -->
+        <section id="tab-register" class="hidden no-print">
+            <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-4">
+                <div class="grid md:grid-cols-5 gap-3">
+                    <input id="reg-search" class="dc-input md:col-span-2" placeholder="Search name or member number…">
+                    <select id="reg-unit" class="dc-input"><option value="">All units</option></select>
+                    <select id="reg-status" class="dc-input">
+                        <option value="">All statuses</option><option value="valid">Valid</option><option value="expired">Expired</option>
+                        <option value="revoked">Revoked</option><option value="suspended">Suspended</option><option value="expiring">Expiring in 60 days</option>
+                    </select>
+                    <select id="reg-layout" class="dc-input" title="Print layout">
+                        <option value="pairs">Print: front + back side by side</option>
+                        <option value="duplex">Print: duplex (backs mirrored)</option>
+                    </select>
+                </div>
+                <div class="flex flex-wrap gap-2 mt-3 items-center">
+                    <button id="reg-print" class="dc-btn dc-btn-primary"><i class="fas fa-print mr-1"></i> Print selected</button>
+                    <button id="reg-extend" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-calendar-plus mr-1"></i> Extend selected</button>
+                    <button id="reg-csv" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-file-csv mr-1"></i> Export CSV</button>
+                    <span id="reg-summary" class="text-xs text-slate-500 ml-auto"></span>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr><th class="p-3 text-left"><input type="checkbox" id="reg-all" aria-label="Select all"></th><th class="p-3 text-left">Member</th><th class="p-3 text-left">Member no.</th><th class="p-3 text-left">Status</th><th class="p-3 text-left">Expires</th><th class="p-3 text-left">Scans</th><th class="p-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody id="reg-body"><tr><td colspan="7" class="p-6 text-center text-slate-400">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================ CARD DESIGN ============================ -->
+        <section id="tab-design" class="hidden no-print">
+            <div class="grid lg:grid-cols-[1fr_auto] gap-6 items-start">
+                <form id="design-form" class="bg-white rounded-2xl border border-slate-200 p-5 grid md:grid-cols-2 gap-4 text-sm">
+                    <label>Template
+                        <select name="template" class="dc-input mt-1"><option value="classic">Classic (brand colour)</option><option value="royal">Royal (navy &amp; gold)</option><option value="stage">Stage (theatre red)</option><option value="minimal">Minimal (white)</option></select></label>
+                    <label>Validity (months)
+                        <input name="validity_months" type="number" min="1" max="120" class="dc-input mt-1" required></label>
+                    <label>Member number prefix (A–Z, 0–9, max 6)
+                        <input name="member_no_prefix" maxlength="6" pattern="[A-Z0-9]{1,6}" class="dc-input mt-1 uppercase" required>
+                        <span class="text-xs text-slate-400">Applies to newly issued cards; existing numbers never change.</span></label>
+                    <label class="flex items-center gap-2 mt-6"><input name="show_phone" type="checkbox"> Print member phone number on the card</label>
+                    <label>Signatory name<input name="signatory_name" maxlength="80" class="dc-input mt-1"></label>
+                    <label>Signatory title<input name="signatory_title" maxlength="80" class="dc-input mt-1" placeholder="e.g. Drama Coordinator"></label>
+                    <label class="md:col-span-2">Signature image URL (transparent PNG works best)<input name="signature_url" maxlength="500" class="dc-input mt-1" placeholder="https://…"></label>
+                    <label class="md:col-span-2">Contact line (back of card)<input name="contact_line" maxlength="160" class="dc-input mt-1" placeholder="If found, please call 0800 000 0000"></label>
+                    <label class="md:col-span-2">Back note<textarea name="back_note" maxlength="300" rows="2" class="dc-input mt-1" placeholder="This card remains the property of the department…"></textarea></label>
+                    <div class="md:col-span-2 flex gap-3">
+                        <button type="submit" class="dc-btn dc-btn-primary"><i class="fas fa-save mr-1"></i> Save design</button>
+                        <span class="text-xs text-slate-400 self-center">Logo, organisation name and brand colour come from <a class="underline" href="settings.html">Settings → Branding</a>.</span>
+                    </div>
+                </form>
+                <div class="flex flex-col items-center gap-3">
+                    <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Live preview</p>
+                    <div id="design-preview" class="flex flex-col gap-3"></div>
+                </div>
+            </div>
+        </section>
+
+        <div id="print-sheet" aria-hidden="true"></div>
     </main>
 
     <script src="../assets/js/config.js"></script>
@@ -77,55 +205,330 @@
     <script src="../assets/js/utils.js"></script>
     <script src="../assets/js/layout.js"></script>
     <script src="../assets/js/install.js"></script>
-<script src="../assets/js/page-guide.js"></script>
-<script src="../assets/js/assistant.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="../assets/js/page-guide.js"></script>
+    <script src="../assets/js/assistant.js"></script>
+    <script src="../assets/js/vendor/qrcode-generator.js"></script>
+    <script src="../assets/js/dc-codes.js"></script>
     <script>
-        let me = null;
+        let me = null, tenant = {}, myCard = null, allCards = [], settings = {}, side = 'both';
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const fmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+        const STATUS_STYLE = { valid: 'bg-emerald-100 text-emerald-700', expired: 'bg-amber-100 text-amber-800', revoked: 'bg-red-100 text-red-700', suspended: 'bg-slate-200 text-slate-700' };
+        const DEFAULT_LOGO = '../assets/img/rccg_logo.png';
+
+        function missingFunction(error) {
+            const m = String(error && (error.message || error.code) || '');
+            return /PGRST202|42883|could not find the function|does not exist/i.test(m);
+        }
+        function showSchemaWarning() {
+            const box = document.getElementById('schema-warning');
+            box.classList.remove('hidden');
+            box.innerHTML = '<b><i class="fas fa-database mr-1"></i> Secure ID cards are not installed on the database yet.</b> ' +
+                'An administrator must run <code>database/complete-schema.sql</code> once in the Supabase SQL Editor (safe to re-run). ' +
+                'Until then the card below is a preview without working codes.';
+        }
+
+        /* ---------------- rendering (all values escaped; images built as elements) --------------- */
+        function photoHtml(card) {
+            const url = Utils.safeImageUrl(card.avatar_url);
+            return url ? `<img class="photo" src="${esc(url)}" alt="Member photo" crossorigin="anonymous" referrerpolicy="no-referrer">`
+                       : `<div class="photo">${esc(Utils.initials(card.full_name || 'Member'))}</div>`;
+        }
+        function brand(card) {
+            return {
+                org: card.org_name || tenant.org_name || CONFIG.APP_NAME || 'Drama Department',
+                logo: Utils.safeImageUrl(card.logo_url || tenant.logo_url) || DEFAULT_LOGO
+            };
+        }
+        function ribbon(card) {
+            return card.status && card.status !== 'valid' ? `<div class="ribbon">${esc(String(card.status).toUpperCase())}</div>` : '';
+        }
+        function barcodeSvg(no) {
+            try {
+                const svg = DCCodes.code128Svg(no, { module: 2, height: 40, showText: false });
+                // 0.33 mm per module → reliable on phone cameras and laser scanners.
+                const modules = DCCodes.code128Modules(no).length;
+                return svg.replace('<svg ', `<svg style="width:${(modules * 0.33).toFixed(2)}mm" `);
+            } catch (e) { return '<span style="font-size:2mm;color:#94a3b8">barcode unavailable</span>'; }
+        }
+        function frontHtml(card, s) {
+            const b = brand(card);
+            const phone = s.show_phone && card.phone ? `<div>☎ <b>${esc(card.phone)}</b></div>` : '';
+            const no = card.member_no || 'PENDING';
+            return `<div class="dc-card tpl-${esc(s.template || 'classic')}" data-side="front">
+                ${ribbon(card)}
+                <div class="band"><img src="${esc(b.logo)}" alt="" crossorigin="anonymous"><div><div class="org">${esc(b.org)}</div><div class="kind">Member Identity Card</div></div></div>
+                <div class="front-body">${photoHtml(card)}
+                    <div style="min-width:0;flex:1">
+                        <div class="name">${esc(card.full_name || 'Member')}</div>
+                        <div class="meta"><div>${esc(card.role || 'Member')}${card.occupation ? ' • ' + esc(card.occupation) : ''}</div>
+                            ${card.unit ? `<div>Unit: <b>${esc(card.unit)}</b></div>` : ''}
+                            ${card.parish ? `<div>⛪ ${esc(card.parish)}</div>` : ''}${phone}
+                            <div>Valid until: <b>${esc(fmt(card.expires_at))}</b></div></div>
+                        <div class="no">${esc(no)}</div>
+                    </div>
+                </div>
+                <div class="barcode">${card.member_no ? barcodeSvg(card.member_no) : ''}</div>
+            </div>`;
+        }
+        function backHtml(card, s) {
+            const b = brand(card);
+            let qr = '<div style="font-size:2mm;color:#94a3b8;padding-top:10mm">QR available after setup</div>';
+            if (card.card_token) {
+                try { qr = DCCodes.qrSvg(DCCodes.verifyUrl(card.card_token), { size: 102, ecl: 'M', label: 'Scan to verify ' + (card.full_name || 'member') }); }
+                catch (e) { qr = '<div style="font-size:2mm">QR unavailable</div>'; }
+            }
+            const sigUrl = Utils.safeImageUrl(s.signature_url);
+            return `<div class="dc-card tpl-${esc(s.template || 'classic')}" data-side="back">
+                ${ribbon(card)}
+                <div class="back-body">
+                    <div class="qr"><div class="box">${qr}</div><p>Scan to verify</p></div>
+                    <div class="back-text">
+                        <h4>${esc(b.org)}</h4>
+                        <div>${esc(s.back_note || 'This card identifies the holder as a registered member. It is not transferable and remains the property of the department.')}</div>
+                        <div style="margin-top:.8mm">${esc(s.contact_line || 'If found, please return it to the department office.')}</div>
+                        <div style="margin-top:.8mm">Issued <b>${esc(fmt(card.issued_at))}</b> · Expires <b>${esc(fmt(card.expires_at))}</b></div>
+                        <div class="sig">${sigUrl ? `<img src="${esc(sigUrl)}" alt="Signature" crossorigin="anonymous">` : ''}
+                            <div class="line">${esc(s.signatory_name || 'Authorised signatory')}${s.signatory_title ? ' — ' + esc(s.signatory_title) : ''}</div></div>
+                    </div>
+                </div>
+                <div class="foot">Powered by HMG Concepts · DramaConnect</div>
+            </div>`;
+        }
+        function applyBrandColour() {
+            const colour = tenant.primary_color && Utils.isHexColor(tenant.primary_color) ? tenant.primary_color : null;
+            if (colour) document.documentElement.style.setProperty('--card-brand', colour);
+        }
+
+        function renderMine() {
+            const s = (myCard && myCard.settings) || settings;
+            const box = document.getElementById('my-card');
+            box.innerHTML = (side !== 'back' ? frontHtml(myCard, s) : '') + (side !== 'front' ? backHtml(myCard, s) : '');
+            document.querySelectorAll('.side-btn').forEach(b => b.classList.toggle('ring-2', b.dataset.side === side));
+            const st = myCard.status || 'unknown';
+            document.getElementById('my-status').innerHTML = `
+                <div class="flex justify-between"><dt>Status</dt><dd><span class="px-2 py-0.5 rounded-full text-xs font-bold ${STATUS_STYLE[st] || 'bg-slate-100'}">${esc(st)}</span></dd></div>
+                <div class="flex justify-between"><dt>Member no.</dt><dd class="font-mono font-bold">${esc(myCard.member_no || '—')}</dd></div>
+                <div class="flex justify-between"><dt>Issued</dt><dd>${esc(fmt(myCard.issued_at))}</dd></div>
+                <div class="flex justify-between"><dt>Expires</dt><dd>${esc(fmt(myCard.expires_at))}</dd></div>
+                <div class="flex justify-between"><dt>Times verified</dt><dd>${esc(myCard.verify_count ?? 0)}</dd></div>
+                ${myCard.revoke_reason ? `<div class="text-red-600 text-xs">Reason: ${esc(myCard.revoke_reason)}</div>` : ''}
+                ${st === 'expired' ? '<div class="text-amber-700 text-xs">Your card has expired — ask an administrator to extend it.</div>' : ''}`;
+            const link = myCard.card_token ? DCCodes.verifyUrl(myCard.card_token) : '';
+            const open = document.getElementById('btn-open-verify');
+            open.href = link || '#';
+            open.classList.toggle('pointer-events-none', !link);
+            open.classList.toggle('opacity-50', !link);
+        }
+
+        /* ------------------------------ printing ------------------------------ */
+        function waitForImages(root, timeoutMs = 6000) {
+            const imgs = Array.from(root.querySelectorAll('img'));
+            return Promise.race([
+                Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(r => { img.onload = img.onerror = r; }))),
+                new Promise(r => setTimeout(r, timeoutMs))
+            ]);
+        }
+        async function printCards(cards, layout = 'pairs') {
+            if (!cards.length) return UI.toast('Select at least one card to print.', 'error');
+            const s = settings;
+            const sheet = document.getElementById('print-sheet');
+            const pages = [];
+            if (layout === 'duplex') {
+                // 10 cards per A4 (2 × 5). Backs page mirrors columns so each back
+                // lands behind its front when printed double-sided (long edge).
+                for (let i = 0; i < cards.length; i += 10) {
+                    const chunk = cards.slice(i, i + 10);
+                    pages.push(`<div class="print-page">${chunk.map(c => frontHtml(c, s)).join('')}</div>`);
+                    const backs = [];
+                    for (let r = 0; r < chunk.length; r += 2) {
+                        const left = chunk[r], right = chunk[r + 1];
+                        backs.push(right ? backHtml(right, s) : '<div></div>', backHtml(left, s));
+                    }
+                    pages.push(`<div class="print-page">${backs.join('')}</div>`);
+                }
+            } else {
+                for (let i = 0; i < cards.length; i += 5) {
+                    const rows = cards.slice(i, i + 5).map(c => frontHtml(c, s) + backHtml(c, s)).join('');
+                    pages.push(`<div class="print-page">${rows}</div>`);
+                }
+            }
+            sheet.innerHTML = pages.join('');
+            UI.showLoader('Preparing cards for printing…');
+            await waitForImages(sheet);
+            UI.hideLoader();
+            window.print();
+        }
+
+        /* ------------------------------ register ------------------------------ */
+        function expiringSoon(c) { return c.status === 'valid' && c.expires_at && (new Date(c.expires_at) - Date.now()) < 60 * 864e5; }
+        function filteredCards() {
+            const q = document.getElementById('reg-search').value.trim().toLowerCase();
+            const unit = document.getElementById('reg-unit').value;
+            const st = document.getElementById('reg-status').value;
+            return allCards.filter(c =>
+                (!q || (c.full_name || '').toLowerCase().includes(q) || (c.member_no || '').toLowerCase().includes(q)) &&
+                (!unit || c.unit === unit) &&
+                (!st || (st === 'expiring' ? expiringSoon(c) : c.status === st)));
+        }
+        function renderRegister() {
+            const rows = filteredCards();
+            const counts = allCards.reduce((a, c) => (a[c.status] = (a[c.status] || 0) + 1, a), {});
+            document.getElementById('reg-summary').textContent =
+                `${allCards.length} cards · ${counts.valid || 0} valid · ${counts.expired || 0} expired · ${counts.revoked || 0} revoked · ${allCards.filter(expiringSoon).length} expiring soon`;
+            const body = document.getElementById('reg-body');
+            if (!rows.length) { body.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">No cards match the filters.</td></tr>'; return; }
+            body.innerHTML = rows.map(c => `<tr class="border-t border-slate-100">
+                <td class="p-3"><input type="checkbox" class="reg-pick" value="${esc(c.member_id)}"></td>
+                <td class="p-3"><div class="font-semibold text-slate-800">${esc(c.full_name)}</div><div class="text-xs text-slate-400">${esc(c.unit || 'No unit')} · ${esc(c.role)}</div></td>
+                <td class="p-3 font-mono">${esc(c.member_no)}</td>
+                <td class="p-3"><span class="px-2 py-0.5 rounded-full text-xs font-bold ${STATUS_STYLE[c.status] || ''}">${esc(c.status)}</span>${expiringSoon(c) ? ' <span class="text-[10px] text-amber-600">soon</span>' : ''}</td>
+                <td class="p-3">${esc(fmt(c.expires_at))}</td>
+                <td class="p-3">${esc(c.verify_count ?? 0)}</td>
+                <td class="p-3 text-right whitespace-nowrap">
+                    <button class="text-blue-600 px-1" title="Print" data-act="print" data-id="${esc(c.member_id)}"><i class="fas fa-print"></i></button>
+                    <button class="text-slate-600 px-1" title="Extend validity" data-act="extend" data-id="${esc(c.member_id)}"><i class="fas fa-calendar-plus"></i></button>
+                    <button class="text-amber-600 px-1" title="Re-issue (old QR stops working)" data-act="reissue" data-id="${esc(c.member_id)}"><i class="fas fa-rotate"></i></button>
+                    ${c.revoked_at ? `<button class="text-emerald-600 px-1" title="Restore" data-act="restore" data-id="${esc(c.member_id)}"><i class="fas fa-rotate-left"></i></button>`
+                                   : `<button class="text-red-600 px-1" title="Revoke" data-act="revoke" data-id="${esc(c.member_id)}"><i class="fas fa-ban"></i></button>`}
+                </td></tr>`).join('');
+        }
+        async function loadRegister() {
+            const { data, error } = await sb.rpc('dc_admin_list_cards');
+            if (error) { document.getElementById('reg-body').innerHTML = `<tr><td colspan="7" class="p-6 text-center text-red-500">${esc(error.message)}</td></tr>`; return; }
+            allCards = data || [];
+            const units = [...new Set(allCards.map(c => c.unit).filter(Boolean))].sort();
+            document.getElementById('reg-unit').innerHTML = '<option value="">All units</option>' + units.map(u => `<option>${esc(u)}</option>`).join('');
+            renderRegister();
+        }
+        async function cardAction(id, action) {
+            let reason = null;
+            if (action === 'revoke') {
+                reason = window.prompt('Reason for revoking this card (shown to verifiers as "revoked"):', 'Lost card');
+                if (reason === null) return;
+            } else if (action === 'reissue') {
+                if (!await UI.confirm('Re-issue creates a new QR code. The old printed card will show as not found when scanned. Continue?', 'Re-issue card')) return;
+            }
+            const { data, error } = await sb.rpc('dc_admin_card_action', { p_member_id: id, p_action: action, p_reason: reason });
+            if (error) return UI.toast(error.message, 'error');
+            const i = allCards.findIndex(c => c.member_id === id);
+            if (i >= 0) allCards[i] = data;
+            if (myCard && myCard.member_id === id) { myCard = data; renderMine(); }
+            renderRegister();
+            UI.toast(`Card ${action === 'extend' ? 'extended' : action + 'd'}.`);
+        }
+        function exportCsv() {
+            const rows = [['member_no', 'full_name', 'unit', 'role', 'status', 'issued_at', 'expires_at', 'verify_count', 'last_verified_at']]
+                .concat(filteredCards().map(c => [c.member_no, c.full_name, c.unit, c.role, c.status, c.issued_at, c.expires_at, c.verify_count, c.last_verified_at]));
+            const csv = rows.map(r => r.map(v => {
+                let s = v == null ? '' : String(v);
+                if (/^[=+\-@]/.test(s)) s = "'" + s;          // spreadsheet formula-injection guard
+                return '"' + s.replace(/"/g, '""') + '"';
+            }).join(',')).join('\r\n');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+            a.download = `id-card-register-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        }
+
+        /* ------------------------------- design ------------------------------- */
+        function fillDesign() {
+            const f = document.getElementById('design-form');
+            ['template', 'validity_months', 'member_no_prefix', 'signatory_name', 'signatory_title', 'signature_url', 'contact_line', 'back_note']
+                .forEach(k => { f.elements[k].value = settings[k] ?? ''; });
+            f.elements.show_phone.checked = !!settings.show_phone;
+            previewDesign();
+        }
+        function readDesign() {
+            const f = document.getElementById('design-form');
+            const val = (k) => f.elements[k].value.trim() || null;
+            return {
+                template: f.elements.template.value, validity_months: Number(f.elements.validity_months.value) || 24,
+                member_no_prefix: (f.elements.member_no_prefix.value || 'DC').toUpperCase(), show_phone: f.elements.show_phone.checked,
+                signatory_name: val('signatory_name'), signatory_title: val('signatory_title'), signature_url: val('signature_url'),
+                contact_line: val('contact_line'), back_note: val('back_note')
+            };
+        }
+        function previewDesign() {
+            const s = readDesign();
+            document.getElementById('design-preview').innerHTML = frontHtml(myCard, s) + backHtml(myCard, s);
+        }
+
+        /* --------------------------------- init -------------------------------- */
+        function switchTab(name) {
+            document.querySelectorAll('.dc-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+            ['mine', 'register', 'design'].forEach(n => document.getElementById('tab-' + n).classList.toggle('hidden', n !== name));
+            if (name === 'register' && !allCards.length) loadRegister();
+            if (name === 'design') fillDesign();
+            history.replaceState(null, '', '#' + name);
+        }
+
         async function init() {
             me = await Auth.checkSession();
             if (!me) return;
             Layout.renderSidebar('idcard', me);
-            document.getElementById('page-header').innerHTML = Layout.renderHeader('My ID Card', 'Your printable membership card');
+            const admin = Auth.isAdmin(me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader(admin ? 'ID Cards' : 'My ID Card',
+                admin ? 'Issue, print, verify and revoke member identity cards' : 'Your printable, verifiable membership card');
             Layout.setDate();
             if (Layout.loadNotifications) Layout.loadNotifications(me);
+            try { tenant = (await DB.getTenantSettings()) || {}; } catch (e) { tenant = {}; }
+            applyBrandColour();
 
-            // Photo (or initials) on the ID. Build the element directly so a
-            // stored profile value never becomes executable markup.
-            (function () {
-                const box = document.getElementById('id-avatar');
-                box.replaceChildren();
-                const photoUrl = Utils.safeImageUrl(me.avatar_url);
-                if (photoUrl) {
-                    const image = document.createElement('img');
-                    image.src = photoUrl;
-                    image.className = 'id-photo';
-                    image.alt = 'Member photo';
-                    box.appendChild(image);
-                } else {
-                    const fallback = document.createElement('div');
-                    fallback.className = 'id-photo flex items-center justify-center text-2xl font-black text-blue-800';
-                    fallback.textContent = Utils.initials(me.full_name);
-                    box.appendChild(fallback);
-                }
-            })();
-            document.getElementById('id-name').innerText = me.full_name || 'Member';
-            document.getElementById('id-role').innerText = (me.role === 'admin' ? 'Administrator' : 'Member') + (me.occupation ? ' • ' + me.occupation : '');
-            document.getElementById('id-unit').innerText = me.unit ? ('Unit: ' + me.unit) : '';
-            document.getElementById('id-phone').innerText = me.phone ? ('☎ ' + me.phone) : '';
-            document.getElementById('id-parish').innerText = me.parish ? ('⛪ ' + me.parish) : '';
-            document.getElementById('id-id').innerText = 'ID: ' + (me.id || '').slice(0, 8).toUpperCase();
-
-            // QR encodes a verification payload (name + id) — scannable for quick lookup.
-            const payload = "dramaconnect:verify:" + me.id;
-            if (window.QRCode) {
-                // Main QR Code
-                new QRCode(document.getElementById('qrcode'), { text: payload, width: 90, height: 90, colorDark : "#1e293b", colorLight : "#ffffff", correctLevel: QRCode.CorrectLevel.M });
-                // Small corner QR
-                new QRCode(document.getElementById('qr'), { text: payload, width: 64, height: 64, correctLevel: QRCode.CorrectLevel.M });
+            const { data, error } = await sb.rpc('dc_my_card');
+            if (error) {
+                if (missingFunction(error)) showSchemaWarning(); else UI.toast(error.message, 'error');
+                // Preview from the profile so existing members still see their details.
+                myCard = { full_name: me.full_name, role: me.role === 'admin' ? 'Administrator' : 'Member', unit: me.unit, avatar_url: me.avatar_url,
+                           occupation: me.occupation, parish: me.parish, phone: me.phone, status: 'pending', settings: {} };
             } else {
-                document.getElementById('qr').innerHTML = '<span class="text-[9px] text-slate-300">QR offline</span>';
-                document.getElementById('qrcode').innerHTML = '<span class="text-[9px] text-slate-300">QR offline</span>';
+                myCard = Object.assign({ occupation: me.occupation }, data);
+                settings = data.settings || {};
+            }
+            renderMine();
+
+            document.querySelectorAll('.side-btn').forEach(b => b.addEventListener('click', () => { side = b.dataset.side; renderMine(); }));
+            document.getElementById('btn-print-mine').addEventListener('click', () => printCards([myCard], 'pairs'));
+            document.getElementById('btn-copy-verify').addEventListener('click', async () => {
+                if (!myCard.card_token) return UI.toast('Verification link available once the card is issued.', 'error');
+                try { await navigator.clipboard.writeText(DCCodes.verifyUrl(myCard.card_token)); UI.toast('Verification link copied.'); }
+                catch (e) { window.prompt('Copy this link:', DCCodes.verifyUrl(myCard.card_token)); }
+            });
+            document.querySelectorAll('.dc-tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+            if (admin && !error) {
+                document.querySelectorAll('.dc-admin-only').forEach(el => el.classList.remove('hidden'));
+                ['reg-search', 'reg-unit', 'reg-status'].forEach(id => document.getElementById(id).addEventListener('input', renderRegister));
+                document.getElementById('reg-all').addEventListener('change', e => document.querySelectorAll('.reg-pick').forEach(c => { c.checked = e.target.checked; }));
+                document.getElementById('reg-body').addEventListener('click', e => {
+                    const btn = e.target.closest('button[data-act]'); if (!btn) return;
+                    const card = allCards.find(c => c.member_id === btn.dataset.id);
+                    if (btn.dataset.act === 'print') printCards([card], document.getElementById('reg-layout').value);
+                    else cardAction(btn.dataset.id, btn.dataset.act);
+                });
+                const picked = () => Array.from(document.querySelectorAll('.reg-pick:checked')).map(c => allCards.find(x => x.member_id === c.value)).filter(Boolean);
+                document.getElementById('reg-print').addEventListener('click', () => printCards(picked(), document.getElementById('reg-layout').value));
+                document.getElementById('reg-extend').addEventListener('click', async () => {
+                    const list = picked(); if (!list.length) return UI.toast('Select cards to extend.', 'error');
+                    if (!await UI.confirm(`Extend ${list.length} card(s) by ${settings.validity_months || 24} months?`, 'Extend validity')) return;
+                    for (const c of list) await cardAction(c.member_id, 'extend');
+                });
+                document.getElementById('reg-csv').addEventListener('click', exportCsv);
+                const form = document.getElementById('design-form');
+                form.addEventListener('input', previewDesign);
+                form.addEventListener('submit', async e => {
+                    e.preventDefault();
+                    const payload = readDesign();
+                    const { error: saveError } = await sb.from('dc_card_settings').update(payload).eq('id', 1);
+                    if (saveError) return UI.toast(saveError.message, 'error');
+                    settings = Object.assign({}, settings, payload);
+                    myCard.settings = settings;
+                    renderMine(); allCards = [];
+                    UI.toast('Card design saved.');
+                });
+                const wanted = location.hash.slice(1);
+                if (['register', 'design'].includes(wanted)) switchTab(wanted);
             }
         }
         init();

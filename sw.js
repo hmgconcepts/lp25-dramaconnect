@@ -4,13 +4,14 @@
  * - Never caches Supabase/API or cross-origin CDN traffic.
  * - Uses network-first navigation so deployments are not pinned to stale HTML.
  */
-const CACHE = 'dramaconnect-v14.0';
+const CACHE = 'dramaconnect-v14.1';
 const CORE = [
   './',
   './index.html',
   './manifest.json',
   './assets/css/style.css',
   './assets/css/fallback.css',
+  './assets/css/tailwind-offline.css',
   './assets/js/boot.js',
   './assets/js/config.js',
   './assets/js/resilience.js',
@@ -25,12 +26,24 @@ const CORE = [
   './assets/js/layout.js',
   './assets/js/install.js',
   './assets/js/crop.js',
+  './assets/js/dc-codes.js',
+  './assets/js/vendor/qrcode-generator.js',
+  './assets/js/vendor/jsqr.js',
+  './pages/idcard.html',
+  './pages/verify.html',
+  './pages/attendance.html',
   './pages/settings.html',
   './pages/admin-data.html',
   './pages/storage-manager.html',
   './pages/platform-health.html',
   './pages/roles-status.html',
   './pages/site-license.html',
+  './pages/programs.html',
+  './pages/register.html',
+  './pages/calendar.html',
+  './pages/roster.html',
+  './pages/care.html',
+  './404.html',
   './assets/img/rccg_logo.png',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png'

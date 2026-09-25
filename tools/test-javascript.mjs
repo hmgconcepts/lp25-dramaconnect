@@ -46,6 +46,11 @@ for (const file of htmlFiles) {
   const ids = [...doc.querySelectorAll('[id]')].map((node) => node.id);
   const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
   if (duplicates.length) fail(`${rel}: duplicate id(s): ${duplicates.join(', ')}`);
+  // Live tablet bug (24 Sep 2026): pages with the sidebar but no body.app-shell
+  // stacked the sidebar above the content instead of beside it.
+  if (doc.getElementById('app-sidebar') && !doc.body.classList.contains('app-shell')) {
+    fail(`${rel}: has #app-sidebar but <body> lacks the app-shell class (sidebar would stack above the page)`);
+  }
 
   const scripts = [...doc.querySelectorAll('script')];
   const sources = scripts.map((node) => node.getAttribute('src')).filter(Boolean);
@@ -85,15 +90,23 @@ const sw = await fs.readFile(path.join(root, 'sw.js'), 'utf8');
 for (const required of ['assets/js/platform-management.js', ...requiredPages.map((p) => `pages/${p}`)]) {
   if (!sw.includes(required)) fail(`sw.js: missing control-plane precache entry ${required}`);
 }
-if (!/dramaconnect-v14\.0/.test(sw)) fail('sw.js: release cache is not v14.0');
+if (!/dramaconnect-v14\.1/.test(sw)) fail('sw.js: release cache is not v14.1');
 
 const portability = await fs.readFile(path.join(root, 'assets', 'js', 'data-portability.js'), 'utf8');
-if (!/SCHEMA_VERSION\s*=\s*['"]14\.0['"]/.test(portability)) fail('data-portability.js: schema version is not 14.0');
+if (!/SCHEMA_VERSION\s*=\s*['"]14\.1['"]/.test(portability)) fail('data-portability.js: schema version is not 14.1');
 const tableMatch = portability.match(/const TABLES\s*=\s*Object\.freeze\(\[([\s\S]*?)\]\);/);
 if (!tableMatch) fail('data-portability.js: TABLES declaration not found');
 else {
   const tableCount = [...tableMatch[1].matchAll(/name:\s*['"][a-z0-9_]+['"]/gi)].length;
-  if (tableCount !== 25) fail(`data-portability.js: expected 25 archive tables; found ${tableCount}`);
+  if (tableCount !== 31) fail(`data-portability.js: expected 31 archive tables; found ${tableCount}`);
+}
+
+// Regression guard (Item 19 audit): style.css forces `.admin-only { display:none }`, so removing the
+// Tailwind `hidden` class never reveals it. Pages that toggle `hidden` must use `.dc-admin-only`.
+for (const file of htmlFiles) {
+  const html = await fs.readFile(file, 'utf8');
+  if (/querySelectorAll\(['"]\.admin-only['"]\)[^;]*classList\.remove\(['"]hidden['"]\)/.test(html)) fail(`${path.relative(root, file)}: .admin-only is revealed with classList.remove('hidden') — use .dc-admin-only`);
+  if (/class="(?=[^"]*(?<![\w-])admin-only(?![\w-]))(?=[^"]*(?<![\w-])hidden(?![\w-]))[^"]*"/.test(html)) fail(`${path.relative(root, file)}: element combines .admin-only with .hidden — use .dc-admin-only`);
 }
 
 if (platformPageCount < 33) fail(`expected platform management on at least 33 HTML files; found ${platformPageCount}`);

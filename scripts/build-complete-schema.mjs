@@ -10,7 +10,8 @@ const parts = [
   ['02', 'RLS and server-authoritative security', 'database/security_hardening.sql'],
   ['03', 'Resilience, backup coordination and private vault', 'database/resilience_and_backup.sql'],
   ['04', 'Control plane, storage governance, access and licensing', 'database/platform_management.sql'],
-  ['05', 'Post-install self-heal, API cache reload and verification', 'database/post_install_selfheal.sql']
+  ['05', 'Verifiable ID cards, public programmes, duty roster and member care', 'database/identity_and_programs.sql'],
+  ['06', 'Post-install self-heal, API cache reload and verification', 'database/post_install_selfheal.sql']
 ];
 
 const chunks = [];
@@ -34,7 +35,8 @@ const header = `-- =============================================================
 -- ============================================================================
 -- Paste this entire file into Supabase SQL Editor and run it once. It contains
 -- the complete production schema, repair logic, RLS, RPCs, resilience/backup,
--- control-plane settings, storage governance, roles/status and site licensing.
+-- control-plane settings, storage governance, roles/status, site licensing,
+-- verifiable ID cards, public programme registration, duty roster and member care.
 -- No other production SQL file is required after this succeeds.
 --
 -- SAFE TO RERUN: every object is created/replaced/upserted idempotently. Existing
@@ -64,7 +66,11 @@ SELECT
   (SELECT count(*) FROM public.dc_site_license WHERE id = 1) = 1 AS site_license_ready,
   to_regprocedure('public.dc_access_state()') IS NOT NULL AS access_rpc_ready,
   to_regprocedure('public.dc_platform_health()') IS NOT NULL AS health_rpc_ready,
-  to_regprocedure('public.dc_begin_backup_run(text,text,integer)') IS NOT NULL AS backup_lease_rpc_ready;
+  to_regprocedure('public.dc_begin_backup_run(text,text,integer)') IS NOT NULL AS backup_lease_rpc_ready,
+  (SELECT count(*) FROM public.dc_card_settings WHERE id = 1) = 1 AS card_settings_ready,
+  to_regprocedure('public.dc_verify_card(text)') IS NOT NULL AS card_verify_rpc_ready,
+  to_regprocedure('public.dc_register_for_program(text,jsonb)') IS NOT NULL AS program_registration_rpc_ready,
+  to_regprocedure('public.dc_absentee_candidates(integer)') IS NOT NULL AS member_care_rpc_ready;
 `;
 
 const output = header + chunks.join('\n') + footer;

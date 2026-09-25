@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Programmes | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        .dc-tab { padding: .5rem 1rem; border-radius: .75rem; font-weight: 700; font-size: .85rem; color: #475569; background: #f1f5f9; }
+        .dc-tab.active { background: var(--rccg-blue, #1e3a8a); color: #fff; }
+        .stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1rem; }
+        .stat b { display: block; font-size: 1.6rem; line-height: 1.1; color: #0f172a; }
+        .stat span { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #64748b; font-weight: 700; }
+        .bar { height: .6rem; border-radius: 999px; background: var(--rccg-blue, #1e3a8a); min-width: 2px; }
+        .pill { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+        .scan-flash { animation: flash .9s ease-out; }
+        @keyframes flash { from { box-shadow: 0 0 0 6px rgba(16,185,129,.55); } to { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+        .qr-box svg { width: 100%; height: auto; display: block; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+        <div id="schema-warning" class="hidden mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"></div>
+
+        <div class="flex flex-wrap items-center gap-2 mb-5">
+            <div id="tabs" class="flex flex-wrap gap-2">
+                <button class="dc-tab active" data-tab="list"><i class="fas fa-star mr-1"></i> Programmes</button>
+                <button class="dc-tab manager-only hidden" data-tab="regs"><i class="fas fa-clipboard-list mr-1"></i> Registrations</button>
+                <button class="dc-tab manager-only hidden" data-tab="desk"><i class="fas fa-qrcode mr-1"></i> Check-in Desk</button>
+                <button class="dc-tab manager-only hidden" data-tab="insights"><i class="fas fa-chart-pie mr-1"></i> Insights</button>
+            </div>
+            <div class="ml-auto flex items-center gap-2 manager-only hidden" id="picker-wrap">
+                <label for="prog-pick" class="text-xs font-bold text-slate-500 uppercase">Programme</label>
+                <select id="prog-pick" class="dc-input py-2 min-w-[14rem]"></select>
+            </div>
+        </div>
+
+        <!-- ============================ PROGRAMMES ============================ -->
+        <section id="tab-list">
+            <div class="flex flex-wrap gap-2 items-center mb-4">
+                <input id="list-search" class="dc-input flex-1 min-w-[12rem]" placeholder="Search programmes…" aria-label="Search programmes">
+                <select id="list-status" class="dc-input w-auto" aria-label="Filter by status">
+                    <option value="">All statuses</option><option value="open">Open</option><option value="draft">Draft</option>
+                    <option value="closed">Closed</option><option value="archived">Archived</option>
+                </select>
+                <button id="btn-new" class="dc-btn dc-btn-primary dc-admin-only hidden"><i class="fas fa-plus mr-1"></i> New programme</button>
+            </div>
+            <div id="prog-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+        </section>
+
+        <!-- =========================== REGISTRATIONS ========================== -->
+        <section id="tab-regs" class="hidden">
+            <div class="flex flex-wrap gap-2 items-center mb-4">
+                <input id="reg-search" class="dc-input flex-1 min-w-[12rem]" placeholder="Search name, phone, e-mail or ticket code…" aria-label="Search registrations">
+                <select id="reg-status" class="dc-input w-auto" aria-label="Filter registrations">
+                    <option value="">Everyone (not cancelled)</option><option value="registered">Registered</option><option value="waitlisted">Waitlisted</option>
+                    <option value="in">Checked in</option><option value="out">Not checked in</option><option value="cancelled">Cancelled</option>
+                </select>
+                <button id="reg-refresh" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-rotate mr-1"></i> Refresh</button>
+                <button id="reg-csv" class="dc-btn bg-emerald-600 text-white"><i class="fas fa-file-csv mr-1"></i> Export CSV</button>
+            </div>
+            <p id="reg-summary" class="text-sm text-slate-500 mb-2"></p>
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                        <tr><th class="p-3">Name</th><th class="p-3">Contact</th><th class="p-3">Party</th><th class="p-3">Source</th><th class="p-3">Status</th><th class="p-3">Check-in</th><th class="p-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody id="reg-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ============================ CHECK-IN DESK ========================= -->
+        <section id="tab-desk" class="hidden">
+            <div class="grid lg:grid-cols-2 gap-6 items-start">
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                    <h3 class="font-bold text-slate-800"><i class="fas fa-camera mr-1"></i> Scan a ticket or member card</h3>
+                    <p class="text-xs text-slate-500">Accepts the ticket QR, the 8-character ticket code, a member card QR or the barcode on the front of a member card. USB/Bluetooth barcode scanners type straight into this page.</p>
+                    <div class="flex gap-2">
+                        <button id="desk-cam" class="dc-btn dc-btn-primary"><i class="fas fa-camera mr-1"></i> Start camera</button>
+                        <button id="desk-torch" class="dc-btn bg-slate-100 text-slate-700 hidden"><i class="fas fa-lightbulb mr-1"></i> Torch</button>
+                    </div>
+                    <video id="desk-video" class="w-full rounded-xl bg-black aspect-video object-cover hidden" playsinline muted></video>
+                    <p id="desk-status" class="text-xs text-slate-500"></p>
+                    <form id="desk-form" class="flex gap-2">
+                        <input id="desk-code" class="dc-input flex-1 font-mono uppercase" placeholder="Type ticket code, e.g. 3FA9C21B" autocomplete="off" aria-label="Ticket code">
+                        <button class="dc-btn bg-slate-800 text-white" type="submit">Check in</button>
+                    </form>
+                    <div id="desk-result" aria-live="assertive"></div>
+                </div>
+                <div class="space-y-4">
+                    <div class="grid grid-cols-3 gap-3" id="desk-stats"></div>
+                    <details class="bg-white rounded-2xl border border-slate-200 p-5" id="walkin-box">
+                        <summary class="font-bold text-slate-800 cursor-pointer"><i class="fas fa-person-walking-arrow-right mr-1"></i> Admit a walk-in (no ticket)</summary>
+                        <form id="walkin-form" class="grid sm:grid-cols-2 gap-3 mt-4">
+                            <input name="full_name" class="dc-input sm:col-span-2" placeholder="Full name *" required minlength="2" maxlength="120">
+                            <input name="phone" class="dc-input" placeholder="Phone (matches an existing registration)" maxlength="24" inputmode="tel">
+                            <input name="email" class="dc-input" placeholder="E-mail" type="email" maxlength="160">
+                            <select name="gender" class="dc-input"><option value="">Gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+                            <select name="age_group" class="dc-input"><option value="">Age group</option><option>under-13</option><option>13-17</option><option>18-25</option><option>26-35</option><option>36-50</option><option>51+</option></select>
+                            <input name="party_size" type="number" min="1" max="10" value="1" class="dc-input" aria-label="Party size">
+                            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_first_timer"> First-time guest</label>
+                            <button class="dc-btn dc-btn-primary sm:col-span-2" type="submit"><i class="fas fa-check mr-1"></i> Admit &amp; check in</button>
+                        </form>
+                    </details>
+                    <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                        <h3 class="font-bold text-slate-800 mb-2"><i class="fas fa-clock-rotate-left mr-1"></i> This session</h3>
+                        <ul id="desk-log" class="text-sm divide-y divide-slate-100"><li class="py-2 text-slate-400">No scans yet.</li></ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =============================== INSIGHTS =========================== -->
+        <section id="tab-insights" class="hidden">
+            <div class="flex flex-wrap gap-2 mb-4">
+                <button id="ins-refresh" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-rotate mr-1"></i> Refresh</button>
+                <button id="ins-print" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-print mr-1"></i> Print report</button>
+                <button id="ins-json" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-file-code mr-1"></i> Download data (JSON)</button>
+            </div>
+            <div id="ins-body"><p class="text-slate-400">Choose a programme.</p></div>
+        </section>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/page-guide.js"></script>
+    <script src="../assets/js/assistant.js"></script>
+    <script src="../assets/js/vendor/qrcode-generator.js"></script>
+    <script src="../assets/js/dc-codes.js"></script>
+    <script>
+        let me = null, isAdmin = false, isManager = false, programs = [], current = null, regs = [], insights = null;
+        let scanner = null, unwireWedge = null, deskBusy = false, deskLog = [];
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const fmtDT = (d) => d ? new Date(d).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        const PHASE = {
+            open: ['Registration open', 'bg-emerald-100 text-emerald-700'], not_yet_open: ['Opens soon', 'bg-sky-100 text-sky-700'],
+            closed: ['Closed', 'bg-slate-200 text-slate-700'], ended: ['Ended', 'bg-slate-200 text-slate-600'], draft: ['Draft', 'bg-amber-100 text-amber-800']
+        };
+        const CATEGORIES = ['special', 'production', 'workshop', 'audition', 'outreach', 'conference', 'other'];
+        const SHARE_CHANNELS = [
+            ['whatsapp', 'fab fa-whatsapp', 'WhatsApp'], ['facebook', 'fab fa-facebook', 'Facebook'], ['instagram', 'fab fa-instagram', 'Instagram bio'],
+            ['x', 'fab fa-x-twitter', 'X / Twitter'], ['tiktok', 'fab fa-tiktok', 'TikTok bio'], ['flyer', 'fas fa-qrcode', 'Printed flyer QR']
+        ];
+
+        function missingFunction(error) {
+            return /PGRST202|PGRST205|42883|42P01|could not find|does not exist/i.test(String(error && (error.message || error.code) || ''));
+        }
+        function schemaWarning() {
+            const box = document.getElementById('schema-warning');
+            box.classList.remove('hidden');
+            box.innerHTML = '<b><i class="fas fa-database mr-1"></i> Programmes are not installed on the database yet.</b> An administrator must run <code>database/complete-schema.sql</code> once in the Supabase SQL Editor (safe to re-run).';
+        }
+        // Client mirror of dc_program_phase() so cards show state without an extra round-trip.
+        function phaseOf(p) {
+            const now = Date.now(), t = (d) => d ? new Date(d).getTime() : null;
+            if (p.status === 'draft') return 'draft';
+            if (p.status === 'archived' || now > (t(p.ends_at) || (t(p.starts_at) + 6 * 3600e3))) return 'ended';
+            if (p.status === 'closed' || (t(p.registration_closes_at) && now > t(p.registration_closes_at))) return 'closed';
+            if (t(p.registration_opens_at) && now < t(p.registration_opens_at)) return 'not_yet_open';
+            return 'open';
+        }
+        const phasePill = (ph) => `<span class="pill ${PHASE[ph][1]}">${PHASE[ph][0]}</span>`;
+        const slugify = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
+        const toLocalInput = (d) => { if (!d) return ''; const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
+        const fromLocalInput = (v) => v ? new Date(v).toISOString() : null;
+
+        /* =============================== LIST =============================== */
+        async function loadPrograms() {
+            const { data, error } = await sb.from('dc_programs').select('*').order('starts_at', { ascending: false }).limit(500);
+            if (error) { if (missingFunction(error)) schemaWarning(); else UI.toast(error.message, 'error'); programs = []; }
+            else programs = data || [];
+            if (isManager) {
+                const counts = await regCounts();
+                programs.forEach(p => { p._count = counts[p.id] || { regs: 0, seats: 0, inn: 0 }; });
+            }
+            renderList(); fillPicker();
+        }
+        async function regCounts() {
+            const out = {};
+            const { data } = await sb.from('dc_program_registrations').select('program_id,status,party_size,checked_in_at').neq('status', 'cancelled').limit(20000);
+            (data || []).forEach(r => {
+                const c = out[r.program_id] || (out[r.program_id] = { regs: 0, seats: 0, inn: 0 });
+                c.regs += 1; if (r.status === 'registered') c.seats += r.party_size; if (r.checked_in_at) c.inn += 1;
+            });
+            return out;
+        }
+        function renderList() {
+            const q = document.getElementById('list-search').value.trim().toLowerCase();
+            const st = document.getElementById('list-status').value;
+            const list = programs.filter(p => (!st || p.status === st) && (!q || (p.title + ' ' + (p.venue || '') + ' ' + p.category).toLowerCase().includes(q)));
+            const grid = document.getElementById('prog-grid');
+            if (!list.length) {
+                grid.innerHTML = `<div class="md:col-span-2 xl:col-span-3 bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
+                    <i class="fas fa-calendar-plus text-4xl text-slate-300"></i><p class="mt-3 font-semibold">No programmes yet.</p>
+                    <p class="text-sm">${isAdmin ? 'Create one, publish it, then share the registration link on social media.' : 'Open programmes will appear here.'}</p></div>`;
+                return;
+            }
+            grid.innerHTML = list.map(p => {
+                const ph = phaseOf(p), c = p._count;
+                const cap = p.capacity ? `${c ? c.seats : '…'} / ${p.capacity} seats` : (c ? `${c.seats} seats` : 'Unlimited seats');
+                const pct = p.capacity && c ? Math.min(100, Math.round(c.seats / p.capacity * 100)) : 0;
+                return `<article class="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
+                    ${Utils.safeImageUrl(p.cover_url, false) ? `<img src="${esc(Utils.safeImageUrl(p.cover_url, false))}" alt="" class="h-32 w-full object-cover" referrerpolicy="no-referrer">` : ''}
+                    <div class="p-4 flex-1 flex flex-col gap-2">
+                        <div class="flex items-start justify-between gap-2"><h3 class="font-bold text-slate-800 leading-tight">${esc(p.title)}</h3>${phasePill(ph)}</div>
+                        <p class="text-xs text-slate-500"><i class="fas fa-clock mr-1"></i>${esc(fmtDT(p.starts_at))}${p.venue ? `<br><i class="fas fa-location-dot mr-1"></i>${esc(p.venue)}` : ''}</p>
+                        <p class="text-xs text-slate-500 capitalize"><i class="fas fa-tag mr-1"></i>${esc(p.category)} · ${esc(cap)}</p>
+                        ${p.capacity && c ? `<div class="h-2 bg-slate-100 rounded-full"><div class="bar" style="width:${pct}%"></div></div>` : ''}
+                        ${c ? `<p class="text-xs text-slate-600"><b>${c.regs}</b> registrations · <b>${c.inn}</b> checked in</p>` : ''}
+                        <div class="mt-auto pt-2 flex flex-wrap gap-2">
+                            ${p.status !== 'draft' || isAdmin ? `<button class="dc-btn bg-slate-800 text-white text-xs" data-act="share" data-id="${esc(p.id)}"><i class="fas fa-share-nodes mr-1"></i>Share</button>` : ''}
+                            ${ph === 'open' && !isManager ? `<a class="dc-btn dc-btn-primary text-xs" target="_blank" rel="noopener" href="${esc(DCCodes.registerUrl(p.slug, 'member'))}">Register</a>` : ''}
+                            ${isManager ? `<button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-act="open" data-id="${esc(p.id)}"><i class="fas fa-clipboard-list mr-1"></i>Manage</button>` : ''}
+                            ${isAdmin ? `<button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-act="edit" data-id="${esc(p.id)}"><i class="fas fa-pen mr-1"></i>Edit</button>
+                                         <button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-act="dup" data-id="${esc(p.id)}" title="Duplicate"><i class="fas fa-copy"></i></button>` : ''}
+                        </div>
+                    </div></article>`;
+            }).join('');
+        }
+        function fillPicker() {
+            const sel = document.getElementById('prog-pick');
+            const keep = current && current.id;
+            sel.innerHTML = programs.length ? programs.map(p => `<option value="${esc(p.id)}">${esc(p.title)} — ${esc(new Date(p.starts_at).toLocaleDateString())}</option>`).join('') : '<option value="">No programmes</option>';
+            const wanted = keep || new URLSearchParams(location.search).get('id') || (programs.find(p => phaseOf(p) === 'open') || programs[0] || {}).id;
+            if (wanted && programs.some(p => p.id === wanted)) sel.value = wanted;
+            current = programs.find(p => p.id === sel.value) || null;
+        }
+        function pick(id) {
+            current = programs.find(p => p.id === id) || null;
+            document.getElementById('prog-pick').value = id || '';
+            regs = []; insights = null; renderDeskStats();
+        }
+
+        /* ============================== EDITOR ============================== */
+        function questionRow(q) {
+            q = q || { id: 'q' + Math.random().toString(36).slice(2, 8), label: '', type: 'text', options: [], required: false };
+            return `<div class="q-row grid sm:grid-cols-[1fr_8rem_1fr_auto_auto] gap-2 items-center bg-slate-50 rounded-xl p-2" data-qid="${esc(q.id)}">
+                <input class="dc-input q-label" placeholder="Question, e.g. Which church are you from?" maxlength="160" value="${esc(q.label)}">
+                <select class="dc-input q-type"><option value="text"${q.type === 'text' ? ' selected' : ''}>Short text</option><option value="select"${q.type === 'select' ? ' selected' : ''}>Choice list</option><option value="yesno"${q.type === 'yesno' ? ' selected' : ''}>Yes / No</option></select>
+                <input class="dc-input q-options" placeholder="Choices, comma separated" value="${esc((q.options || []).join(', '))}">
+                <label class="text-xs flex items-center gap-1"><input type="checkbox" class="q-req"${q.required ? ' checked' : ''}> Required</label>
+                <button type="button" class="dc-btn bg-red-50 text-red-600 q-del" aria-label="Remove question"><i class="fas fa-trash"></i></button></div>`;
+        }
+        function openEditor(p, duplicate) {
+            const e = p ? Object.assign({}, p) : { category: 'special', status: 'draft', phone_mode: 'required', email_mode: 'optional', allow_waitlist: true, max_party_size: 1, feedback_enabled: true, custom_questions: [] };
+            if (duplicate) { delete e.id; e.title = e.title + ' (copy)'; e.slug = ''; e.status = 'draft'; }
+            const mode = (name, val) => ['required', 'optional', 'hidden'].map(m => `<option value="${m}"${val === m ? ' selected' : ''}>${m[0].toUpperCase() + m.slice(1)}</option>`).join('');
+            const ov = UI.modal(`
+                <form id="prog-form" class="p-6 space-y-4">
+                    <div class="flex items-center justify-between"><h2 class="text-lg font-extrabold text-slate-800">${e.id ? 'Edit programme' : 'New programme'}</h2>
+                        <button type="button" class="text-slate-400 text-xl" data-close aria-label="Close">&times;</button></div>
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <label class="sm:col-span-2 text-xs font-bold text-slate-500">Title *<input name="title" class="dc-input mt-1" required minlength="3" maxlength="140" value="${esc(e.title || '')}"></label>
+                        <label class="text-xs font-bold text-slate-500">Link name (slug) *<input name="slug" class="dc-input mt-1 font-mono" required pattern="[a-z0-9][a-z0-9-]{1,58}[a-z0-9]" maxlength="60" value="${esc(e.slug || '')}" title="lower-case letters, numbers and dashes"></label>
+                        <label class="text-xs font-bold text-slate-500">Category<select name="category" class="dc-input mt-1">${CATEGORIES.map(c => `<option${e.category === c ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
+                        <label class="sm:col-span-2 text-xs font-bold text-slate-500">Subtitle<input name="subtitle" class="dc-input mt-1" maxlength="200" value="${esc(e.subtitle || '')}"></label>
+                        <label class="sm:col-span-2 text-xs font-bold text-slate-500">Description (shown on the public page)<textarea name="description" class="dc-input mt-1" rows="4" maxlength="4000">${esc(e.description || '')}</textarea></label>
+                        <label class="text-xs font-bold text-slate-500">Starts *<input name="starts_at" type="datetime-local" class="dc-input mt-1" required value="${esc(toLocalInput(e.starts_at))}"></label>
+                        <label class="text-xs font-bold text-slate-500">Ends<input name="ends_at" type="datetime-local" class="dc-input mt-1" value="${esc(toLocalInput(e.ends_at))}"></label>
+                        <label class="text-xs font-bold text-slate-500">Registration opens<input name="registration_opens_at" type="datetime-local" class="dc-input mt-1" value="${esc(toLocalInput(e.registration_opens_at))}"></label>
+                        <label class="text-xs font-bold text-slate-500">Registration closes<input name="registration_closes_at" type="datetime-local" class="dc-input mt-1" value="${esc(toLocalInput(e.registration_closes_at))}"></label>
+                        <label class="sm:col-span-2 text-xs font-bold text-slate-500">Venue<input name="venue" class="dc-input mt-1" maxlength="200" value="${esc(e.venue || '')}"></label>
+                        <label class="text-xs font-bold text-slate-500">Capacity (seats, blank = unlimited)<input name="capacity" type="number" min="1" max="100000" class="dc-input mt-1" value="${esc(e.capacity || '')}"></label>
+                        <label class="text-xs font-bold text-slate-500">Max people per registration<input name="max_party_size" type="number" min="1" max="10" class="dc-input mt-1" value="${esc(e.max_party_size || 1)}"></label>
+                        <label class="text-xs font-bold text-slate-500">Phone field<select name="phone_mode" class="dc-input mt-1">${mode('phone', e.phone_mode)}</select></label>
+                        <label class="text-xs font-bold text-slate-500">E-mail field<select name="email_mode" class="dc-input mt-1">${mode('email', e.email_mode)}</select></label>
+                        <label class="text-xs font-bold text-slate-500">Contact phone (shown publicly)<input name="contact_phone" class="dc-input mt-1" maxlength="40" value="${esc(e.contact_phone || '')}"></label>
+                        <label class="text-xs font-bold text-slate-500">Cover image URL (https)<input name="cover_url" type="url" class="dc-input mt-1" maxlength="500" value="${esc(e.cover_url || '')}"></label>
+                        <label class="text-sm flex items-center gap-2"><input type="checkbox" name="allow_waitlist"${e.allow_waitlist ? ' checked' : ''}> Waitlist when full</label>
+                        <label class="text-sm flex items-center gap-2"><input type="checkbox" name="feedback_enabled"${e.feedback_enabled ? ' checked' : ''}> Collect feedback after it starts</label>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-2"><p class="text-xs font-bold text-slate-500 uppercase">Extra questions (max 10)</p>
+                            <button type="button" id="q-add" class="dc-btn bg-slate-100 text-slate-700 text-xs"><i class="fas fa-plus mr-1"></i>Add question</button></div>
+                        <div id="q-list" class="space-y-2">${(e.custom_questions || []).map(questionRow).join('')}</div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                        <label class="text-xs font-bold text-slate-500">Status<select name="status" class="dc-input mt-1">${['draft', 'open', 'closed', 'archived'].map(s => `<option value="${s}"${e.status === s ? ' selected' : ''}>${s === 'open' ? 'Open (published)' : s[0].toUpperCase() + s.slice(1)}</option>`).join('')}</select></label>
+                        <div class="ml-auto flex gap-2">
+                            ${e.id ? '<button type="button" id="prog-del" class="dc-btn bg-red-50 text-red-600"><i class="fas fa-trash mr-1"></i>Delete</button>' : ''}
+                            <button type="submit" class="dc-btn dc-btn-primary"><i class="fas fa-save mr-1"></i>Save</button>
+                        </div>
+                    </div>
+                </form>`, 'max-w-3xl');
+            const form = ov.querySelector('#prog-form');
+            ov.querySelector('[data-close]').addEventListener('click', () => ov.remove());
+            const slugInput = form.elements.slug;
+            let slugTouched = Boolean(e.slug);
+            slugInput.addEventListener('input', () => { slugTouched = true; });
+            form.elements.title.addEventListener('input', () => { if (!slugTouched) slugInput.value = slugify(form.elements.title.value); });
+            if (!e.slug) slugInput.value = slugify(e.title || '');
+            const qList = ov.querySelector('#q-list');
+            ov.querySelector('#q-add').addEventListener('click', () => {
+                if (qList.children.length >= 10) return UI.toast('A programme can ask at most 10 extra questions.', 'error');
+                qList.insertAdjacentHTML('beforeend', questionRow());
+            });
+            qList.addEventListener('click', (ev) => { if (ev.target.closest('.q-del')) ev.target.closest('.q-row').remove(); });
+            if (e.id) ov.querySelector('#prog-del').addEventListener('click', async () => {
+                const n = (e._count && e._count.regs) || 0;
+                if (!await UI.confirm(n ? `Delete "${e.title}" and its ${n} registration(s)? Consider "Archived" instead — it keeps the records for insights.` : `Delete "${e.title}"?`, 'Delete programme')) return;
+                const { error } = await sb.from('dc_programs').delete().eq('id', e.id);
+                if (error) return UI.toast(error.message, 'error');
+                ov.remove(); UI.toast('Programme deleted.'); current = null; loadPrograms();
+            });
+            form.addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                const f = form.elements;
+                const questions = [];
+                for (const row of qList.querySelectorAll('.q-row')) {
+                    const label = row.querySelector('.q-label').value.trim();
+                    if (!label) continue;
+                    const type = row.querySelector('.q-type').value;
+                    const options = type === 'select' ? row.querySelector('.q-options').value.split(',').map(s => s.trim()).filter(Boolean).slice(0, 20) : [];
+                    if (type === 'select' && options.length < 2) return UI.toast(`Give at least two choices for "${label}".`, 'error');
+                    questions.push({ id: row.dataset.qid, label: label.slice(0, 160), type, options, required: row.querySelector('.q-req').checked });
+                }
+                const cover = f.cover_url.value.trim();
+                if (cover && !Utils.safeUrl(cover, ['https:'])) return UI.toast('The cover image must be an https:// link.', 'error');
+                const payload = {
+                    title: f.title.value.trim(), slug: f.slug.value.trim().toLowerCase(), category: f.category.value,
+                    subtitle: f.subtitle.value.trim() || null, description: f.description.value.trim() || null,
+                    starts_at: fromLocalInput(f.starts_at.value), ends_at: fromLocalInput(f.ends_at.value),
+                    registration_opens_at: fromLocalInput(f.registration_opens_at.value), registration_closes_at: fromLocalInput(f.registration_closes_at.value),
+                    venue: f.venue.value.trim() || null, capacity: f.capacity.value ? Number(f.capacity.value) : null,
+                    max_party_size: Number(f.max_party_size.value) || 1, phone_mode: f.phone_mode.value, email_mode: f.email_mode.value,
+                    contact_phone: f.contact_phone.value.trim() || null, cover_url: cover || null,
+                    allow_waitlist: f.allow_waitlist.checked, feedback_enabled: f.feedback_enabled.checked,
+                    custom_questions: questions, status: f.status.value
+                };
+                if (payload.ends_at && payload.ends_at < payload.starts_at) return UI.toast('The end time is before the start time.', 'error');
+                if (payload.registration_closes_at && payload.registration_opens_at && payload.registration_closes_at < payload.registration_opens_at) return UI.toast('Registration closes before it opens.', 'error');
+                if (payload.phone_mode === 'hidden' && payload.email_mode === 'hidden') return UI.toast('Keep at least a phone or e-mail field so you can reach people.', 'error');
+                const q = e.id ? sb.from('dc_programs').update(payload).eq('id', e.id).select().single()
+                               : sb.from('dc_programs').insert(Object.assign({ created_by: me.id }, payload)).select().single();
+                const { data, error } = await q;
+                if (error) return UI.toast(/duplicate|unique/i.test(error.message) ? 'That link name is already used by another programme.' : error.message, 'error');
+                ov.remove(); UI.toast(payload.status === 'open' ? 'Saved and published. Share the link!' : 'Programme saved.');
+                await loadPrograms(); if (data) { pick(data.id); if (payload.status === 'open') openShare(data); }
+            });
+        }
+
+        /* =============================== SHARE ============================== */
+        function openShare(p) {
+            const base = DCCodes.registerUrl(p.slug);
+            const when = fmtDT(p.starts_at);
+            const blurb = `${p.title}\n${when}${p.venue ? ' · ' + p.venue : ''}\nRegister free:`;
+            const link = (src) => DCCodes.registerUrl(p.slug, src);
+            const rows = SHARE_CHANNELS.map(([src, icon, label]) => `
+                <div class="flex items-center gap-2"><i class="${icon} w-5 text-slate-600"></i><span class="text-sm w-28 shrink-0">${label}</span>
+                    <input class="dc-input text-xs font-mono flex-1" readonly value="${esc(link(src))}" aria-label="${label} link">
+                    <button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-copy="${esc(link(src))}" aria-label="Copy ${label} link"><i class="fas fa-copy"></i></button></div>`).join('');
+            const ov = UI.modal(`<div class="p-6 space-y-4">
+                <div class="flex items-center justify-between"><h2 class="text-lg font-extrabold">Share “${esc(p.title)}”</h2><button class="text-slate-400 text-xl" data-close aria-label="Close">&times;</button></div>
+                ${p.status === 'draft' ? '<p class="text-sm bg-amber-50 text-amber-900 rounded-lg p-3"><i class="fas fa-triangle-exclamation mr-1"></i>This programme is a <b>draft</b>: the public link shows "not found" until you set its status to Open. Admins can preview it.</p>' : ''}
+                <div class="grid sm:grid-cols-[180px_1fr] gap-4 items-start">
+                    <div class="text-center"><div class="qr-box bg-white border rounded-xl p-2" id="share-qr"></div>
+                        <button class="dc-btn bg-slate-800 text-white text-xs mt-2 w-full" id="qr-dl"><i class="fas fa-download mr-1"></i>QR as image</button>
+                        <button class="dc-btn bg-slate-100 text-slate-700 text-xs mt-2 w-full" id="flyer"><i class="fas fa-print mr-1"></i>Print A4 poster</button></div>
+                    <div class="space-y-2">
+                        <div class="flex flex-wrap gap-2">
+                            <a class="dc-btn bg-emerald-600 text-white text-xs" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(blurb + ' ' + link('whatsapp'))}"><i class="fab fa-whatsapp mr-1"></i>Post to WhatsApp</a>
+                            <a class="dc-btn bg-blue-600 text-white text-xs" target="_blank" rel="noopener" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link('facebook'))}"><i class="fab fa-facebook mr-1"></i>Facebook</a>
+                            <a class="dc-btn bg-slate-900 text-white text-xs" target="_blank" rel="noopener" href="https://twitter.com/intent/tweet?text=${encodeURIComponent(blurb)}&url=${encodeURIComponent(link('x'))}"><i class="fab fa-x-twitter mr-1"></i>Post on X</a>
+                            <a class="dc-btn bg-slate-100 text-slate-700 text-xs" target="_blank" rel="noopener" href="${esc(base)}"><i class="fas fa-eye mr-1"></i>Open public page</a>
+                            ${navigator.share ? '<button class="dc-btn bg-slate-100 text-slate-700 text-xs" id="native-share"><i class="fas fa-share mr-1"></i>More apps…</button>' : ''}
+                        </div>
+                        <p class="text-xs text-slate-500">Each channel has its own tagged link, so Insights shows which platform brought each registration.</p>
+                        ${rows}
+                        <label class="text-xs font-bold text-slate-500 block pt-2">Ready-made caption<textarea class="dc-input mt-1 text-xs" rows="3" readonly id="caption">${esc(blurb + ' ' + link('social'))}</textarea></label>
+                        <button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-copy-el="caption"><i class="fas fa-copy mr-1"></i>Copy caption</button>
+                    </div>
+                </div></div>`, 'max-w-3xl');
+            ov.querySelector('[data-close]').addEventListener('click', () => ov.remove());
+            const qr = DCCodes.qrSvg(link('flyer'), { size: 480, ecl: 'Q' });
+            ov.querySelector('#share-qr').innerHTML = qr;
+            const copy = async (text) => { try { await navigator.clipboard.writeText(text); UI.toast('Copied.'); } catch (e) { window.prompt('Copy:', text); } };
+            ov.addEventListener('click', (ev) => {
+                const b = ev.target.closest('[data-copy]'); if (b) copy(b.dataset.copy);
+                const c = ev.target.closest('[data-copy-el]'); if (c) copy(document.getElementById(c.dataset.copyEl).value);
+            });
+            ov.querySelector('#qr-dl').addEventListener('click', () => svgToPng(qr, `${p.slug}-qr.png`, 1024));
+            ov.querySelector('#flyer').addEventListener('click', () => printFlyer(p, qr, link('flyer')));
+            const ns = ov.querySelector('#native-share');
+            if (ns) ns.addEventListener('click', () => navigator.share({ title: p.title, text: blurb, url: link('share') }).catch(() => {}));
+        }
+        function svgToPng(svg, filename, px) {
+            const img = new Image();
+            img.onload = () => {
+                const c = document.createElement('canvas'); c.width = c.height = px;
+                const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, px, px); g.imageSmoothingEnabled = false; g.drawImage(img, 0, 0, px, px);
+                c.toBlob((blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500); });
+            };
+            img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        }
+        function printFlyer(p, qr, url) {
+            const w = window.open('', '_blank', 'noopener=no');
+            if (!w) return UI.toast('Allow pop-ups to print the poster.', 'error');
+            w.document.write(`<!doctype html><title>${esc(p.title)}</title><style>
+                body{font-family:system-ui,Arial,sans-serif;text-align:center;margin:0;padding:18mm;color:#0f172a}
+                h1{font-size:30pt;margin:0 0 4mm}h2{font-size:15pt;font-weight:500;color:#475569;margin:0 0 8mm}
+                .qr{width:110mm;margin:6mm auto}.qr svg{width:100%;height:auto}.meta{font-size:14pt;line-height:1.6}
+                .url{font-family:monospace;font-size:10pt;word-break:break-all;color:#475569;margin-top:6mm}@page{size:A4;margin:0}</style>
+                <h1>${esc(p.title)}</h1>${p.subtitle ? `<h2>${esc(p.subtitle)}</h2>` : ''}
+                <div class="meta"><b>${esc(fmtDT(p.starts_at))}</b>${p.venue ? `<br>${esc(p.venue)}` : ''}</div>
+                <div class="qr">${qr}</div><div class="meta"><b>Scan to register — it's free</b></div><div class="url">${esc(url)}</div>
+                <script>setTimeout(function(){window.print()},300)<\/script>`);
+            w.document.close();
+        }
+
+        /* =========================== REGISTRATIONS ========================== */
+        async function loadRegs() {
+            if (!current) { document.getElementById('reg-body').innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">Choose a programme.</td></tr>'; return; }
+            const { data, error } = await sb.from('dc_program_registrations').select('*').eq('program_id', current.id).order('created_at', { ascending: false }).limit(20000);
+            if (error) return UI.toast(error.message, 'error');
+            regs = data || []; renderRegs(); renderDeskStats();
+        }
+        function renderRegs() {
+            const q = document.getElementById('reg-search').value.trim().toLowerCase();
+            const st = document.getElementById('reg-status').value;
+            const list = regs.filter(r => {
+                if (st === 'cancelled') { if (r.status !== 'cancelled') return false; }
+                else if (r.status === 'cancelled') return false;
+                if (st === 'registered' || st === 'waitlisted') { if (r.status !== st) return false; }
+                if (st === 'in' && !r.checked_in_at) return false;
+                if (st === 'out' && r.checked_in_at) return false;
+                return !q || [r.full_name, r.phone, r.email, r.ticket_code, r.organisation].join(' ').toLowerCase().includes(q);
+            });
+            const live = regs.filter(r => r.status !== 'cancelled');
+            document.getElementById('reg-summary').textContent = `${live.length} registration(s), ${live.reduce((a, r) => a + (r.status === 'registered' ? r.party_size : 0), 0)} seat(s), ${live.filter(r => r.checked_in_at).length} checked in. Showing ${list.length}.`;
+            const statusPill = (r) => r.status === 'waitlisted' ? '<span class="pill bg-amber-100 text-amber-800">Waitlist</span>' : r.status === 'cancelled' ? '<span class="pill bg-red-100 text-red-700">Cancelled</span>' : '<span class="pill bg-emerald-100 text-emerald-700">Registered</span>';
+            document.getElementById('reg-body').innerHTML = list.length ? list.slice(0, 1000).map(r => `<tr class="border-t border-slate-100">
+                <td class="p-3"><b>${esc(r.full_name)}</b>${r.is_first_timer ? ' <span class="pill bg-sky-100 text-sky-700">1st time</span>' : ''}${r.member_id ? ' <span class="pill bg-indigo-100 text-indigo-700">Member</span>' : ''}<br><span class="font-mono text-xs text-slate-400">${esc(r.ticket_code)}</span></td>
+                <td class="p-3 text-xs">${esc(r.phone || '')}<br>${esc(r.email || '')}</td>
+                <td class="p-3">${esc(r.party_size)}</td><td class="p-3 text-xs">${esc(r.source)}</td><td class="p-3">${statusPill(r)}</td>
+                <td class="p-3 text-xs">${r.checked_in_at ? '<i class="fas fa-circle-check text-emerald-600"></i> ' + esc(new Date(r.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '—'}</td>
+                <td class="p-3 text-right whitespace-nowrap">
+                    ${r.status !== 'cancelled' && !r.checked_in_at ? `<button class="dc-btn bg-emerald-50 text-emerald-700 text-xs" data-act="in" data-id="${esc(r.id)}" title="Check in"><i class="fas fa-check"></i></button>` : ''}
+                    ${r.checked_in_at ? `<button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-act="undo" data-id="${esc(r.id)}" title="Undo check-in"><i class="fas fa-rotate-left"></i></button>` : ''}
+                    ${r.status === 'waitlisted' && isAdmin ? `<button class="dc-btn bg-sky-50 text-sky-700 text-xs" data-act="promote" data-id="${esc(r.id)}" title="Move from waitlist to registered"><i class="fas fa-arrow-up"></i></button>` : ''}
+                    <button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-act="ticket" data-id="${esc(r.id)}" title="Copy ticket link"><i class="fas fa-ticket"></i></button>
+                    ${r.phone ? `<a class="dc-btn bg-slate-100 text-emerald-700 text-xs" target="_blank" rel="noopener" title="WhatsApp" href="${esc(Utils.whatsappLink(r.phone, `Hello ${r.full_name}, this is about ${current.title}. Your ticket: ${DCCodes.ticketUrl(r.ticket_token)}`))}"><i class="fab fa-whatsapp"></i></a>` : ''}
+                    ${isAdmin ? (r.status === 'cancelled'
+                        ? `<button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-act="restore" data-id="${esc(r.id)}" title="Restore"><i class="fas fa-trash-arrow-up"></i></button>`
+                        : `<button class="dc-btn bg-red-50 text-red-600 text-xs" data-act="cancel" data-id="${esc(r.id)}" title="Cancel registration"><i class="fas fa-ban"></i></button>`) : ''}
+                </td></tr>`).join('') + (list.length > 1000 ? `<tr><td colspan="7" class="p-3 text-center text-xs text-slate-400">First 1,000 shown — search or export CSV for the rest.</td></tr>` : '')
+                : '<tr><td colspan="7" class="p-6 text-center text-slate-400">No registrations match.</td></tr>';
+        }
+        async function regAction(act, id) {
+            const r = regs.find(x => x.id === id); if (!r) return;
+            let res;
+            if (act === 'in') return deskCheckin(r.ticket_code, 'list');
+            if (act === 'undo') res = await sb.rpc('dc_program_undo_checkin', { p_registration_id: id });
+            if (act === 'ticket') { const u = DCCodes.ticketUrl(r.ticket_token); try { await navigator.clipboard.writeText(u); UI.toast('Ticket link copied.'); } catch (e) { window.prompt('Ticket link:', u); } return; }
+            if (act === 'cancel') { if (!await UI.confirm(`Cancel ${r.full_name}'s registration? Their seat is released.`, 'Cancel registration')) return; res = await sb.from('dc_program_registrations').update({ status: 'cancelled' }).eq('id', id); }
+            if (act === 'restore') res = await sb.from('dc_program_registrations').update({ status: 'registered' }).eq('id', id);
+            if (act === 'promote') res = await sb.from('dc_program_registrations').update({ status: 'registered' }).eq('id', id);
+            if (res && res.error) return UI.toast(/unique|duplicate/i.test(res.error.message) ? 'Another live registration already uses this phone number.' : res.error.message, 'error');
+            UI.toast('Updated.'); loadRegs();
+        }
+        function exportRegs() {
+            if (!current) return;
+            const qs = current.custom_questions || [];
+            const rows = regs.map(r => {
+                const o = { ticket_code: r.ticket_code, full_name: r.full_name, phone: r.phone || '', email: r.email || '', gender: r.gender || '', age_group: r.age_group || '',
+                    organisation: r.organisation || '', first_timer: r.is_first_timer ? 'yes' : 'no', member: r.member_id ? 'yes' : 'no', how_heard: r.how_heard || '', source: r.source,
+                    party_size: r.party_size, status: r.status, registered_at: r.created_at, checked_in_at: r.checked_in_at || '', feedback_rating: r.feedback_rating || '', feedback_comment: r.feedback_comment || '' };
+                qs.forEach(q => { o['Q: ' + q.label] = (r.answers || {})[q.id] || ''; });
+                return o;
+            });
+            Utils.exportToCSV(rows, `${current.slug}-registrations-${new Date().toISOString().slice(0, 10)}.csv`);
+        }
+
+        /* ============================ CHECK-IN DESK ========================= */
+        const RESULT_VIEW = {
+            checked_in: ['bg-emerald-600', 'fa-circle-check', 'CHECKED IN'], already: ['bg-amber-500', 'fa-clock-rotate-left', 'ALREADY CHECKED IN'],
+            cancelled: ['bg-red-600', 'fa-ban', 'REGISTRATION CANCELLED'], wrong_program: ['bg-red-600', 'fa-shuffle', 'TICKET FOR ANOTHER PROGRAMME'],
+            not_found: ['bg-red-600', 'fa-triangle-exclamation', 'NOT RECOGNISED'], invalid: ['bg-slate-600', 'fa-circle-question', 'NOT A TICKET CODE'],
+            duplicate_phone: ['bg-amber-500', 'fa-phone', 'PHONE ALREADY REGISTERED'], card_revoked: ['bg-red-600', 'fa-ban', 'MEMBER CARD REVOKED'],
+            card_suspended: ['bg-slate-600', 'fa-user-lock', 'MEMBER SUSPENDED'], card_not_found: ['bg-red-600', 'fa-id-card', 'CARD NOT RECOGNISED'], card_invalid: ['bg-slate-600', 'fa-id-card', 'INVALID CARD']
+        };
+        function beep(ok) {
+            try { const a = new (window.AudioContext || window.webkitAudioContext)(); const o = a.createOscillator(); const g = a.createGain();
+                o.frequency.value = ok ? 880 : 220; g.gain.value = 0.08; o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime + (ok ? 0.12 : 0.35)); } catch (e) { /* audio optional */ }
+            if (navigator.vibrate) navigator.vibrate(ok ? 60 : [80, 60, 80]);
+        }
+        async function deskCheckin(code, via) {
+            if (!current) return UI.toast('Choose a programme first.', 'error');
+            if (deskBusy) return; deskBusy = true;
+            try {
+                const { data, error } = await sb.rpc('dc_program_checkin', { p_program_id: current.id, p_code: String(code || '').trim() });
+                showDesk(error ? { result: 'error', message: error.message } : data, via);
+            } finally { deskBusy = false; }
+        }
+        function showDesk(d, via) {
+            const v = RESULT_VIEW[d.result] || ['bg-slate-700', 'fa-circle-exclamation', d.message ? 'ERROR' : String(d.result || 'ERROR').toUpperCase()];
+            const ok = d.result === 'checked_in';
+            beep(ok);
+            const extra = d.result === 'wrong_program' ? `Ticket is for “${esc(d.program || 'another programme')}”.` : d.message ? esc(d.message)
+                : d.checked_in_at && d.result === 'already' ? `First checked in at ${esc(new Date(d.checked_in_at).toLocaleTimeString())}.` : d.walk_in ? 'Member card — added as a walk-in.' : '';
+            const box = document.getElementById('desk-result');
+            box.innerHTML = `<div class="${v[0]} text-white rounded-2xl p-5 text-center scan-flash">
+                <i class="fas ${v[1]} text-3xl"></i><p class="text-xl font-black mt-1">${v[2]}</p>
+                ${d.full_name ? `<p class="text-lg font-bold mt-1">${esc(d.full_name)}</p>` : ''}
+                ${d.party_size > 1 ? `<p class="text-sm font-bold">Party of ${esc(d.party_size)} — admit ${esc(d.party_size)} people</p>` : ''}
+                ${extra ? `<p class="text-sm opacity-90 mt-1">${extra}</p>` : ''}
+                ${ok && d.registration_id ? `<button class="mt-3 dc-btn bg-white/20 text-white text-xs" data-undo="${esc(d.registration_id)}"><i class="fas fa-rotate-left mr-1"></i>Undo</button>` : ''}</div>`;
+            deskLog.unshift({ at: new Date(), name: d.full_name || '—', result: v[2], ok });
+            deskLog = deskLog.slice(0, 30);
+            document.getElementById('desk-log').innerHTML = deskLog.map(l => `<li class="py-2 flex justify-between gap-2"><span>${l.ok ? '<i class="fas fa-check text-emerald-600 mr-1"></i>' : '<i class="fas fa-xmark text-red-500 mr-1"></i>'}${esc(l.name)}</span><span class="text-xs text-slate-400">${esc(l.result)} · ${esc(l.at.toLocaleTimeString())}</span></li>`).join('');
+            if (['checked_in', 'already'].includes(d.result)) loadRegs();
+        }
+        function renderDeskStats() {
+            const live = regs.filter(r => r.status !== 'cancelled');
+            const inn = live.filter(r => r.checked_in_at);
+            const people = inn.reduce((a, r) => a + r.party_size, 0);
+            document.getElementById('desk-stats').innerHTML = [
+                [live.length, 'Registered'], [inn.length, 'Checked in'], [people, 'People inside']
+            ].map(([n, l]) => `<div class="stat"><b>${esc(n)}</b><span>${l}</span></div>`).join('');
+        }
+        async function toggleCamera() {
+            const video = document.getElementById('desk-video'), status = document.getElementById('desk-status'), btn = document.getElementById('desk-cam');
+            if (scanner && scanner.running) { scanner.stop(); video.classList.add('hidden'); btn.innerHTML = '<i class="fas fa-camera mr-1"></i> Start camera'; document.getElementById('desk-torch').classList.add('hidden'); return; }
+            video.classList.remove('hidden');
+            scanner = scanner || DCCodes.createScanner({ video, onStatus: (m) => { status.textContent = m; }, onResult: (text) => deskCheckin(text, 'camera') });
+            try { await scanner.start(); btn.innerHTML = '<i class="fas fa-stop mr-1"></i> Stop camera'; document.getElementById('desk-torch').classList.remove('hidden'); }
+            catch (err) { status.textContent = err.message; video.classList.add('hidden'); }
+        }
+
+        /* =============================== INSIGHTS =========================== */
+        function bars(obj, labelMap) {
+            const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+            const max = Math.max(1, ...entries.map(e => e[1])), total = entries.reduce((a, e) => a + e[1], 0) || 1;
+            return entries.length ? entries.map(([k, n]) => `<div class="mb-2"><div class="flex justify-between text-xs"><span class="capitalize">${esc((labelMap && labelMap[k]) || k)}</span><span class="font-bold">${esc(n)} · ${Math.round(n / total * 100)}%</span></div>
+                <div class="h-2 bg-slate-100 rounded-full"><div class="bar" style="width:${(n / max * 100).toFixed(1)}%"></div></div></div>`).join('') : '<p class="text-xs text-slate-400">No data yet.</p>';
+        }
+        function timeline(points, key, labelFn) {
+            if (!points || !points.length) return '<p class="text-xs text-slate-400">No data yet.</p>';
+            const max = Math.max(1, ...points.map(p => p.count)), w = 100 / points.length;
+            return `<svg viewBox="0 0 100 42" class="w-full h-40" preserveAspectRatio="none" role="img" aria-label="Timeline">${points.map((p, i) => {
+                const h = p.count / max * 36;
+                return `<rect x="${(i * w + w * 0.12).toFixed(2)}" y="${(38 - h).toFixed(2)}" width="${(w * 0.76).toFixed(2)}" height="${h.toFixed(2)}" fill="currentColor" rx="0.6"><title>${esc(labelFn(p[key]))}: ${p.count}</title></rect>`;
+            }).join('')}</svg><div class="flex justify-between text-[10px] text-slate-400"><span>${esc(labelFn(points[0][key]))}</span><span>${esc(labelFn(points[points.length - 1][key]))}</span></div>`;
+        }
+        async function loadInsights() {
+            const body = document.getElementById('ins-body');
+            if (!current) { body.innerHTML = '<p class="text-slate-400">Choose a programme.</p>'; return; }
+            body.innerHTML = '<p class="text-slate-400"><i class="fas fa-circle-notch fa-spin mr-1"></i>Crunching the numbers…</p>';
+            const { data, error } = await sb.rpc('dc_program_insights', { p_program_id: current.id });
+            if (error) { body.innerHTML = `<p class="text-red-600">${esc(error.message)}</p>`; return; }
+            insights = data; const t = data.totals || {};
+            const turnout = t.registrations ? Math.round(t.checked_in / t.registrations * 100) : 0;
+            const fill = data.program.capacity ? Math.round(t.seats / data.program.capacity * 100) : null;
+            const card = (title, html) => `<div class="bg-white rounded-2xl border border-slate-200 p-5"><h3 class="font-bold text-slate-800 mb-3">${title}</h3>${html}</div>`;
+            const stars = data.rating_distribution || {};
+            body.innerHTML = `
+                <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 mb-5">
+                    ${[[t.registrations, 'Registrations'], [t.seats, 'Seats booked'], [t.checked_in_people, 'People attended'], [turnout + '%', 'Turnout'],
+                       [fill == null ? '∞' : fill + '%', 'Capacity used'], [t.first_timers, 'First-timers'], [t.walk_ins, 'Walk-ins'], [t.members, 'Members'],
+                       [t.waitlisted, 'Waitlisted'], [t.no_shows, 'No-shows'], [t.cancelled, 'Cancelled'], [t.feedback_avg ? t.feedback_avg + ' ★' : '—', `Rating (${t.feedback_count || 0})`]]
+                       .map(([n, l]) => `<div class="stat"><b>${esc(n ?? 0)}</b><span>${esc(l)}</span></div>`).join('')}
+                </div>
+                <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    ${card('<i class="fas fa-share-nodes mr-1"></i> Where registrations came from', bars(data.by_source))}
+                    ${card('<i class="fas fa-bullhorn mr-1"></i> How they heard about it', bars(data.by_how_heard))}
+                    ${card('<i class="fas fa-venus-mars mr-1"></i> Gender', bars(data.by_gender))}
+                    ${card('<i class="fas fa-cake-candles mr-1"></i> Age group', bars(data.by_age_group))}
+                    ${card('<i class="fas fa-chart-column mr-1"></i> Registrations per day', `<div class="text-[var(--rccg-blue,#1e3a8a)]">${timeline(data.by_day, 'day', d => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))}</div>`)}
+                    ${card('<i class="fas fa-door-open mr-1"></i> Arrivals by hour', `<div class="text-emerald-600">${timeline(data.checkin_by_hour, 'hour', h => new Date(h).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</div>`)}
+                    ${card('<i class="fas fa-star mr-1"></i> Feedback ratings', bars(Object.fromEntries([5, 4, 3, 2, 1].filter(k => stars[k]).map(k => [k + ' ★', stars[k]]))))}
+                    ${(data.questions || []).map(q => card('<i class="fas fa-circle-question mr-1"></i> ' + esc(q.label), bars(q.counts))).join('')}
+                </div>
+                <p class="text-xs text-slate-400 mt-4">Generated ${esc(new Date(data.generated_at).toLocaleString())}. Cancelled registrations are excluded from every chart.</p>
+                ${regs.some(r => r.feedback_comment) ? card('<i class="fas fa-comments mr-1"></i> Latest comments', regs.filter(r => r.feedback_comment).slice(0, 12).map(r => `<blockquote class="text-sm border-l-4 border-slate-200 pl-3 mb-2">${esc(r.feedback_comment)}<br><span class="text-xs text-slate-400">${'★'.repeat(r.feedback_rating || 0)} — ${esc(r.full_name)}</span></blockquote>`).join('')) : ''}`;
+        }
+
+        /* ================================ INIT ============================== */
+        function switchTab(name) {
+            if (!isManager && name !== 'list') name = 'list';
+            document.querySelectorAll('.dc-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+            ['list', 'regs', 'desk', 'insights'].forEach(n => document.getElementById('tab-' + n).classList.toggle('hidden', n !== name));
+            document.getElementById('picker-wrap').classList.toggle('hidden', name === 'list' || !isManager);
+            if (name === 'regs' || name === 'desk') { if (!regs.length) loadRegs(); }
+            if (name === 'desk' && !unwireWedge) unwireWedge = DCCodes.wireWedge(document.getElementById('desk-code'), (code) => deskCheckin(code, 'keyboard'));
+            if (name !== 'desk' && scanner && scanner.running) toggleCamera();
+            if (name === 'insights') { if (!regs.length) loadRegs(); loadInsights(); }
+            history.replaceState(null, '', location.pathname + location.search + '#' + name);
+        }
+
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('programs', me);
+            isAdmin = Auth.isAdmin(me); isManager = isAdmin || Auth.isUnitLeader(me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Programmes & Registration',
+                isManager ? 'Public sign-up links, check-in desk and attendance insights for special programmes' : 'Upcoming special programmes you can register for and share');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            if (isAdmin) document.querySelectorAll('.dc-admin-only').forEach(el => el.classList.remove('hidden'));
+            if (isManager) document.querySelectorAll('.manager-only').forEach(el => el.classList.remove('hidden'));
+
+            document.querySelectorAll('.dc-tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+            ['list-search', 'list-status'].forEach(id => document.getElementById(id).addEventListener('input', renderList));
+            ['reg-search', 'reg-status'].forEach(id => document.getElementById(id).addEventListener('input', renderRegs));
+            document.getElementById('btn-new').addEventListener('click', () => openEditor(null));
+            document.getElementById('prog-grid').addEventListener('click', (e) => {
+                const b = e.target.closest('button[data-act]'); if (!b) return;
+                const p = programs.find(x => x.id === b.dataset.id); if (!p) return;
+                if (b.dataset.act === 'share') openShare(p);
+                if (b.dataset.act === 'edit') openEditor(p);
+                if (b.dataset.act === 'dup') openEditor(p, true);
+                if (b.dataset.act === 'open') { pick(p.id); switchTab('regs'); loadRegs(); }
+            });
+            document.getElementById('prog-pick').addEventListener('change', (e) => {
+                pick(e.target.value);
+                const active = document.querySelector('.dc-tab.active').dataset.tab;
+                loadRegs(); if (active === 'insights') loadInsights();
+            });
+            document.getElementById('reg-body').addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) regAction(b.dataset.act, b.dataset.id); });
+            document.getElementById('reg-refresh').addEventListener('click', loadRegs);
+            document.getElementById('reg-csv').addEventListener('click', exportRegs);
+            document.getElementById('desk-form').addEventListener('submit', (e) => { e.preventDefault(); const i = document.getElementById('desk-code'); if (i.value.trim()) { deskCheckin(i.value, 'keyboard'); i.value = ''; } });
+            document.getElementById('desk-cam').addEventListener('click', toggleCamera);
+            document.getElementById('desk-torch').addEventListener('click', async () => { if (!(scanner && await scanner.toggleTorch())) UI.toast('This camera has no torch.', 'error'); });
+            document.getElementById('desk-result').addEventListener('click', async (e) => {
+                const b = e.target.closest('[data-undo]'); if (!b) return;
+                const { error } = await sb.rpc('dc_program_undo_checkin', { p_registration_id: b.dataset.undo });
+                if (error) return UI.toast(error.message, 'error');
+                document.getElementById('desk-result').innerHTML = '<p class="text-sm text-slate-500">Check-in undone.</p>'; loadRegs();
+            });
+            document.getElementById('walkin-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!current) return UI.toast('Choose a programme first.', 'error');
+                const f = e.target.elements;
+                const payload = { full_name: f.full_name.value, phone: f.phone.value, email: f.email.value, gender: f.gender.value, age_group: f.age_group.value,
+                    party_size: f.party_size.value, is_first_timer: f.is_first_timer.checked };
+                const { data, error } = await sb.rpc('dc_program_walkin', { p_program_id: current.id, p_payload: payload });
+                showDesk(error ? { result: 'error', message: error.message } : data, 'walk-in');
+                if (!error) e.target.reset();
+            });
+            document.getElementById('ins-refresh').addEventListener('click', loadInsights);
+            document.getElementById('ins-print').addEventListener('click', () => window.print());
+            document.getElementById('ins-json').addEventListener('click', () => insights && Utils.downloadJSON(insights, `${current.slug}-insights.json`));
+            window.addEventListener('pagehide', () => { if (scanner) scanner.stop(); });
+
+            await loadPrograms();
+            const wanted = location.hash.slice(1);
+            if (['regs', 'desk', 'insights'].includes(wanted)) switchTab(wanted);
+        }
+        init();
+    </script>
+</body>
+</html>

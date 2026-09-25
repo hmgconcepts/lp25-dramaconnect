@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="app-version" content="14.0">
+    <meta name="app-version" content="14.1">
     <title>Help Centre | DramaConnect Enterprise</title>
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -141,7 +141,13 @@
         ['How do I add my profile photo?', 'Go to My Profile → click "Upload Photo". It appears on your digital ID card and in the directory.', 'profile'],
         ['How do I complete my details?', 'My Profile lets you add phone, birthday (month & day), occupation, address, social links and emergency contact. The completion meter tracks your progress.', 'profile'],
         ['I was given a login by an admin. What next?', 'Sign in with the email & password you were given, then open My Profile to change your password and complete your details.', 'profile'],
-        ['How do I get my ID card?', 'Open "My ID Card", then click Print / Save as PDF. It includes your photo and a QR code.', 'idcard'],
+        ['How do I get my ID card?', 'Open "My ID Card", then click Print / Save as PDF. The card has your photo, a QR code anyone can scan to confirm the card is genuine, and a barcode leaders scan to mark your attendance.', 'idcard'],
+        ['I lost my ID card. What now?', 'Ask an administrator to Re-issue it on the ID Card page. The old card fails verification immediately; print the new one.', 'idcard'],
+        ['The barcode will not scan.', 'Print at 100% scale (not "fit to page"), on white paper, and keep the quiet white margin around the bars. Leaders can also type the member number on the Scan ID Cards desk.', 'attendance'],
+        ['How do we let the public register for a programme?', 'Programmes → New programme → set Status to Open → Share. Post the WhatsApp/Facebook/Instagram links; each one is tagged so Insights shows which channel brought people.', 'programs'],
+        ['Do guests need an account to register?', 'No. The registration link works for anyone. They get a ticket with a QR code and an 8-character code to show at the door.', 'register'],
+        ['How do I confirm or swap a duty?', 'Open Duty Roster and tap Confirm, Decline or Request swap. Decline and swap need a short reason.', 'roster'],
+        ['Can I put rehearsals in my phone calendar?', 'Yes. Open Calendar and tap Download .ics, then open the file on your phone.', 'calendar'],
         ['How do I check in to a rehearsal?', 'On the Attendance page, select the rehearsal and enter the check-in code the admin announces.', 'attendance'],
         ['How do I RSVP to an event?', 'On the Events page, tap Going / Maybe / No on the event card.', 'events'],
         ['How do I message the admin or another member?', 'Open Inbox → New Message → choose the recipient (or "Department Admins") → send. It stays inside the platform.', 'inbox'],
@@ -201,7 +207,14 @@
         ['Audit trail', 'Activity Log', 'Read-only by design'],
         ['Licence class, entitlement, renewal, licence events', 'Site License', 'Platform Health shows a summary only'],
         ['Branding, device profile, appearance, system information', 'Settings', 'Plus the Administration control-plane launcher'],
-        ['Reports and exports', 'Reports', 'CSV for analysis, PDF for leadership']
+        ['Reports and exports', 'Reports', 'CSV for analysis, PDF for leadership'],
+        ['ID card issue, re-issue, revoke, design and register', 'ID Card', 'Verify page is the public read-only check', 'idcard'],
+        ['Public card verification (QR scan)', 'Verify', 'No sign-in; shows status only', 'verify'],
+        ['Rehearsal attendance by card scan', 'Attendance', 'Scan ID Cards desk', 'attendance'],
+        ['Special programmes, share links, check-in desk, insights', 'Programmes', 'Register page is the public form and ticket', 'programs'],
+        ['Month view of everything, .ics export', 'Calendar', 'Reads other pages; edits happen at the source', 'calendar'],
+        ['Service duty assignments and replies', 'Roster', 'Members answer; leaders assign', 'roster'],
+        ['Welfare cases and absentee follow-up', 'Care', 'Leaders only', 'care']
     ];
 
     const TABS = [
@@ -349,10 +362,10 @@
     }
 
     function renderOwnership() {
-        document.getElementById('ownership').innerHTML = OWNERSHIP.map(([cap, owner, note]) => `
+        document.getElementById('ownership').innerHTML = OWNERSHIP.map(([cap, owner, note, page]) => `
             <tr>
                 <td class="p-2 text-slate-700">${UI.esc(cap)}</td>
-                <td class="p-2"><a href="${UI.esc(owner === 'Admin Data' ? 'admin-data' : owner.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-'))}.html"
+                <td class="p-2"><a href="${UI.esc(page || (owner === 'Admin Data' ? 'admin-data' : owner.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-')))}.html"
                         class="font-bold text-blue-600 hover:underline">${UI.esc(owner)}</a></td>
                 <td class="p-2 text-slate-500 text-xs">${UI.esc(note)}</td>
             </tr>`).join('');

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <!-- The card token is in the URL: never leak it to CDNs via the Referer header. -->
+    <meta name="referrer" content="no-referrer">
+    <title>Verify Member Card | DramaConnect</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        /* A moving sheen + live clock make a screenshot of an old result obvious. */
+        @keyframes sheen { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .live { background-image: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.35) 50%, transparent 65%); background-size: 200% 100%; animation: sheen 2.4s linear infinite; }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+        .dot { width: .55rem; height: .55rem; border-radius: 50%; background: currentColor; display: inline-block; animation: pulse-dot 1.2s infinite; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-start sm:items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden animate-fade-in">
+        <div class="rccg-blue p-6 text-white text-center">
+            <img id="org-logo" src="../assets/img/rccg_logo.png" alt="" class="h-14 w-14 mx-auto mb-2 bg-white rounded-full p-1 object-contain">
+            <p id="org-name" class="text-xs uppercase tracking-widest opacity-90">Member card verification</p>
+            <h1 class="text-xl font-extrabold">Verify Member Card</h1>
+        </div>
+
+        <div id="result" class="p-6" aria-live="polite">
+            <div class="text-center text-slate-400 py-8"><i class="fas fa-circle-notch fa-spin text-2xl"></i><p class="mt-2 text-sm">Checking card…</p></div>
+        </div>
+
+        <div class="px-6 pb-6 space-y-3">
+            <details id="manual" class="bg-slate-50 rounded-xl p-4 text-sm">
+                <summary class="font-bold text-slate-700 cursor-pointer"><i class="fas fa-qrcode mr-1"></i> Check another card</summary>
+                <div class="mt-3 space-y-3">
+                    <button id="scan-btn" type="button" class="w-full dc-btn dc-btn-primary"><i class="fas fa-camera mr-1"></i> Scan the QR code on the back</button>
+                    <div id="scan-wrap" class="hidden">
+                        <video id="scan-video" class="w-full rounded-xl bg-black aspect-video object-cover" playsinline muted></video>
+                        <p id="scan-status" class="text-xs text-slate-500 mt-1"></p>
+                    </div>
+                    <form id="manual-form" class="flex gap-2">
+                        <input id="manual-code" class="dc-input flex-1" placeholder="Paste verification link or code" autocomplete="off">
+                        <button class="dc-btn bg-slate-200 text-slate-700" type="submit">Check</button>
+                    </form>
+                    <p class="text-xs text-slate-400">The barcode on the front holds only the member number; it is read at check-in desks. Use the QR code on the back to verify identity.</p>
+                </div>
+            </details>
+            <p class="text-center text-[11px] text-slate-400">Results come live from the department's records at the moment of checking. <a href="../index.html" class="underline">Member sign in</a></p>
+        </div>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/dc-codes.js"></script>
+    <script>
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const fmt = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' }) : '—';
+        const VIEW = {
+            valid:     { cls: 'bg-emerald-600', icon: 'fa-circle-check',       title: 'VALID CARD',      note: 'This card is genuine and currently valid.' },
+            expired:   { cls: 'bg-amber-500',   icon: 'fa-hourglass-end',      title: 'CARD EXPIRED',    note: 'The card is genuine but its validity period has ended.' },
+            revoked:   { cls: 'bg-red-600',     icon: 'fa-ban',                title: 'CARD REVOKED',    note: 'This card has been cancelled by the department. Do not accept it.' },
+            suspended: { cls: 'bg-slate-600',   icon: 'fa-user-lock',          title: 'MEMBER SUSPENDED', note: 'The holder is not currently an active member.' },
+            not_found: { cls: 'bg-red-600',     icon: 'fa-triangle-exclamation', title: 'NOT RECOGNISED', note: 'No card matches this code. It may be forged, or it was replaced by a newer card.' },
+            invalid:   { cls: 'bg-slate-600',   icon: 'fa-circle-question',    title: 'INVALID CODE',    note: 'This is not a member-card verification code.' }
+        };
+        let clockTimer = null, scanner = null;
+
+        function tokenFrom(text) {
+            const raw = String(text || '').trim();
+            try { const u = new URL(raw); return u.searchParams.get('c') || ''; } catch (e) { /* not a URL */ }
+            const m = raw.match(/[a-f0-9]{32}/i);
+            return m ? m[0].toLowerCase() : raw;
+        }
+
+        function render(data) {
+            const status = (data && data.status) || 'invalid';
+            const v = VIEW[status] || VIEW.invalid;
+            if (data && data.org_name) document.getElementById('org-name').textContent = data.org_name;
+            const logo = data && Utils.safeImageUrl(data.logo_url);
+            if (logo) document.getElementById('org-logo').src = logo;
+            const photo = data && Utils.safeImageUrl(data.avatar_url);
+            const person = data && data.full_name ? `
+                <div class="flex items-center gap-4 mt-5">
+                    ${photo ? `<img src="${esc(photo)}" alt="Card holder photo" class="w-24 h-28 rounded-xl object-cover border-4 border-slate-100">`
+                            : `<div class="w-24 h-28 rounded-xl bg-slate-100 flex items-center justify-center text-3xl font-black text-slate-400">${esc(Utils.initials(data.full_name))}</div>`}
+                    <div class="min-w-0">
+                        <p class="text-lg font-extrabold text-slate-800 leading-tight">${esc(data.full_name)}</p>
+                        <p class="text-sm text-slate-500">${esc(data.role || '')}${data.unit ? ' · ' + esc(data.unit) : ''}</p>
+                        <p class="font-mono font-bold text-slate-700 mt-1">${esc(data.member_no || '')}</p>
+                    </div>
+                </div>
+                <dl class="grid grid-cols-2 gap-2 text-sm mt-4">
+                    <div class="bg-slate-50 rounded-lg p-2"><dt class="text-[10px] uppercase text-slate-400 font-bold">Issued</dt><dd>${esc(fmt(data.issued_at))}</dd></div>
+                    <div class="bg-slate-50 rounded-lg p-2"><dt class="text-[10px] uppercase text-slate-400 font-bold">Expires</dt><dd>${esc(fmt(data.expires_at))}</dd></div>
+                </dl>
+                <p class="text-xs text-slate-500 mt-3"><i class="fas fa-user-check mr-1"></i> Compare the photo with the person presenting the card.</p>` : '';
+            document.getElementById('result').innerHTML = `
+                <div class="${v.cls} live text-white rounded-2xl p-5 text-center">
+                    <i class="fas ${v.icon} text-4xl"></i>
+                    <p class="text-2xl font-black tracking-wide mt-2">${v.title}</p>
+                    <p class="text-sm opacity-90 mt-1">${v.note}</p>
+                    <p class="text-xs mt-3 opacity-90"><span class="dot mr-1"></span> Live check · <span id="clock"></span></p>
+                </div>${person}`;
+            if (clockTimer) clearInterval(clockTimer);
+            const tick = () => { const c = document.getElementById('clock'); if (c) c.textContent = new Date().toLocaleString(); };
+            tick(); clockTimer = setInterval(tick, 1000);
+        }
+
+        async function verify(code) {
+            const token = tokenFrom(code);
+            if (!token) {
+                document.getElementById('result').innerHTML = '<p class="text-center text-slate-500 py-6">Scan the QR code on the back of a member card, or paste its link below.</p>';
+                document.getElementById('manual').open = true;
+                return;
+            }
+            document.getElementById('result').innerHTML = '<div class="text-center text-slate-400 py-8"><i class="fas fa-circle-notch fa-spin text-2xl"></i></div>';
+            if (!window.sb) { render({ status: 'invalid' }); return UI.toast('Verification service unavailable. Check your connection.', 'error'); }
+            const { data, error } = await sb.rpc('dc_verify_card', { p_token: token });
+            if (error) {
+                document.getElementById('result').innerHTML = `<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900"><b>Could not check the card right now.</b><br>${esc(error.message)}<br><br>Try again in a moment. If this keeps happening, contact the department.</div>`;
+                return;
+            }
+            render(data);
+            if (history.replaceState) history.replaceState(null, '', '?c=' + encodeURIComponent(token));
+        }
+
+        document.getElementById('manual-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            verify(document.getElementById('manual-code').value);
+        });
+        document.getElementById('scan-btn').addEventListener('click', async () => {
+            const wrap = document.getElementById('scan-wrap');
+            const status = document.getElementById('scan-status');
+            if (scanner && scanner.running) { scanner.stop(); wrap.classList.add('hidden'); return; }
+            wrap.classList.remove('hidden');
+            scanner = DCCodes.createScanner({
+                video: document.getElementById('scan-video'),
+                onStatus: (m) => { status.textContent = m; },
+                onResult: (text) => {
+                    const token = tokenFrom(text);
+                    if (!/^[a-f0-9]{32}$/.test(token)) { status.textContent = 'That code is not a member-card QR. Point at the QR on the back of the card.'; return; }
+                    scanner.stop(); wrap.classList.add('hidden');
+                    verify(token); window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+            try { await scanner.start(); } catch (err) { status.textContent = err.message; }
+        });
+
+        (async () => {
+            try {
+                // Public branding (tenant_settings is readable without signing in).
+                const { data } = window.sb ? await sb.from('tenant_settings').select('org_name,app_name,logo_url,primary_color').eq('id', 1).maybeSingle() : { data: null };
+                if (data && data.primary_color && Utils.isHexColor(data.primary_color)) {
+                    const style = document.createElement('style');
+                    style.textContent = `.rccg-blue{background-color:${data.primary_color} !important}`;
+                    document.head.appendChild(style);
+                }
+                if (data && data.org_name) document.getElementById('org-name').textContent = data.org_name;
+                if (data && Utils.safeImageUrl(data.logo_url)) document.getElementById('org-logo').src = Utils.safeImageUrl(data.logo_url);
+            } catch (e) { /* branding is cosmetic */ }
+            verify(new URLSearchParams(location.search).get('c'));
+        })();
+    </script>
+</body>
+</html>

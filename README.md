@@ -1,4 +1,4 @@
-# 🎭 DramaConnect Enterprise v14.0 — RCCG LP 25 Drama Department
+# 🎭 DramaConnect Enterprise v14.1 — RCCG LP 25 Drama Department
 
 DramaConnect is a complete institutional management hub for the RCCG LP 25
 Drama Department. It can operate within the free allowances of Supabase and a
@@ -10,7 +10,15 @@ and pricing can change, so confirm current limits before rollout.
 
 ---
 
-## ✨ v13 feature set (resilience-maintained v14.0 build)
+## ✨ Feature set (v14.1 build)
+
+### New in v14.1: identity, programmes and team operations
+
+- **Verifiable two-sided ID card.** The QR code opens public verification; the Code 128 barcode is decoder-tested for USB/Bluetooth scanners. Admins can issue, re-issue, revoke, restore or extend cards (`pages/idcard.html`, `pages/verify.html`).
+- **Scan-to-mark attendance** by camera, keyboard-wedge scanner or typed member number (`pages/attendance.html`).
+- **Special programmes with shareable, channel-tagged social-media registration links.** Includes public registration (no account needed), waitlist, QR tickets, a check-in desk, walk-ins, feedback and an insights dashboard (`pages/programs.html`, `pages/register.html`).
+- **Team calendar** with .ics export (`pages/calendar.html`); **duty roster** with confirm, decline and swap (`pages/roster.html`); **care and follow-up** with automatic absentee detection (`pages/care.html`); a branded **404** page.
+- **Anti-pause hardening.** A self-configuring Vercel cron, secret-optional GitHub keep-alive, a Management-API auto-restore watchdog, one-click Edge Function deploy, and a Platform Health layer matrix. See [FEATURES §52–60](docs/FEATURES.md).
 
 ### New in v14.0: resilience and verified backup
 
@@ -179,7 +187,7 @@ lp25-dramaconnect/
 │       ├── auth.js         # Sign in/up, reset, approval gate, guards
 │       ├── db.js           # Data access layer + portable archive compatibility
 │       ├── resilience.js   # Heartbeats, health, backup leases and run metadata
-│       ├── data-portability.js # 25-table sealed export + safe restore + vault
+│       ├── data-portability.js # 31-table sealed export + safe restore + vault
 │       ├── drive-sync.js   # GIS / Drive file backup, retention and scheduler
 │       ├── utils.js        # Currency/date/CSV/export helpers
 │       ├── layout.js       # Shared sidebar + header (local-CSS navigation)
@@ -293,7 +301,11 @@ npm test
 ```bash
 npx playwright install chromium
 npm run test:browser
+npm run smoke:browser   # ID card QR + Code128 scan, verify page, attendance desk, Platform Health layer matrix
+npm run smoke:tablet    # every sidebar page at phone/tablet/desktop widths: sidebar beside content, no stretched pills
 ```
+
+`npm test` runs 13 suites (CSS build, schema build, schema, self-heal, check-in, cards/programmes, barcode codes, dates, storage guard, recovery, heartbeat quorum, JavaScript/page structure, assistant). The two smoke suites need Chromium (`sudo npx playwright install-deps chromium` on a fresh Linux machine).
 
 These checks do not replace staging tests against the real Supabase, Google Drive, scheduler, Storage, and backup providers.
 

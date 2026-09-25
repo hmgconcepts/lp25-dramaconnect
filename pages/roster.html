@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duty Roster | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        .pill { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+        .s-assigned { background: #e2e8f0; color: #334155; } .s-confirmed { background: #dcfce7; color: #166534; } .s-declined { background: #fee2e2; color: #991b1b; }
+        .s-swap_requested { background: #fef3c7; color: #92400e; } .s-done { background: #dbeafe; color: #1e40af; } .s-missed { background: #fecaca; color: #7f1d1d; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+        <div id="schema-warning" class="hidden mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"></div>
+
+        <section class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+            <h3 class="font-bold text-slate-800 mb-3"><i class="fas fa-user-check mr-1"></i> My upcoming duties</h3>
+            <div id="mine" class="grid md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+        </section>
+
+        <section id="manage" class="hidden bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+            <h3 class="font-bold text-slate-800 mb-3"><i class="fas fa-plus mr-1"></i> Assign duties</h3>
+            <form id="assign-form" class="grid md:grid-cols-[10rem_12rem_12rem_1fr_auto] gap-2 items-end">
+                <label class="text-xs font-bold text-slate-500">Date<input name="duty_date" type="date" class="dc-input mt-1" required></label>
+                <label class="text-xs font-bold text-slate-500">Service<input name="service_label" class="dc-input mt-1" list="services" required minlength="2" maxlength="80" value="Sunday Service"></label>
+                <label class="text-xs font-bold text-slate-500">Role<input name="duty_role" class="dc-input mt-1" list="roles" required minlength="2" maxlength="60" placeholder="e.g. Ushering"></label>
+                <label class="text-xs font-bold text-slate-500">Members (hold Ctrl/⌘ to pick several)<select name="member_ids" class="dc-input mt-1 h-24" multiple required></select></label>
+                <button class="dc-btn dc-btn-primary" type="submit"><i class="fas fa-check mr-1"></i>Assign</button>
+                <input name="notes" class="dc-input md:col-span-4" maxlength="300" placeholder="Note for the members (optional) — e.g. arrive 30 minutes early">
+            </form>
+            <datalist id="services"><option>Sunday Service</option><option>Midweek Service</option><option>Rehearsal</option><option>Special Programme</option><option>Outreach</option></datalist>
+            <datalist id="roles"><option>Ushering</option><option>Props &amp; set</option><option>Costume</option><option>Sound</option><option>Lighting</option><option>Stage manager</option><option>Make-up</option><option>Front of house</option><option>Media / photography</option><option>Prayer</option></datalist>
+            <div class="flex flex-wrap gap-2 mt-3 text-xs">
+                <button id="copy-week" class="dc-btn bg-slate-100 text-slate-700 text-xs"><i class="fas fa-copy mr-1"></i>Copy the latest rostered date to the next week</button>
+                <span class="text-slate-400 self-center">Members confirm, decline or request swaps from their own view; you see the answers below.</span>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-2xl border border-slate-200 p-5">
+            <div class="flex flex-wrap gap-2 items-center mb-3">
+                <h3 class="font-bold text-slate-800 mr-auto"><i class="fas fa-table-list mr-1"></i> Full roster</h3>
+                <select id="range" class="dc-input w-auto" aria-label="Range"><option value="upcoming">Upcoming</option><option value="past">Past 60 days</option><option value="all">Everything</option></select>
+                <select id="status-filter" class="dc-input w-auto" aria-label="Status filter"><option value="">Any status</option><option value="assigned">Awaiting reply</option><option value="confirmed">Confirmed</option><option value="declined">Declined</option><option value="swap_requested">Swap requested</option><option value="done">Done</option><option value="missed">Missed</option></select>
+                <button id="csv" class="dc-btn bg-emerald-600 text-white"><i class="fas fa-file-csv mr-1"></i>CSV</button>
+                <button id="print" class="dc-btn bg-slate-100 text-slate-700"><i class="fas fa-print mr-1"></i>Print</button>
+            </div>
+            <div id="full"></div>
+        </section>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+    <script src="../assets/js/page-guide.js"></script>
+    <script src="../assets/js/assistant.js"></script>
+    <script>
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const LABEL = { assigned: 'Awaiting reply', confirmed: 'Confirmed', declined: 'Declined', swap_requested: 'Swap requested', done: 'Done', missed: 'Missed' };
+        let me = null, isManager = false, duties = [], members = [];
+        const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+        const fmtDay = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
+        const nameOf = (id) => (members.find(m => m.id === id) || {}).full_name || 'Former member';
+        const pill = (s) => `<span class="pill s-${s}">${LABEL[s] || s}</span>`;
+
+        async function load() {
+            const range = document.getElementById('range').value;
+            let q = sb.from('dc_duty_roster').select('*').order('duty_date').order('service_label').order('duty_role').limit(3000);
+            if (range === 'upcoming') q = q.gte('duty_date', today());
+            if (range === 'past') { const d = new Date(Date.now() - 60 * 864e5); q = q.gte('duty_date', d.toISOString().slice(0, 10)).lt('duty_date', today()); }
+            const { data, error } = await q;
+            if (error) {
+                if (/PGRST205|42P01|does not exist|could not find/i.test(error.message)) {
+                    const w = document.getElementById('schema-warning'); w.classList.remove('hidden');
+                    w.innerHTML = '<b>The duty roster is not installed yet.</b> An administrator must run <code>database/complete-schema.sql</code> in the Supabase SQL Editor (safe to re-run).';
+                } else UI.toast(error.message, 'error');
+                duties = [];
+            } else duties = data || [];
+            renderMine(); renderFull();
+        }
+        async function loadMine() {
+            const { data } = await sb.from('dc_duty_roster').select('*').eq('member_id', me.id).gte('duty_date', today()).order('duty_date').limit(50);
+            return data || [];
+        }
+        async function renderMine() {
+            const mine = await loadMine();
+            const box = document.getElementById('mine');
+            box.innerHTML = mine.length ? mine.map(d => `<div class="border border-slate-200 rounded-xl p-4">
+                <div class="flex justify-between gap-2"><b>${esc(d.duty_role)}</b>${pill(d.status)}</div>
+                <p class="text-sm text-slate-500">${esc(fmtDay(d.duty_date))} · ${esc(d.service_label)}</p>
+                ${d.notes ? `<p class="text-xs text-slate-600 mt-1"><i class="fas fa-note-sticky mr-1"></i>${esc(d.notes)}</p>` : ''}
+                ${d.response_note ? `<p class="text-xs text-slate-400 mt-1">Your note: ${esc(d.response_note)}</p>` : ''}
+                <div class="flex flex-wrap gap-2 mt-3">
+                    ${d.status !== 'confirmed' ? `<button class="dc-btn bg-emerald-600 text-white text-xs" data-respond="confirmed" data-id="${esc(d.id)}"><i class="fas fa-check mr-1"></i>I'll be there</button>` : ''}
+                    <button class="dc-btn bg-amber-50 text-amber-800 text-xs" data-respond="swap_requested" data-id="${esc(d.id)}"><i class="fas fa-right-left mr-1"></i>Request swap</button>
+                    <button class="dc-btn bg-red-50 text-red-700 text-xs" data-respond="declined" data-id="${esc(d.id)}"><i class="fas fa-xmark mr-1"></i>Can't make it</button>
+                </div></div>`).join('') : '<p class="text-sm text-slate-400">You have no upcoming duties. 🎉</p>';
+        }
+        function renderFull() {
+            const st = document.getElementById('status-filter').value;
+            const list = duties.filter(d => !st || d.status === st);
+            const groups = {};
+            list.forEach(d => { const k = d.duty_date + '|' + d.service_label; (groups[k] = groups[k] || []).push(d); });
+            const keys = Object.keys(groups);
+            document.getElementById('full').innerHTML = keys.length ? keys.map(k => {
+                const [date, service] = k.split('|');
+                const rows = groups[k];
+                const pending = rows.filter(r => ['assigned', 'declined', 'swap_requested'].includes(r.status)).length;
+                return `<div class="mb-4 border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="bg-slate-50 px-4 py-2 flex flex-wrap items-center gap-2"><b>${esc(fmtDay(date))}</b><span class="text-sm text-slate-500">${esc(service)}</span>
+                        ${pending && isManager ? `<span class="pill bg-amber-100 text-amber-800 ml-auto">${pending} need attention</span>` : ''}</div>
+                    <table class="w-full text-sm"><tbody>${rows.map(d => `<tr class="border-t border-slate-100">
+                        <td class="p-2 pl-4 w-40 font-semibold">${esc(d.duty_role)}</td><td class="p-2">${esc(nameOf(d.member_id))}${d.member_id === me.id ? ' <span class="text-xs text-slate-400">(you)</span>' : ''}
+                            ${d.response_note ? `<br><span class="text-xs text-slate-500"><i class="fas fa-comment mr-1"></i>${esc(d.response_note)}</span>` : ''}</td>
+                        <td class="p-2">${pill(d.status)}</td>
+                        <td class="p-2 pr-4 text-right whitespace-nowrap">${isManager ? `
+                            ${(() => { const m = members.find(x => x.id === d.member_id); return m && m.phone ? `<a class="dc-btn bg-slate-100 text-emerald-700 text-xs" target="_blank" rel="noopener" title="Remind on WhatsApp" href="${esc(Utils.whatsappLink(m.whatsapp || m.phone, `Hello ${m.full_name}, reminder: you are on ${d.duty_role} for ${d.service_label} on ${fmtDay(d.duty_date)}. Please confirm on the Duty Roster page. Thank you!`))}"><i class="fab fa-whatsapp"></i></a>` : ''; })()}
+                            <select class="dc-input w-auto text-xs py-1 inline-block" data-status="${esc(d.id)}" aria-label="Set status">${Object.keys(LABEL).map(s => `<option value="${s}"${d.status === s ? ' selected' : ''}>${LABEL[s]}</option>`).join('')}</select>
+                            <button class="dc-btn bg-slate-100 text-slate-700 text-xs" data-reassign="${esc(d.id)}" title="Give to someone else"><i class="fas fa-user-pen"></i></button>
+                            <button class="dc-btn bg-red-50 text-red-600 text-xs" data-del="${esc(d.id)}" title="Remove"><i class="fas fa-trash"></i></button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+            }).join('') : '<p class="text-sm text-slate-400">No duties in this range.</p>';
+        }
+        async function respond(id, status) {
+            let note = null;
+            if (status !== 'confirmed') {
+                note = window.prompt(status === 'declined' ? 'Briefly, why can\'t you make it? (helps your leader find cover)' : 'Who could swap with you, or what do you need?');
+                if (note === null) return;
+            }
+            const { error } = await sb.rpc('dc_respond_duty', { p_duty_id: id, p_status: status, p_note: note });
+            if (error) return UI.toast(error.message, 'error');
+            UI.toast(status === 'confirmed' ? 'Thanks — confirmed!' : 'Your leader has been told.'); load();
+        }
+        async function assign(e) {
+            e.preventDefault();
+            const f = e.target.elements;
+            const ids = [...f.member_ids.selectedOptions].map(o => o.value);
+            if (!ids.length) return UI.toast('Pick at least one member.', 'error');
+            const rows = ids.map(member_id => ({ duty_date: f.duty_date.value, service_label: f.service_label.value.trim(), duty_role: f.duty_role.value.trim(), member_id, notes: f.notes.value.trim() || null, created_by: me.id }));
+            const { error } = await sb.from('dc_duty_roster').upsert(rows, { onConflict: 'duty_date,service_label,duty_role,member_id', ignoreDuplicates: true });
+            if (error) return UI.toast(error.message, 'error');
+            UI.toast(`${rows.length} assignment(s) saved.`); f.duty_role.value = ''; f.member_ids.selectedIndex = -1; load();
+        }
+        async function copyWeek() {
+            const { data } = await sb.from('dc_duty_roster').select('duty_date').order('duty_date', { ascending: false }).limit(1);
+            if (!data || !data.length) return UI.toast('There is no roster to copy yet.', 'error');
+            const last = data[0].duty_date;
+            const { data: rows } = await sb.from('dc_duty_roster').select('service_label,duty_role,member_id,notes').eq('duty_date', last);
+            const [y, m, d] = last.split('-').map(Number); const nx = new Date(y, m - 1, d + 7);
+            const next = `${nx.getFullYear()}-${String(nx.getMonth() + 1).padStart(2, '0')}-${String(nx.getDate()).padStart(2, '0')}`;
+            if (!await UI.confirm(`Copy ${rows.length} duty assignment(s) from ${fmtDay(last)} to ${fmtDay(next)}? Everyone will need to confirm again.`, 'Copy roster')) return;
+            const { error } = await sb.from('dc_duty_roster').upsert(rows.map(r => Object.assign({}, r, { duty_date: next, created_by: me.id })), { onConflict: 'duty_date,service_label,duty_role,member_id', ignoreDuplicates: true });
+            if (error) return UI.toast(error.message, 'error');
+            UI.toast('Roster copied.'); load();
+        }
+        async function reassign(id) {
+            const d = duties.find(x => x.id === id); if (!d) return;
+            const ov = UI.modal(`<form class="p-6 space-y-3"><h2 class="font-extrabold">Give “${esc(d.duty_role)}” to…</h2>
+                <select name="m" class="dc-input" required>${members.filter(m => m.id !== d.member_id).map(m => `<option value="${esc(m.id)}">${esc(m.full_name)}${m.unit ? ' — ' + esc(m.unit) : ''}</option>`).join('')}</select>
+                <div class="flex justify-end gap-2"><button type="button" class="dc-btn bg-slate-100" data-x>Cancel</button><button class="dc-btn dc-btn-primary">Reassign</button></div></form>`);
+            ov.querySelector('[data-x]').addEventListener('click', () => ov.remove());
+            ov.querySelector('form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const { error } = await sb.from('dc_duty_roster').update({ member_id: e.target.elements.m.value, status: 'assigned', response_note: null }).eq('id', id);
+                if (error) return UI.toast(/duplicate|unique/i.test(error.message) ? 'That member already has this duty.' : error.message, 'error');
+                ov.remove(); UI.toast('Reassigned.'); load();
+            });
+        }
+
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('roster', me);
+            isManager = Auth.isAdmin(me) || Auth.isUnitLeader(me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Duty Roster', isManager ? 'Assign service duties, track confirmations and cover gaps early' : 'Your service duties — confirm, decline or request a swap');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            const { data } = await sb.from('member_directory').select('id,full_name,unit,phone,whatsapp').order('full_name').limit(2000);
+            members = data || [];
+            if (isManager) {
+                document.getElementById('manage').classList.remove('hidden');
+                document.querySelector('[name=member_ids]').innerHTML = members.map(m => `<option value="${esc(m.id)}">${esc(m.full_name)}${m.unit ? ' — ' + esc(m.unit) : ''}</option>`).join('');
+                const sunday = new Date(); sunday.setDate(sunday.getDate() + ((7 - sunday.getDay()) % 7));
+                document.querySelector('[name=duty_date]').value = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+                document.querySelector('[name=duty_date]').min = today();
+                document.getElementById('assign-form').addEventListener('submit', assign);
+                document.getElementById('copy-week').addEventListener('click', copyWeek);
+            }
+            document.getElementById('mine').addEventListener('click', (e) => { const b = e.target.closest('[data-respond]'); if (b) respond(b.dataset.id, b.dataset.respond); });
+            const full = document.getElementById('full');
+            full.addEventListener('change', async (e) => {
+                const s = e.target.closest('[data-status]'); if (!s) return;
+                const { error } = await sb.from('dc_duty_roster').update({ status: s.value }).eq('id', s.dataset.status);
+                if (error) return UI.toast(error.message, 'error'); UI.toast('Status updated.'); load();
+            });
+            full.addEventListener('click', async (e) => {
+                const del = e.target.closest('[data-del]');
+                if (del && await UI.confirm('Remove this duty assignment?', 'Remove duty')) {
+                    const { error } = await sb.from('dc_duty_roster').delete().eq('id', del.dataset.del);
+                    if (error) return UI.toast(error.message, 'error'); load();
+                }
+                const re = e.target.closest('[data-reassign]'); if (re) reassign(re.dataset.reassign);
+            });
+            ['range', 'status-filter'].forEach(id => document.getElementById(id).addEventListener('change', id === 'range' ? load : renderFull));
+            document.getElementById('print').addEventListener('click', () => window.print());
+            document.getElementById('csv').addEventListener('click', () => Utils.exportToCSV(duties.map(d => ({ date: d.duty_date, service: d.service_label, role: d.duty_role, member: nameOf(d.member_id), status: LABEL[d.status], notes: d.notes || '', reply: d.response_note || '' })), `duty-roster-${today()}.csv`));
+            load();
+        }
+        init();
+    </script>
+</body>
+</html>
