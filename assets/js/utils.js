@@ -184,20 +184,97 @@ const Utils = {
     },
 
     /**
+     * Extract a Google Drive file id from any common share-link shape:
+     *   drive.google.com/file/d/ID/view, /open?id=ID, /uc?id=ID, /thumbnail?id=ID,
+     *   docs.google.com/uc?id=ID, lh3.googleusercontent.com/d/ID
+     * Returns '' when the value is not a Drive link.
+     */
+    drivePhotoId(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        let u;
+        try { u = new URL(raw); } catch (_e) { return ''; }
+        const host = u.hostname.toLowerCase();
+        const isDrive = host === 'drive.google.com' || host === 'docs.google.com';
+        const isLh3 = /(^|\.)googleusercontent\.com$/.test(host);
+        if (!isDrive && !isLh3) return '';
+        const m = u.pathname.match(/\/(?:file\/)?d\/([A-Za-z0-9_-]{10,})/);
+        if (m) return m[1];
+        const q = u.searchParams.get('id');
+        return q && /^[A-Za-z0-9_-]{10,}$/.test(q) ? q : '';
+    },
+
+    /**
+     * Ordered list of candidate URLs for a user-supplied photo. Drive links are
+     * expanded into three independent Google endpoints so that if one is
+     * throttled/blocked the next is tried automatically (see the global
+     * fallback handler at the end of this file). Never add crossorigin to an
+     * <img> using these URLs: Google's 302 redirect carries no CORS header and
+     * the browser would refuse to display the image.
+     */
+    photoSources(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return [];
+        const id = this.drivePhotoId(raw);
+        if (id) {
+            const e = encodeURIComponent(id);
+            return [
+                `https://drive.google.com/thumbnail?id=${e}&sz=w800`,
+                `https://lh3.googleusercontent.com/d/${e}=w800`,
+                `https://drive.google.com/uc?export=view&id=${e}`
+            ];
+        }
+        let url = raw;
+        try {
+            const u = new URL(raw);
+            if (/(^|\.)dropbox\.com$/i.test(u.hostname) && u.hostname !== 'dl.dropboxusercontent.com') {
+                u.hostname = 'dl.dropboxusercontent.com';
+                u.searchParams.delete('dl');
+                url = u.href;
+            }
+        } catch (_e) { /* relative path: validated below */ }
+        const safe = this.safeImageUrl(url);
+        return safe ? [safe] : [];
+    },
+
+    /**
+     * Build a resilient <img> for a user photo. Falls through every candidate
+     * URL and finally swaps itself for an initials tile (same class/style), so
+     * a card or list never shows a broken-image icon.
+     */
+    photoImg(value, opts = {}) {
+        const name = opts.name || '';
+        const cls = opts.className || '';
+        const style = opts.style || '';
+        const initStyle = opts.initialsStyle || style;
+        const init = this.initials(name);
+        const list = this.photoSources(value);
+        if (!list.length) {
+            return `<div class="${UI.esc(cls)}" style="${UI.esc(initStyle)}" role="img" aria-label="${UI.esc(name || 'Photo')}">${UI.esc(init)}</div>`;
+        }
+        const rest = JSON.stringify(list.slice(1));
+        return `<img class="${UI.esc(cls)}" src="${UI.esc(list[0])}" alt="${UI.esc(opts.alt || name || 'Photo')}"`
+            + ` style="${UI.esc(style)}" referrerpolicy="no-referrer" decoding="async"${opts.lazy ? ' loading="lazy"' : ''}`
+            + ` data-fallbacks="${UI.esc(rest)}" data-fb-initials="${UI.esc(init)}" data-fb-style="${UI.esc(initStyle)}">`;
+    },
+
+    /**
      * Render an avatar: only an HTTP(S)/same-origin photo URL is accepted;
-     * otherwise render a coloured initials circle.
+     * otherwise render a coloured initials circle. Broken/unshared photos
+     * fall back to the initials circle automatically.
      */
     avatar(member, size = 40) {
         const safeSize = Math.max(16, Math.min(256, Number(size) || 40));
         const s = safeSize + 'px';
         const name = member && (member.full_name || member.email) || '';
-        const imageUrl = member && this.safeImageUrl(member.avatar_url);
-        if (imageUrl) {
-            return `<img src="${UI.esc(imageUrl)}" alt="${UI.esc(name)}" style="width:${s};height:${s};border-radius:9999px;object-fit:cover;" loading="lazy" referrerpolicy="no-referrer">`;
-        }
-        const init = this.initials(name);
         const fs = Math.round(safeSize * 0.4) + 'px';
-        return `<div style="width:${s};height:${s};border-radius:9999px;background:var(--rccg-blue,#003399);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${fs};">${UI.esc(init)}</div>`;
+        const initialsStyle = `width:${s};height:${s};border-radius:9999px;background:var(--rccg-blue,#003399);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${fs};flex-shrink:0;`;
+        return this.photoImg(member && member.avatar_url, {
+            name,
+            lazy: true,
+            style: `width:${s};height:${s};border-radius:9999px;object-fit:cover;flex-shrink:0;`,
+            initialsStyle
+        });
     },
 
     /** Minimal CSV parser → array of objects keyed by the header row. */
@@ -304,3 +381,41 @@ const Utils = {
     }
 };
 window.Utils = Utils;
+
+/*
+ * Global image fallback (capture phase: <img> error events do not bubble).
+ * Any <img data-fallbacks='["url2","url3"]'> tries each URL in turn; when all
+ * fail it becomes an initials tile (data-fb-initials) or, for decorative
+ * images without initials, is hidden so no broken-image icon is printed.
+ */
+(function installImageFallback() {
+    if (typeof document === 'undefined' || typeof document.addEventListener !== 'function' || window.__dcImgFallback) return;
+    window.__dcImgFallback = true;
+    document.addEventListener('error', (ev) => {
+        const img = ev.target;
+        if (!img || img.tagName !== 'IMG' || !img.hasAttribute('data-fallbacks')) return;
+        let list = [];
+        try { list = JSON.parse(img.getAttribute('data-fallbacks') || '[]'); } catch (_e) { list = []; }
+        const next = Array.isArray(list) ? list.shift() : null;
+        if (next) {
+            img.setAttribute('data-fallbacks', JSON.stringify(list));
+            img.src = next;
+            return;
+        }
+        img.removeAttribute('data-fallbacks');
+        const init = img.getAttribute('data-fb-initials');
+        if (init) {
+            const div = document.createElement('div');
+            div.className = img.className;
+            div.setAttribute('style', img.getAttribute('data-fb-style') || img.getAttribute('style') || '');
+            div.setAttribute('role', 'img');
+            div.setAttribute('aria-label', img.alt || 'Photo');
+            div.setAttribute('data-photo-failed', '1');
+            div.textContent = init;
+            img.replaceWith(div);
+        } else {
+            img.style.visibility = 'hidden';
+            img.setAttribute('data-photo-failed', '1');
+        }
+    }, true);
+})();
