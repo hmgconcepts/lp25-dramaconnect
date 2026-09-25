@@ -21,6 +21,8 @@ const Layout = {
             { id: 'attendance',    href: 'attendance.html',    icon: 'fa-user-check',     label: 'Attendance' },
             { id: 'analytics',     href: 'analytics.html',     icon: 'fa-chart-line',     label: 'Attendance Analytics' },
             { id: 'myunit',        href: 'myunit.html',        icon: 'fa-people-group',   label: 'My Unit', leaderOnly: true },
+            { id: 'care',          href: 'care.html',          icon: 'fa-hand-holding-heart', label: 'Care & Follow-up', leaderOnly: true },
+            { id: 'roster',        href: 'roster.html',        icon: 'fa-clipboard-user', label: 'Duty Roster' },
             { id: 'finance',       href: 'finance.html',       icon: 'fa-wallet',         label: 'Finance' },
             { id: 'budgets',       href: 'budgets.html',       icon: 'fa-scale-balanced', label: 'Budgets' }
         ]},
@@ -29,7 +31,9 @@ const Layout = {
             { id: 'announcements', href: 'announcements.html', icon: 'fa-bullhorn',       label: 'Announcements' },
             { id: 'tasks',         href: 'tasks.html',         icon: 'fa-list-check',     label: 'Tasks' },
             { id: 'messaging',     href: 'messaging.html',     icon: 'fa-paper-plane',    label: 'WhatsApp/Email', adminOnly: true },
+            { id: 'calendar',      href: 'calendar.html',      icon: 'fa-calendar',       label: 'Calendar' },
             { id: 'events',        href: 'events.html',        icon: 'fa-calendar-days',  label: 'Events' },
+            { id: 'programs',      href: 'programs.html',      icon: 'fa-ticket',         label: 'Programmes' },
             { id: 'birthdays',     href: 'birthdays.html',     icon: 'fa-cake-candles',   label: 'Birthdays' },
             { id: 'gallery',       href: 'gallery.html',       icon: 'fa-images',         label: 'Photo Gallery' },
             { id: 'polls',         href: 'polls.html',         icon: 'fa-square-poll-vertical', label: 'Polls' },
@@ -77,6 +81,13 @@ const Layout = {
     },
 
     renderSidebar(active, user) {
+        // Self-heal the two-column shell. Five admin pages shipped without
+        // body.app-shell, so on tablets/desktops the sidebar stacked ABOVE the
+        // page instead of beside it (live bug, 24 Sep 2026). Never depend on
+        // every page remembering the class.
+        if (document.body && !document.body.classList.contains('app-shell')) {
+            document.body.classList.add('app-shell');
+        }
         const isAdmin = Auth.isAdmin(user);
         const isLeader = Auth.isUnitLeader(user);
         const navHtml = this._buildNav(active, isAdmin, isLeader);

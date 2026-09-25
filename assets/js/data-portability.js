@@ -9,7 +9,10 @@
 
   const FORMAT = 'dramaconnect-portable-archive';
   const FORMAT_VERSION = 2;
-  const SCHEMA_VERSION = '14.0';
+  const SCHEMA_VERSION = '14.1';
+  // Archives written by these earlier releases still verify and restore: tables
+  // that did not exist yet (marked `since`) are simply absent from them.
+  const LEGACY_SCHEMA_VERSIONS = Object.freeze(['14.0']);
   const PAGE_SIZE = 500;
   const MAX_LOCAL_ARCHIVE_BYTES = 100 * 1024 * 1024;
   const MAX_VAULT_ARCHIVE_BYTES = 50 * 1024 * 1024;
@@ -43,13 +46,27 @@
     { name: 'poll_votes', key: 'id', identity: true },
     { name: 'event_rsvps', key: 'id', identity: true },
     { name: 'gallery', key: 'id' },
-    { name: 'suggestions', key: 'id' }
+    { name: 'suggestions', key: 'id' },
+    // v14.1 — identity cards, programmes, duty roster, member care.
+    { name: 'dc_card_settings', key: 'id', since: '14.1' },
+    { name: 'dc_programs', key: 'id', since: '14.1' },
+    { name: 'dc_member_cards', key: 'member_id', identity: true, since: '14.1' },
+    { name: 'dc_program_registrations', key: 'id', since: '14.1' },
+    { name: 'dc_duty_roster', key: 'id', identity: true, since: '14.1' },
+    { name: 'dc_care_cases', key: 'id', identity: true, since: '14.1' }
   ]);
+
+  /** Table names an archive of `version` must contain, in archive order. */
+  function expectedTablesFor(version) {
+    if (version === SCHEMA_VERSION) return TABLES.map(table => table.name);
+    return TABLES.filter(table => !table.since).map(table => table.name);
+  }
 
   const TABLE_BY_NAME = new Map(TABLES.map(table => [table.name, table]));
   const IDENTITY_TRIGGER_TABLES = new Set(['activity_log', 'inbox', 'gallery', 'suggestions']);
   const DEGRADED_SKIP_TABLES = new Set([
-    'profiles', 'cast_list', 'attendance', 'inbox', 'tasks', 'poll_votes', 'event_rsvps'
+    'profiles', 'cast_list', 'attendance', 'inbox', 'tasks', 'poll_votes', 'event_rsvps',
+    'dc_member_cards', 'dc_duty_roster', 'dc_care_cases'
   ]);
 
   /* ------------------------------------------------------------------------
@@ -80,7 +97,9 @@
 
   // Tables whose rows cannot exist without a live auth user. Re-created by
   // sign-up and re-approval, never imported.
-  const RECOVERY_SKIP_TABLES = new Set(['profiles']);
+  // Rows whose NOT NULL member reference cannot survive without the old Auth
+  // users are skipped (cards are simply re-issued; rosters/cases re-created).
+  const RECOVERY_SKIP_TABLES = new Set(['profiles', 'dc_member_cards', 'dc_duty_roster', 'dc_care_cases']);
 
   // Column-level neutralisation. Ownership/audit metadata only — never drama
   // data such as names, dates, status, amounts or script assignments.
@@ -94,7 +113,9 @@
     inbox: ['recipient_id', 'sender_id'],
     poll_votes: ['voter_id'],
     suggestions: ['author_id'],
-    tasks: ['assignee_id']
+    tasks: ['assignee_id'],
+    dc_programs: ['created_by'],
+    dc_program_registrations: ['member_id', 'checked_in_by']
   });
 
   const db = () => window.supabaseClient;
@@ -163,7 +184,7 @@
   }
 
   function appVersion() {
-    return document.querySelector('meta[name="app-version"]')?.content || '14.0';
+    return document.querySelector('meta[name="app-version"]')?.content || '14.1';
   }
 
   async function buildArchive(options = {}) {
@@ -236,7 +257,8 @@
     if (!isPlainRecord(archive)) throw new Error('The selected file is not a JSON object.');
     if (archive.format !== FORMAT) errors.push(`Unsupported archive format: ${archive.format || 'missing'}.`);
     if (archive.formatVersion !== FORMAT_VERSION) errors.push(`Unsupported format version: ${archive.formatVersion ?? 'missing'}.`);
-    if (!isPlainRecord(archive.application) || archive.application.schemaVersion !== SCHEMA_VERSION) {
+    const archiveVersion = isPlainRecord(archive.application) ? archive.application.schemaVersion : undefined;
+    if (archiveVersion !== SCHEMA_VERSION && !LEGACY_SCHEMA_VERSIONS.includes(archiveVersion)) {
       errors.push(`Unsupported schema version: ${archive.application?.schemaVersion ?? 'missing'}.`);
     }
     if (!isPlainRecord(archive.manifest) || !isPlainRecord(archive.data)) errors.push('Archive manifest or data section is missing.');
@@ -247,7 +269,10 @@
     }
     if (errors.length) return { ok: false, errors, warnings };
 
-    const expectedNames = TABLES.map(table => table.name);
+    const expectedNames = expectedTablesFor(archiveVersion);
+    if (archiveVersion !== SCHEMA_VERSION) {
+      warnings.push(`This archive was written by schema ${archiveVersion}; tables added later (${TABLES.filter(t => t.since).map(t => t.name).join(', ')}) are not in it and will be left untouched.`);
+    }
     const listedNames = Array.isArray(archive.manifest.expectedTables) ? archive.manifest.expectedTables : [];
     if (listedNames.length !== expectedNames.length || listedNames.some((name, index) => name !== expectedNames[index])) {
       errors.push('Expected-table manifest is incomplete, duplicated, extra, or out of order.');
@@ -266,7 +291,7 @@
     let totalRows = 0;
     for (const definition of TABLES) {
       const rows = archive.data[definition.name];
-      if (!Array.isArray(rows)) continue;
+      if (!Array.isArray(rows) || !expectedNames.includes(definition.name)) continue;
       const item = manifestTables.get(definition.name);
       if (!item) {
         errors.push(`${definition.name}: table manifest is missing.`);
@@ -295,7 +320,7 @@
     if (!Number.isSafeInteger(archive.manifest.totalRows) || archive.manifest.totalRows !== totalRows) {
       errors.push('Total row count does not match the manifest.');
     }
-    if (!Number.isSafeInteger(archive.manifest.tableCount) || archive.manifest.tableCount !== TABLES.length) {
+    if (!Number.isSafeInteger(archive.manifest.tableCount) || archive.manifest.tableCount !== expectedNames.length) {
       errors.push('Table count does not match this DramaConnect archive version.');
     }
     if (!archive.application?.exportedAt || !Number.isFinite(Date.parse(archive.application.exportedAt))) {
@@ -313,7 +338,8 @@
       warnings,
       digest,
       totalRows,
-      tableCount: TABLES.length,
+      tableCount: expectedNames.length,
+      schemaVersion: archiveVersion,
       exportedAt: archive.application?.exportedAt || null
     };
   }
@@ -400,6 +426,8 @@
       if (DEGRADED_SKIP_TABLES.has(table)) return [];
       if (table === 'suggestions') return rows.map(row => ({ ...row, author_id: null }));
       if (table === 'gallery') return rows.map(row => ({ ...row, uploaded_by_id: null }));
+      if (table === 'dc_programs') return rows.map(row => ({ ...row, created_by: null }));
+      if (table === 'dc_program_registrations') return rows.map(row => ({ ...row, member_id: null, checked_in_by: null }));
       return rows;
     }
 

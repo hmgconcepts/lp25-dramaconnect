@@ -766,7 +766,7 @@ const DB = {
 
     /**
      * Export the entire department dataset using the shared portable-archive
-     * engine: all 25 tables, stable pagination, completeness manifest and
+     * engine: all 31 tables, stable pagination, completeness manifest and
      * SHA-256 integrity seal. Kept here as a compatibility entry point.
      */
     async exportAll(options = {}) {

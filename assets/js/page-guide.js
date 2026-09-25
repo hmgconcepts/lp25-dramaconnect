@@ -86,20 +86,31 @@ const PAGE_GUIDE = {
   },
 
   idcard: {
-    icon: "fa-id-card", group: "Workspace", roles: "Every signed-in member (own card)",
-    summary: "Your printable membership card, with photo and a scannable QR code.",
-    purpose: "A branded, printable identity card for every member.",
-    does: "Renders your card on screen using your profile photo and details, embeds a QR code, and prints or saves as PDF in the browser.",
-    who: "Every member prints their own card.",
+    icon: "fa-id-card", group: "Workspace", roles: "Every signed-in member (own card); administrators and unit leaders (card register)",
+    summary: "Your official, verifiable membership card — photo, a scannable Code 128 barcode and a QR code that anyone can check live.",
+    purpose: "Give every member a branded identity card that cannot be forged, can be cancelled centrally and speeds up check-in at rehearsals and programmes.",
+    does: "Issues your card automatically the first time you open it (member number such as DC-000123). The front carries a real Code 128 barcode of the member number for USB or camera scanners; the back carries a QR code that opens the public Verify Card page, which shows live whether the card is valid, expired, suspended or revoked. Administrators and unit leaders get the Card Register (search, reissue, revoke, restore, extend, CSV export); administrators also get Card Design (template, prefix, validity, signatory, back note, phone visibility).",
+    who: "Every member views and prints their own card. Unit leaders manage cards for their unit; administrators manage every card and the design.",
     steps: [
-      "Open My ID Card.",
+      "Open My ID Card — your card is issued automatically.",
       "Confirm your photo and details (fix them on My Profile if needed).",
-      "Click Print / Save as PDF."
+      "Click Print / Save as PDF and print front and back on card stock.",
+      "Administrators: use Card Register to reissue a lost card (the old code stops working at once) or revoke a card when someone leaves.",
+      "Administrators: use Card Design to choose a template, validity period and signatory."
     ],
-    advantages: ["No card printer or vendor required", "The QR code encodes your member identity", "Prints one-per-page for clean cutting"],
-    benefit: "A professional, free ID system that also speeds up attendance check-in.",
-    tips: ["Print on card stock and laminate — the card then lasts a whole season."],
-    related: ["profile", "attendance", "directory"]
+    advantages: [
+      "The barcode is a genuine Code 128 symbol tested against real decoders — it scans on USB scanners and phone cameras",
+      "The QR code carries an unguessable token, not personal data, and opens a live verification page",
+      "Reissue, revoke, restore and extend take effect instantly everywhere — no reprinting of lists",
+      "Works without any paid card service or external QR website"
+    ],
+    benefit: "A professional, verifiable ID system that also makes rehearsal and programme check-in a one-second scan.",
+    tips: [
+      "Print on card stock and laminate — the card then lasts its whole validity period.",
+      "If a card is lost, reissue it: the printed copy immediately verifies as invalid.",
+      "Scanning is done from Attendance (ID Card Scanning Desk) or a programme's check-in desk."
+    ],
+    related: ["verify", "attendance", "profile", "directory"]
   },
 
   help: {
@@ -241,18 +252,20 @@ const PAGE_GUIDE = {
     icon: "fa-user-check", group: "Core Management", roles: "Administrators and unit leaders mark; members see their own",
     summary: "Mark and review rehearsal attendance, including check-in codes and bulk marking.",
     purpose: "Record who actually turned up, and prove it later.",
-    does: "Pick a session and mark each member present, late, absent or excused — individually, in bulk, or via the check-in code an administrator announces. Members can also self-check-in with the code.",
+    does: "Pick a session and mark each member present, late, absent or excused — individually, in bulk, via the check-in code an administrator announces, or by scanning member ID cards at the ID Card Scanning Desk (phone camera, webcam or USB barcode scanner). Scans are recorded by the server, repeats are ignored, and revoked, suspended or expired cards are flagged at the door. Members can also self-check-in with the code.",
     who: "Administrators and unit leaders mark attendance. Members see their own record only.",
     steps: [
       "Open Attendance and choose the rehearsal session.",
       "Mark everyone PRESENT in one click, then correct the exceptions.",
       "Or share the session check-in code so members self-check-in.",
+      "Or open the ID Card Scanning Desk and scan each member's card barcode or QR code as they arrive.",
       "Review history per member on Attendance Analytics."
     ],
     advantages: [
       "Bulk marking takes seconds, not minutes",
       "The check-in code lets a room of forty people self-register",
-      "Excused is distinct from absent, so the statistics stay honest"
+      "Excused is distinct from absent, so the statistics stay honest",
+      "Card scanning checks a member in in about a second and rejects cancelled cards"
     ],
     benefit: "Attendance evidence for casting decisions, discipline and reporting — without a paper register.",
     tips: ["Mark attendance the same day; reconstructing it a week later is unreliable."],
@@ -600,7 +613,7 @@ const PAGE_GUIDE = {
     icon: "fa-database", group: "Administration", roles: "Administrators only",
     summary: "The data-sovereignty centre — verified archives, Google Drive sync, private vault and recovery history.",
     purpose: "Own your data: back it up, prove it is intact, and restore it anywhere.",
-    does: "Exports sealed archives of all 25 tables (SHA-256 verified), backs them up to your own Google Drive on a schedule, keeps a private Supabase vault copy, lists every backup, verifies any archive before restoring it, and runs the 🚑 disaster-recovery wizard onto a fresh database. It also shows the recent backup/restore run history and holds the re-link manifest tools.",
+    does: "Exports sealed archives of all 31 tables (SHA-256 verified), backs them up to your own Google Drive on a schedule, keeps a private Supabase vault copy, lists every backup, verifies any archive before restoring it, and runs the 🚑 disaster-recovery wizard onto a fresh database. It also shows the recent backup/restore run history and holds the re-link manifest tools.",
     who: "Administrators only.",
     steps: [
       "Local tab: export a verified archive, or verify/restore one you already have.",
@@ -735,6 +748,149 @@ const PAGE_GUIDE = {
       "If the email never arrives, check spam and confirm the address you used is the one on your profile."
     ],
     related: ["help", "settings"]
+  },
+
+  "verify": {
+    icon: "fa-shield-halved", group: "Public", roles: "Anyone (no sign-in) — security staff, ushers, partners, visitors",
+    summary: "The public page that tells anyone, live, whether a DramaConnect member card is genuine and currently valid.",
+    purpose: "Let anyone who is shown a member card confirm it is real — without an account and without exposing private details.",
+    does: "Opens when the QR code on the back of a card is scanned. It checks the card's secret token against the department's records at that moment and shows a large coloured verdict — Valid, Expired, Suspended, Revoked or Not found — with only the photo, name, role, unit, member number and dates. You can also scan another card with the camera or type a verification link or token.",
+    who: "Anyone: gate and security volunteers, ushers, host churches, or members checking their own card. It is deliberately outside the signed-in app.",
+    steps: [
+      "Scan the QR code on the back of the card with any phone camera — it opens this page.",
+      "Read the verdict colour and message: green means valid.",
+      "Compare the photo shown with the person presenting the card.",
+      "To check another card, open Check another card and use the camera or paste the link."
+    ],
+    advantages: [
+      "No login, app or account needed",
+      "Shows the live status, so revoked or reissued cards fail immediately",
+      "Reveals no phone number, email or token — only what is printed on the card",
+      "Not indexed by search engines and sends no referrer"
+    ],
+    benefit: "Forged, expired or cancelled cards are caught at the door in seconds.",
+    tips: [
+      "A photocopied card with an old QR code shows Revoked or Not found once the card has been reissued.",
+      "The barcode on the front is for check-in scanners; the QR code on the back is for this verification page."
+    ],
+    related: ["idcard", "attendance"]
+  },
+
+  "programs": {
+    icon: "fa-ticket", group: "Communication", roles: "Administrators and unit leaders manage; every member views and shares",
+    summary: "Special programmes with public online registration links you can post on social media, a check-in desk and attendance insights.",
+    purpose: "Plan special programmes properly by knowing in advance who is coming, then record who actually came and learn from the numbers.",
+    does: "Creates a programme (title, dates, venue, capacity, waitlist, which fields to ask, up to ten custom questions) and gives it a short public link such as register.html?p=easter-drama. The Share kit adds a tracking tag per channel (WhatsApp, Facebook, Instagram, TikTok, X, flyer QR) so you see which post brought people. Registrations get a ticket with a QR code; the Check-in desk scans tickets or member ID cards, handles walk-ins and undoes mistakes. Insights show registrations over time, sources, first-timers, age groups, turnout (show-up rate), feedback ratings and exports to CSV.",
+    who: "Administrators and unit leaders create, edit, share and run check-in. Members see open programmes and can share the links. Only administrators delete programmes.",
+    steps: [
+      "Click New programme, fill in the title, dates, venue and capacity, then choose which fields to ask.",
+      "Set the status to Open — the public link only works while the programme is open.",
+      "Open Share kit and copy the link or the ready-made caption for each social network; download the flyer QR.",
+      "Watch the Registrations tab; move people from the waitlist if seats free up.",
+      "On the day, open Check-in desk and scan each ticket QR or member card (walk-ins can be added in seconds).",
+      "Afterwards, open Insights, switch on feedback, and export the records to CSV."
+    ],
+    advantages: [
+      "Shareable links with per-channel tracking — you know which post worked",
+      "Capacity, waitlist and duplicate-registration protection are enforced by the database",
+      "Registration needs no account; bots are filtered by a hidden honeypot field",
+      "One page covers planning, registration, check-in and insights — no separate tools"
+    ],
+    benefit: "Better planning (seats, refreshments, programmes printed) and honest attendance numbers for every special event.",
+    tips: [
+      "Archive rather than delete finished programmes — archived records still feed Insights.",
+      "Use the flyer QR on printed posters so offline visitors can register too."
+    ],
+    related: ["register", "calendar", "attendance", "events"]
+  },
+
+  "register": {
+    icon: "fa-pen-to-square", group: "Public", roles: "Anyone (no sign-in) — guests, visitors and members",
+    summary: "The public registration page opened from a shared programme link; it also shows your ticket after you register.",
+    purpose: "Let anyone sign up for a special programme from a phone in under a minute and keep a ticket for check-in.",
+    does: "Shows the programme details, a countdown and the seats left, then a short form with only the fields the organisers asked for. After submitting you get a ticket with a QR code and code, which you can save to your calendar, print, share on WhatsApp or use to invite a friend. Opening the ticket link later shows its live status (registered, waitlisted, checked in or cancelled) and, after the event, lets you rate the programme.",
+    who: "Anyone with the link. No account, password or app is needed.",
+    steps: [
+      "Open the link shared by the drama team.",
+      "Fill in the form and tick the consent box.",
+      "Tap Register now (or Join the waitlist if the programme is full).",
+      "Save or screenshot your ticket and show its QR code at the entrance."
+    ],
+    advantages: [
+      "Works on any phone browser without signing in",
+      "Registering twice with the same phone or email returns your existing ticket instead of a duplicate",
+      "Tickets are remembered on your device so you can find them again",
+      "Shares no personal data with third parties and is not indexed by search engines"
+    ],
+    benefit: "Guests register easily and the team knows exactly who to expect.",
+    tips: ["Lost your ticket? Open the same programme link on the same phone — your saved tickets are listed at the bottom."],
+    related: ["programs", "verify"]
+  },
+
+  "calendar": {
+    icon: "fa-calendar", group: "Communication", roles: "Every signed-in member",
+    summary: "One month view that combines rehearsals, events, special programmes, birthdays and your own duties.",
+    purpose: "See everything the department has on in one place so nobody double-books or forgets a date.",
+    does: "Draws a Monday-first month grid from the rehearsal schedule, the events list, open programmes, member birthdays and your duty-roster assignments. Each kind can be switched on or off (remembered on this device). Clicking a day lists its items with links to the page that owns them; a side list shows the next 14 days. The month can be exported as an .ics file for Google, Apple or Outlook calendars, or printed.",
+    who: "Every signed-in member. Items are read from the pages that own them, so edits are made on Rehearsals, Events, Programmes, Birthdays or Duty Roster.",
+    steps: [
+      "Use the arrows (or Alt + ← / →) to change month; Today jumps back.",
+      "Tick or untick the legend to show only what you need.",
+      "Click a day to see its details and follow a link to the owning page.",
+      "Click Export .ics to add the month to your phone calendar."
+    ],
+    advantages: [
+      "Five sources in one view with no duplicate data entry",
+      "Works on phones with a compact dot view",
+      "Export to any calendar app without a paid service"
+    ],
+    benefit: "Fewer clashes and missed dates across the whole department.",
+    tips: ["Programme items link straight to their public registration page, so you can share them from here."],
+    related: ["rehearsals", "events", "programs", "roster", "birthdays"]
+  },
+
+  "roster": {
+    icon: "fa-clipboard-user", group: "Core Management", roles: "Every member sees and answers; administrators and unit leaders assign",
+    summary: "Service duty rota — who is on ushering, props, sound, costume and other duties for each service, with confirmations.",
+    purpose: "Share out service duties fairly and find out early when someone cannot make it, so cover is arranged in time.",
+    does: "Leaders assign one or many members to a role for a date and service, copy the last rota forward a week, reassign, remove or mark duties done or missed, and send WhatsApp reminders. Members see their upcoming duties and answer I'll be there, Can't make it or Request swap (with a short note). The full rota groups duties by date and service, highlights those that need attention and exports to CSV or print.",
+    who: "Every approved member sees the rota and answers their own duties. Administrators and unit leaders create and manage assignments.",
+    steps: [
+      "Leaders: choose the date, service and role, pick the members and click Assign.",
+      "Members: open Duty Roster and confirm each upcoming duty, or decline or request a swap with a note.",
+      "Leaders: watch the 'need attention' badge and use the reassign button to give a declined duty to someone else.",
+      "After the service, mark each duty done or missed."
+    ],
+    advantages: [
+      "Members answer for themselves — no chasing on WhatsApp",
+      "Past dates cannot be answered and duplicates are blocked by the database",
+      "Duties also appear on each member's Calendar"
+    ],
+    benefit: "Every service has its duties covered, and gaps are known days in advance.",
+    tips: ["Use Copy to next week for recurring rotas, then tweak only the changes."],
+    related: ["calendar", "rehearsals", "tasks"]
+  },
+
+  "care": {
+    icon: "fa-hand-holding-heart", group: "Core Management", roles: "Administrators and unit leaders only",
+    summary: "Pastoral care and follow-up — spot members who keep missing rehearsals, reach out, and log every follow-up until resolved.",
+    purpose: "Make sure no member quietly drifts away or goes through illness, bereavement or hardship without anyone checking in.",
+    does: "The Missing members tab lists people who missed their most recent marked rehearsals in a row (you choose how many), with call and WhatsApp buttons and a one-click Open case. Cases record a reason (absence, welfare, illness, bereavement, celebration, new member, other), priority, who is responsible and a dated history of every note and status change (open, contacted, visited, resolved). Counters show active, high-priority and stale cases; the list exports to CSV.",
+    who: "Unit leaders see and manage cases for members of their own unit or cases assigned to them; administrators see every case and are the only ones who can delete.",
+    steps: [
+      "Open Missing members and choose the threshold (for example 3 rehearsals).",
+      "Call or WhatsApp the member, then click Open case and write a short summary.",
+      "Open the case after each contact and save a follow-up note, changing the status as it progresses.",
+      "Mark the case Resolved when the member is back or no longer needs support."
+    ],
+    advantages: [
+      "Absences are only counted for rehearsals that actually had attendance marked, and only since the member joined",
+      "Private: ordinary members can never see care records",
+      "A full history means a new leader can pick up any case"
+    ],
+    benefit: "A caring department where every absence gets a friendly call and nobody falls through the cracks.",
+    tips: ["Check the 'No update for 7+ days' counter weekly — it shows cases that have gone quiet."],
+    related: ["attendance", "analytics", "myunit", "members"]
   }
 };
 
@@ -861,7 +1017,7 @@ const PageGuide = {
     btn.title = 'Explain this page (press ?)';
     btn.setAttribute('aria-label', 'Explain this page');
     btn.innerHTML = '<i class="fas fa-circle-question"></i><span>Page guide</span>';
-    btn.style.cssText = 'position:fixed;left:18px;bottom:18px;z-index:9997;display:inline-flex;align-items:center;gap:8px;' +
+    btn.style.cssText = 'position:fixed;left:18px;bottom:18px;z-index:9989;display:inline-flex;align-items:center;gap:8px;' +
       'padding:11px 16px;border:none;border-radius:999px;cursor:pointer;font-size:13px;font-weight:700;' +
       'color:#fff;background:linear-gradient(135deg,#2563eb,#7c3aed);box-shadow:0 10px 24px rgba(37,99,235,.35)';
     btn.addEventListener('click', () => this.open());

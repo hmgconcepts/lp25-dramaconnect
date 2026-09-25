@@ -169,7 +169,7 @@ html.dark .enterprise-table thead th { background-color: #1a2335; }
 .btn-sm { padding: .45rem .7rem; border-radius: .6rem; font-size: .75rem; }
 
 /* ---- Badges ---- */
-.badge { padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; }
+.badge { display: inline-flex; align-items: center; line-height: 1.25; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; }
 .badge-admin { background:#dbeafe; color:#1d4ed8; }
 .badge-member { background:#f1f5f9; color:#475569; }
 .badge-green { background:#dcfce7; color:#15803d; }
@@ -180,6 +180,7 @@ html.dark .enterprise-table thead th { background-color: #1a2335; }
 .badge-danger { background:#fee2e2; color:#991b1b; }
 
 /* ---- Visibility helpers ---- */
+/* .admin-only is shown by setting el.style.display; pages that toggle the Tailwind `hidden` class must use .dc-admin-only instead. */
 .admin-only { display: none; }
 .hidden { display: none !important; }
 
@@ -250,6 +251,13 @@ html.dark .enterprise-table thead th { background-color: #1a2335; }
     .app-drawer  { display: none !important; }  /* never show drawer on desktop */
     .nav-toggle  { display: none !important; }
 }
+
+/* Page-guide button: clear the fixed desktop sidebar (its footer holds Sign Out / Powered by)
+   and sit beneath the mobile drawer (z 9990) so it never covers navigation. */
+@media (min-width: 1024px) {
+    body.app-shell #dc-page-help-btn { left: calc(16rem + 18px) !important; }
+}
+body:has(.app-drawer.open) #dc-page-help-btn { display: none !important; }
 
 /* ---- Fallback while the Tailwind CDN is still loading ----
    If Tailwind hasn't applied yet, ensure the page is still usable. */

@@ -127,7 +127,9 @@
         p_lockdown_enabled: Boolean(values.lockdown_enabled),
         p_lockdown_message: String(values.lockdown_message || ''),
         p_idle_timeout_minutes: Number(values.idle_timeout_minutes),
-        p_login_audit_retention_days: Number(values.login_audit_retention_days)
+        // Omitted/blank → null → the RPC keeps the Storage Manager's value.
+        p_login_audit_retention_days: (values.login_audit_retention_days === undefined || values.login_audit_retention_days === null || values.login_audit_retention_days === '')
+          ? null : Number(values.login_audit_retention_days)
       });
     },
 

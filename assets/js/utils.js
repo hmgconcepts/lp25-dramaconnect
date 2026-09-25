@@ -21,14 +21,22 @@ const Utils = {
     exportToCSV(data, filename = 'report.csv') {
         if (!data || !data.length) { UI.toast('There is no data to export.', 'warning'); return; }
         const cols = Object.keys(data[0]);
-        const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const rows = [cols.join(','), ...data.map(r => cols.map(c => escape(r[c])).join(','))];
-        const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        // Formula-injection guard: public form input (e.g. programme
+        // registrations) must never execute when the file is opened in
+        // Excel/Sheets, so cells starting with = + - @ TAB CR are prefixed.
+        const escape = v => {
+            let text = String(v ?? '');
+            if (/^[=+\-@\t\r]/.test(text) && !/^-?\d+(\.\d+)?$/.test(text)) text = "'" + text;
+            return `"${text.replace(/"/g, '""')}"`;
+        };
+        const rows = [cols.map(escape).join(','), ...data.map(r => cols.map(c => escape(r[c])).join(','))];
+        // BOM so Excel opens UTF-8 names (e.g. Yorùbá diacritics) correctly.
+        const blob = new Blob(['\ufeff' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = filename;
         link.click();
-        URL.revokeObjectURL(link.href);
+        setTimeout(() => URL.revokeObjectURL(link.href), 1500);
         UI.toast('CSV file downloaded.', 'success');
     },
 

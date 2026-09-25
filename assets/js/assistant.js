@@ -38,6 +38,53 @@
    * ---------------------------------------------------------------------- */
   const KB = [
     {
+      m: ['programme', 'program', 'special program', 'registration link', 'register for', 'share link', 'social media', 'ticket', 'check-in desk', 'walk-in', 'insights'],
+      t: 'Special programmes',
+      r: '**Programmes live on one page: Programmes.** The public form is the Register page.\n\n' +
+         '1. **New programme**: set the date, venue, capacity, waitlist, required fields and up to 10 questions, then set Status to **Open**.\n' +
+         '2. **Share**: copy the link for each channel (WhatsApp, Facebook, Instagram, X, TikTok, e-mail, SMS, QR poster). Each link carries `&src=channel`, so Insights shows which channel worked.\n' +
+         '3. Guests register **without an account** and get a QR ticket plus an 8-character code.\n' +
+         '4. On the day, use the **Check-in desk** to scan tickets with a camera or USB scanner, type codes, or add walk-ins.\n' +
+         '5. **Insights** shows turnout, first-timers, no-shows, channels, gender, age groups, arrivals per hour and ratings. Export the list to CSV.',
+      p: 'programs', chips: ['Do guests need an account?', 'How do I get my ID card?']
+    },
+    {
+      m: ['guests need an account', 'guest', 'public registration', 'my ticket', 'lost ticket'],
+      t: 'Registering as a guest',
+      r: '**No account is needed.** Open the programme link, fill in the short form and you receive a ticket with a QR code.\n\n' +
+         'The ticket is remembered on that phone: open the same link again and your tickets are listed at the bottom. After the event the ticket link lets you rate the programme.',
+      p: 'register', chips: ['Special programmes']
+    },
+    {
+      m: ['id card', 'barcode', 'qr code', 'verify card', 'scan card', 'revoke', 'reissue', 're-issue', 'lost card', 'fake card'],
+      t: 'ID cards and scanning',
+      r: '**Your card has two codes.**\n\n' +
+         '• The **QR code** opens the Verify page, which shows VALID, EXPIRED or REVOKED. It holds only a random token, never your phone number or address.\n' +
+         '• The **Code 128 barcode** holds your member number. Leaders scan it on Attendance → **Scan ID Cards** to mark you present.\n\n' +
+         'Lost card? An administrator presses **Re-issue** on the ID Card page. The old card stops verifying immediately.\n' +
+         'Barcode not scanning? Print at 100% scale on white paper and keep the white margin around the bars.',
+      p: 'idcard', chips: ['How do I check in to a rehearsal?', 'Special programmes']
+    },
+    {
+      m: ['roster', 'duty', 'duties', 'ushering', 'swap', 'rota'],
+      t: 'Duty roster',
+      r: '**Duties are on the Duty Roster page.**\n\n' +
+         'Members tap **Confirm**, **Decline** or **Request swap** (the last two need a short reason). Admins and unit leaders pick a date, service and role, tick several members and press **Assign**. Your duties also appear on the Calendar.',
+      p: 'roster', chips: ['Can I add rehearsals to my phone calendar?']
+    },
+    {
+      m: ['calendar', 'ics', 'phone calendar', 'month view', 'google calendar'],
+      t: 'Calendar',
+      r: '**The Calendar combines rehearsals, events, open programmes, birthdays and your own duties in one month view.**\n\nTap a day for its list, or **Download .ics** to add everything to Google, Apple or Outlook calendars. Edits are made on the owning page (Rehearsals, Events, Programmes, Roster).',
+      p: 'calendar', chips: ['Duty roster']
+    },
+    {
+      m: ['care', 'follow up', 'follow-up', 'absent', 'absentee', 'missing members', 'welfare', 'visit'],
+      t: 'Care & follow-up',
+      r: '**Care & Follow-up is for administrators and unit leaders.**\n\nThe *Missing members* tab lists people who have missed several rehearsals in a row. Press **Open case**, contact them with the pre-filled WhatsApp link, and log each step (contacted → visited → resolved). Ordinary members cannot open this page, and the database enforces the same rule.',
+      p: 'care', chips: ['Duty roster']
+    },
+    {
       m: ['backup', 'back up', 'export data', 'save data', 'make a backup', 'archive'],
       t: 'Backing up',
       r: '**Backups live on one page: Admin Data.**\n\n' +
