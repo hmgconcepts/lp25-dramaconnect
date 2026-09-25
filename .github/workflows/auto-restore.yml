@@ -1,3 +1,17 @@
+# Layer 10 — Supabase paused-project recovery watchdog (self-configuring)
+#
+# Live audit (24 Sep 2026): every run failed at step 2 because four secrets
+# were required, so the watchdog neither restored nor heartbeated.
+#
+# v14.1 behaviour — two modes:
+#   • Heartbeat-only (no secrets): writes an 'auto-restore' heartbeat every
+#     12 hours using the public URL/anon key from assets/js/config.js.
+#   • Full restore (add SUPABASE_ACCESS_TOKEN): asks the Management API for
+#     the project status, calls the official restore endpoint when paused,
+#     polls up to 10 minutes for ACTIVE_HEALTHY, then heartbeats.
+# The project ref is derived from the URL unless SUPABASE_PROJECT_REF is set.
+# See docs/SUPABASE_FREE_TIER_PROTECTION.md → Layer 10.
+
 name: Supabase paused-project recovery watchdog
 
 on:
@@ -14,52 +28,73 @@ concurrency:
 
 jobs:
   recover:
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Inspect and restore project when inactive
+      - uses: actions/checkout@v5
+
+      - name: Inspect, restore if paused, then heartbeat
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          S_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          S_URL: ${{ secrets.SUPABASE_URL }}
+          S_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          V_URL: ${{ vars.SUPABASE_URL }}
+          V_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: |
-          set -euo pipefail
-          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_ANON_KEY; do
-            test -n "${!name:-}" || { echo "Missing required secret: $name" >&2; exit 1; }
-          done
+          set -uo pipefail
+          cfg=assets/js/config.js
+          url="${S_URL:-${V_URL:-}}"; key="${S_KEY:-${V_KEY:-}}"
+          [ -z "$url" ] && [ -f "$cfg" ] && url="$(grep -oE 'https://[a-z0-9]{20}\.supabase\.co' "$cfg" | head -1 || true)"
+          [ -z "$key" ] && [ -f "$cfg" ] && key="$(grep -oE 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$cfg" | head -1 || true)"
+          [ -n "$key" ] && echo "::add-mask::$key"
+          ref="${S_REF:-$(printf '%s' "$url" | sed -nE 's#https://([a-z0-9]{20})\.supabase\.co.*#\1#p')}"
 
-          api="https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF"
-          project="$(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$api")"
-          status="$(printf '%s' "$project" | jq -r '.status // empty')"
-          echo "Supabase project status: ${status:-unknown}"
+          heartbeat() {
+            [ -n "$url" ] && [ -n "$key" ] || return 1
+            code=$(curl -sS -o /tmp/hb.json -w '%{http_code}' --connect-timeout 10 --max-time 25 \
+              -X POST "$url/rest/v1/rpc/dc_keep_alive" \
+              -H "apikey: $key" -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+              --data '{"p_source":"auto-restore"}' || echo 000)
+            [ "$code" = "200" ] && jq -e '.ok == true' /tmp/hb.json >/dev/null 2>&1
+          }
 
-          case "$status" in
-            ACTIVE_HEALTHY|ACTIVE_UNHEALTHY)
-              echo 'Project is active; no restoration requested.'
-              ;;
-            INACTIVE)
-              echo 'Project is inactive; requesting official Management API restore.'
-              curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
-                -X POST -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-                -H 'Content-Type: application/json' "$api/restore" >/dev/null
-              ;;
-            COMING_UP|RESTORING|UPGRADING|PAUSING)
-              echo 'Project is already transitioning; leaving it untouched.'
-              ;;
-            *)
-              echo "Unknown or empty project status: $status" >&2
+          if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] && [ -n "$ref" ]; then
+            api="https://api.supabase.com/v1/projects/$ref"
+            code=$(curl -sS -o /tmp/p.json -w '%{http_code}' --connect-timeout 10 --max-time 30 \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$api" || echo 000)
+            if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              echo "::error title=Invalid access token::The Management API rejected SUPABASE_ACCESS_TOKEN (HTTP $code). Create a new token at supabase.com/dashboard/account/tokens and update the secret."
               exit 1
-              ;;
-          esac
+            fi
+            status="$(jq -r '.status // empty' /tmp/p.json 2>/dev/null || true)"
+            echo "Management API HTTP $code — project status: ${status:-unknown}"
+            case "$status" in
+              INACTIVE|PAUSED)
+                echo "Project is paused → requesting the official restore."
+                curl -sS --fail-with-body --connect-timeout 10 --max-time 30 -X POST \
+                  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H 'Content-Type: application/json' "$api/restore" >/dev/null || {
+                  echo "::error::Restore request was rejected."; exit 1; }
+                for i in $(seq 1 20); do
+                  sleep 30
+                  status="$(curl -sS --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$api" | jq -r '.status // empty' || true)"
+                  echo "…poll $i: $status"
+                  [ "$status" = "ACTIVE_HEALTHY" ] && break
+                done
+                [ "$status" = "ACTIVE_HEALTHY" ] || { echo "::error::Project did not become healthy within 10 minutes (last: $status)."; exit 1; }
+                sleep 20 ;;
+              COMING_UP|RESTORING|UPGRADING|PAUSING|RESTARTING)
+                echo "Project is transitioning ($status); a later run will verify it."; exit 0 ;;
+              ACTIVE_HEALTHY|ACTIVE_UNHEALTHY) echo "Project is up." ;;
+              *) echo "::warning::Unexpected status '${status:-none}' (HTTP $code). Continuing with a heartbeat." ;;
+            esac
+          else
+            echo "::notice title=Heartbeat-only mode::SUPABASE_ACCESS_TOKEN is not set, so this run cannot restore a paused project — it only records a heartbeat. Add the secret to enable automatic restore (docs/SUPABASE_FREE_TIER_PROTECTION.md → Layer 10)."
+          fi
 
-          # If the data API is already reachable, record this watchdog layer.
-          # Failure here is non-fatal when a newly restored project is still booting.
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 25 \
-            -X POST "$SUPABASE_URL/rest/v1/rpc/dc_keep_alive" \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-            -H 'Content-Type: application/json' \
-            --data '{"p_source":"auto-restore"}' >/dev/null \
-            || echo 'Project API is not ready yet; the next watchdog run will verify it.'
+          for attempt in 1 2 3; do
+            if heartbeat; then echo "✅ auto-restore heartbeat written: $(cat /tmp/hb.json)"; exit 0; fi
+            sleep $((attempt * 15))
+          done
+          echo "::warning title=Heartbeat not accepted::HTTP ${code:-none} $(head -c 300 /tmp/hb.json 2>/dev/null || true). If the project is paused add SUPABASE_ACCESS_TOKEN; if never installed run database/complete-schema.sql."
+          exit 0

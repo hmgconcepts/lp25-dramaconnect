@@ -14,35 +14,65 @@ concurrency:
 
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Validate backup secrets
+      # v14.1: the dump is OPT-IN. Live audit showed this workflow failing red on
+      # every run without secrets. Now: missing backup secrets → green run with a
+      # notice, and the anti-pause heartbeat (source 'database-backup') is still
+      # written using secrets → variables → assets/js/config.js.
+      - name: Check whether unattended backup is configured (opt-in)
+        id: gate
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          S_URL: ${{ secrets.SUPABASE_URL }}
+          S_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          V_URL: ${{ vars.SUPABASE_URL }}
+          V_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: |
-          set -euo pipefail
-          for name in SUPABASE_DB_URL RCLONE_CONFIG_BASE64 BACKUP_PASSPHRASE SUPABASE_URL SUPABASE_ANON_KEY; do
-            test -n "${!name:-}" || { echo "Missing required secret: $name" >&2; exit 1; }
+          set -uo pipefail
+          cfg=assets/js/config.js
+          url="${S_URL:-${V_URL:-}}"; key="${S_KEY:-${V_KEY:-}}"
+          [ -z "$url" ] && [ -f "$cfg" ] && url="$(grep -oE 'https://[a-z0-9]{20}\.supabase\.co' "$cfg" | head -1 || true)"
+          [ -z "$key" ] && [ -f "$cfg" ] && key="$(grep -oE 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$cfg" | head -1 || true)"
+          [ -n "$key" ] && echo "::add-mask::$key"
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' "$url" "$key" > "$RUNNER_TEMP/sb.env"
+          { [ -n "$url" ] && [ -n "$key" ] && echo "hb=true" || echo "hb=false"; } >> "$GITHUB_OUTPUT"
+          missing=""
+          for name in SUPABASE_DB_URL RCLONE_CONFIG_BASE64 BACKUP_PASSPHRASE; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
           done
-          test "${#BACKUP_PASSPHRASE}" -ge 20 || { echo 'BACKUP_PASSPHRASE must contain at least 20 characters.' >&2; exit 1; }
+          if [ -n "$missing" ]; then
+            echo "::notice title=Unattended backup not enabled::Optional secrets not set:$missing. In-app backups (Admin Data → Backup) still work. To enable this weekly encrypted off-site backup follow docs/BACKUP_AND_RECOVERY.md → 'Unattended encrypted backup to Google Drive'."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${#BACKUP_PASSPHRASE}" -lt 20 ]; then
+            echo "::error::BACKUP_PASSPHRASE must contain at least 20 characters."; exit 1
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Heartbeat (runs even when backup is not enabled)
+        if: steps.gate.outputs.hb == 'true'
+        run: |
+          . "$RUNNER_TEMP/sb.env"
+          curl -sS --fail --connect-timeout 10 --max-time 25 -X POST "$SUPABASE_URL/rest/v1/rpc/dc_keep_alive" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H 'Content-Type: application/json' --data '{"p_source":"database-backup"}' || echo "::warning::Heartbeat not accepted."
 
       - name: Install connection, encryption and transfer clients
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client rclone gnupg
 
       - name: Create, encrypt, upload and remotely verify backups
+        if: steps.gate.outputs.enabled == 'true'
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
           RCLONE_REMOTE_NAME: ${{ secrets.RCLONE_REMOTE_NAME }}
@@ -50,6 +80,7 @@ jobs:
           BACKUP_RETENTION_DAYS: ${{ secrets.BACKUP_RETENTION_DAYS }}
         run: |
           set -euo pipefail
+          set -a; . "$RUNNER_TEMP/sb.env"; set +a
           umask 077
           work="$(mktemp -d)"
           trap 'rm -rf "$work"' EXIT
@@ -129,11 +160,6 @@ jobs:
             --include 'dramaconnect-auth-*.data.dump.gpg' --include 'dramaconnect-auth-*.data.dump.gpg.sha256' \
             --include 'dramaconnect-storage-*.tar.gpg' --include 'dramaconnect-storage-*.tar.gpg.sha256'
 
-          response="$(curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 25 \
-            -X POST "$SUPABASE_URL/rest/v1/rpc/dc_keep_alive" \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-            -H 'Content-Type: application/json' \
-            --data '{"p_source":"database-backup"}')"
-          printf '%s' "$response" | jq -e '.ok == true' >/dev/null
+          # The heartbeat was already written in its own step; a backup's success
+          # is decided by the upload + remote check above, not by the heartbeat.
           echo "Encrypted unattended backup set uploaded and remotely verified at $stamp."

@@ -1,0 +1,88 @@
+# Layer 8 — Deploy Supabase Edge Functions from the GitHub website (no CLI)
+#
+# Live audit (24 Sep 2026): the `ping` Edge Function (Layer 8) had never been
+# deployed — https://<ref>.supabase.co/functions/v1/ping returned 404 — so
+# UptimeRobot / cron-job.org had nothing to call.
+#
+# Needs ONE repository secret: SUPABASE_ACCESS_TOKEN
+#   (supabase.com/dashboard/account/tokens). The project ref is read from
+#   assets/js/config.js unless SUPABASE_PROJECT_REF is set.
+# verify_jwt settings come from supabase/config.toml (ping = public).
+# Runs manually, and automatically when a function's code changes on main.
+# See docs/SUPABASE_FREE_TIER_PROTECTION.md → Layer 8.
+
+name: Deploy Supabase Edge Functions
+
+on:
+  workflow_dispatch:
+    inputs:
+      functions:
+        description: 'Space-separated function names (ping birthday-bot run-reminders notify-approval admin-create-member)'
+        required: true
+        default: 'ping'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'supabase/config.toml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dramaconnect-deploy-edge
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check access token
+        id: gate
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::warning title=SUPABASE_ACCESS_TOKEN not set::Add it under Settings → Secrets and variables → Actions to deploy Edge Functions (docs/SUPABASE_FREE_TIER_PROTECTION.md → Layer 8)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.ok == 'true'
+        with:
+          version: latest
+
+      - name: Deploy and self-test
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          S_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          FUNCS: ${{ github.event.inputs.functions || 'ping' }}
+        run: |
+          set -uo pipefail
+          cfg=assets/js/config.js
+          url="$(grep -oE 'https://[a-z0-9]{20}\.supabase\.co' "$cfg" | head -1 || true)"
+          ref="${S_REF:-$(printf '%s' "$url" | sed -nE 's#https://([a-z0-9]{20})\.supabase\.co.*#\1#p')}"
+          [ -n "$ref" ] || { echo "::error::No project ref: set SUPABASE_PROJECT_REF or fill in assets/js/config.js."; exit 1; }
+          deployed=""
+          for fn in $FUNCS; do
+            [ -d "supabase/functions/$fn" ] || { echo "::error::supabase/functions/$fn does not exist."; exit 1; }
+            extra=""; [ "$fn" != "admin-create-member" ] && extra="--no-verify-jwt"
+            supabase functions deploy "$fn" --project-ref "$ref" $extra --use-api || { echo "::error::Deploy of $fn failed."; exit 1; }
+            deployed="$deployed $fn"
+          done
+          echo "✅ Deployed:$deployed"
+          case " $deployed " in *" ping "*)
+            ping="https://$ref.supabase.co/functions/v1/ping"
+            echo "Ping URL for UptimeRobot / cron-job.org: $ping"
+            sleep 5
+            code=$(curl -sS -o /tmp/ping.json -w '%{http_code}' --max-time 30 "$ping?source=edge-ping" || echo 000)
+            echo "Self-test → HTTP $code $(cat /tmp/ping.json 2>/dev/null || true)"
+            [ "$code" = "401" ] && echo "::notice::PING_SECRET is set — monitors must call $ping?token=YOUR_SECRET"
+            ;;
+          esac
