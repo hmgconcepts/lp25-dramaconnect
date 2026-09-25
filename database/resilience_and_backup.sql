@@ -463,6 +463,20 @@ DO $$
 DECLARE
   v_job_id bigint;
 BEGIN
+  -- Enable pg_cron when the platform offers it (Supabase does). Earlier
+  -- releases only scheduled the job if someone had ALREADY enabled the
+  -- extension by hand, so on most projects this layer silently never ran.
+  -- SchoolConnect/GOSA create the extension here; DramaConnect now does too.
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+     AND EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron') THEN
+    BEGIN
+      CREATE EXTENSION IF NOT EXISTS pg_cron;
+      RAISE NOTICE 'pg_cron extension enabled for the internal heartbeat layer.';
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'pg_cron could not be enabled automatically (%). Enable it under Database -> Extensions, then re-run this file.', SQLERRM;
+    END;
+  END IF;
+
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
     FOR v_job_id IN
       SELECT jobid FROM cron.job WHERE jobname = 'dramaconnect-internal-heartbeat'
@@ -480,7 +494,7 @@ BEGIN
     RAISE NOTICE 'pg_cron is not enabled. External heartbeat layers remain available.';
   END IF;
 EXCEPTION
-  WHEN insufficient_privilege OR undefined_table OR undefined_function THEN
+  WHEN OTHERS THEN
     RAISE NOTICE 'pg_cron scheduling skipped: %', SQLERRM;
 END;
 $$;
@@ -580,6 +594,22 @@ BEGIN
     -- actually running. Two or more means a single failure cannot pause you.
     'quorum', (v_fresh >= 2),
     'singlePointOfFailure', (v_fresh = 1),
+    -- Human-driven sources (site visits, the manual button, ad-hoc external
+    -- calls) stop during holidays. Only UNATTENDED schedulers protect an idle
+    -- project, so they are counted separately. A live audit found a project
+    -- reporting quorum from human traffic while every scheduler was failing.
+    'automatedSourcesFresh', (
+      SELECT count(*) FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+       WHERE (e.value ->> 'fresh') = 'true'
+         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external')),
+    'automatedQuorum', ((
+      SELECT count(*) FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+       WHERE (e.value ->> 'fresh') = 'true'
+         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external')) >= 2),
+    'neverReported', (
+      SELECT COALESCE(pg_catalog.jsonb_agg(x ORDER BY x), '[]'::jsonb)
+      FROM pg_catalog.unnest(ARRAY['github-actions','vercel-cron','pg-cron','auto-restore','edge-ping','cron-job-org','apps-script']) AS x
+      WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.jsonb_array_elements(v_sources) AS e WHERE (e.value ->> 'source') = x)),
     'silentSources', COALESCE((
       SELECT pg_catalog.jsonb_agg(e.value ->> 'source' ORDER BY e.value ->> 'source')
       FROM pg_catalog.jsonb_array_elements(v_sources) AS e

@@ -43,7 +43,7 @@ with its fix.
 ```
    DramaConnect (in an administrator's browser)
         │
-        │  1. builds a verified archive of all 25 tables
+        │  1. builds a verified archive of all 31 tables
         │  2. seals it with a SHA-256 checksum
         │  3. uploads it to Google Drive
         │  4. downloads it back and re-verifies the checksum
@@ -756,4 +756,4 @@ Defence in depth means **no single failure loses your data**.
 
 ---
 
-*Last reviewed for DramaConnect v14.0 · every tool in this guide is free.*
+*Last reviewed for DramaConnect v14.1 · every tool in this guide is free.*

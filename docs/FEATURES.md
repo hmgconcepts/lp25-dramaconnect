@@ -1,4 +1,4 @@
-# 📖 DramaConnect Enterprise v14.0 — Detailed Feature Guide
+# 📖 DramaConnect Enterprise v14.1 — Detailed Feature Guide
 
 This document explains **every feature** in the system: what it does, who can use
 it, where to find it, and how it works under the hood. All features run on
@@ -479,6 +479,8 @@ it, where to find it, and how it works under the hood. All features run on
 - A branded RCCG LP 25 Drama **membership card** with the member's name, role,
   unit, contact, a short ID, and a **QR code** (encodes name + ID for quick
   verification). **Print or Save as PDF** in one click.
+- **Superseded in v14.1** by the verifiable two-sided card described in §52 below
+  (the print/PDF behaviour is kept and extended, nothing was removed).
 
 ## 36. Profile Photo Uploads (NEW in v12)
 
@@ -780,3 +782,143 @@ as a generation receipt and next-steps pointer.
 | **What is deliberately not included?** | Centralised billing, a tenant-provisioning API, and server-side licence signing. All three require a paid control plane. They are the natural next step when the product outgrows free tooling, and the generator's receipt format is designed so that a provisioning service can be added later without changing the output contract. |
 | **What is the honest limitation?** | Browser-hosted licence enforcement is alterable by a determined operator. This is stated in the product, not hidden. Use `registry_url` when tamper-resistance matters. |
 
+
+---
+
+# 🎭 Part III — v14.1: Identity, Programmes and Team Operations
+
+Every capability below has **exactly one owner page** (Item 17 rule). Other pages link to it
+rather than copy it. All of it runs on Supabase free tier + static hosting, with vendored
+open-source libraries (qrcode-generator, jsQR, ZXing) and **no AI API**.
+
+## 52. Verifiable ID Card v2 (`pages/idcard.html`)
+
+- **Who:** every approved member sees *My Card*. Administrators also get the **Card Register**
+  and **Card Design & Policy** tabs.
+- **Front and back.** Photo, name, role, unit, member number (`DC-000123`), issue and expiry dates,
+  and a status ribbon. Switch the view between Both sides / Front / Back. Print a single card or a
+  batch, either front + back side by side or as a sheet, and save it as a PDF from the print dialog.
+- **Two machine-readable codes, both tested with real decoders:**
+  - **QR code** holds the public verification link `pages/verify.html?t=<32-hex token>`. Any
+    phone camera opens it. The card never contains personal data, only the token.
+  - **Code 128 barcode** holds the member number. It is generated in-house (`assets/js/dc-codes.js`)
+    with the correct check digit, quiet zones and a minimum module width, so cheap USB/Bluetooth
+    laser scanners read it. The test suite round-trips every generated barcode through the ZXing
+    decoder (`npm run test:codes`).
+- **Life-cycle (admins):** issue, re-issue (the old token stops working at once), revoke with a
+  reason, restore, and extend expiry. Each action is written to the audit trail by
+  `dc_admin_card_action`.
+- **Policy:** template, accent colour, validity in months, back-of-card text and emergency line,
+  all stored in `dc_card_settings`.
+- **Why it beats the reference card:** SchoolConnect's card is a static image. This one is
+  **live**: a lost or revoked card fails verification instantly and can be re-issued without
+  reprinting everyone else's.
+
+## 53. Public Card Verification (`pages/verify.html`)
+
+- **Who:** anyone, with no sign-in. Scanning the QR opens this page.
+- **Shows:** VALID / EXPIRED / REVOKED / NOT FOUND in large colours, plus only the minimum public
+  details (photo, name, role, unit, expiry). This comes from `dc_verify_card(p_token)`, which the
+  anonymous role may call and which never returns contact data.
+- **Camera mode:** security or ushers can scan cards one after another from this page.
+
+## 54. Scan-to-Mark Attendance (`pages/attendance.html` → *Scan ID Cards*)
+
+- **Who:** administrators and unit leaders.
+- **Methods:** a phone or tablet camera, a USB/Bluetooth barcode scanner (keyboard-wedge bursts are
+  caught anywhere on the page), or typing the member number.
+- **Result:** each scan calls `dc_scan_attendance(rehearsal, code)`, which accepts a QR token *or* a
+  member number. A green, amber or red panel appears, and the checklist row flips to *present*
+  without a page reload. A duplicate-scan guard sends exactly one request per card.
+
+## 55. Special Programmes & Online Registration (`pages/programs.html` + `pages/register.html`)
+
+**Programmes (admins create; admins and unit leaders run the desk):**
+1. **New programme.** Fill in:
+   - title, category (special, production, workshop, audition, outreach, conference, other), date
+     and time, venue, capacity, waitlist on or off, and maximum party size;
+   - whether phone and e-mail are required, optional or hidden;
+   - up to 10 custom questions;
+   - status Draft → Open → Closed → Archived.
+2. **Share kit.** One click gives a separate link for each channel (WhatsApp, Facebook, Instagram,
+   X, TikTok, e-mail, SMS, QR poster, and so on). Every link is `register.html?p=<slug>&src=<channel>`,
+   so the insights show which channel brought people in. The kit also has a ready-made blurb, a
+   printable QR poster, and a native Share button on phones.
+3. **Registrations tab.**
+   - search, filter and export the list to CSV;
+   - check in, undo check-in, promote from the waitlist, copy a ticket link.
+4. **Check-in desk.** Scan ticket QR codes with a camera or USB scanner, or type the 8-character
+   code (`dc_program_checkin`). Add **walk-ins** on the spot (`dc_program_walkin`).
+5. **Insights.**
+   - Totals: registrations, seats, people attended, turnout %, capacity used, first-timers,
+     walk-ins, members, waitlisted, no-shows, cancelled, and average rating.
+   - Charts: registrations by channel, by how people heard, by gender, by age group, per day,
+     arrivals per hour, feedback stars, and answers to each custom question.
+   - Latest feedback comments.
+   - All of this comes from one `dc_program_insights` call.
+
+**Public registration page (no account needed):**
+- The page shows a cover image, description, countdown and seats left, then a form with only the
+  fields the organisers enabled.
+- A consent box is included. Bots are blocked by a honeypot field plus server-side rate and
+  duplicate checks.
+- When capacity is reached, people join the **waitlist** automatically if the waitlist is on.
+- After submitting, the person gets a **ticket** with a QR code and an 8-character code. They can:
+  - add it to their calendar (.ics), print it, or share it on WhatsApp;
+  - invite a friend.
+- Tickets are remembered on the device (`localStorage.dc_my_tickets`), so opening the same link
+  again lists them.
+- Opening a ticket link (`register.html?t=<token>`) shows its live status. After the event it asks
+  for a 1–5 star rating and a comment (`dc_submit_program_feedback`).
+
+## 56. Team Calendar (`pages/calendar.html`)
+
+- **Who:** every member.
+- **Shows:** one month grid (42 cells) combining:
+  - rehearsals;
+  - department events;
+  - open programmes;
+  - members' birthdays;
+  - **your own** duty-roster assignments.
+- Click a day to see that day's list. An *Upcoming* panel covers the next 30 days.
+- Buttons: previous / next / today, **Download .ics** (import into Google, Apple or Outlook
+  calendars) and **Print**.
+
+## 57. Duty Roster (`pages/roster.html`)
+
+- **Members:** see their duties (for example ushering, props, sound or costumes for a service) and
+  respond with **Confirm**, **Decline** or **Request swap**. Declining or asking for a swap needs a
+  short note. Past duties are locked. All of this goes through `dc_respond_duty`.
+- **Admins and unit leaders:** assign one role to many members for a date and service in one step.
+  The upsert is idempotent, so re-saving never creates duplicates. They can also see everyone's
+  responses, mark duties done or missed, and export to CSV.
+
+## 58. Care & Follow-up (`pages/care.html`)
+
+- **Who:** administrators and unit leaders only. Everyone else is sent back to their dashboard.
+  Row-level security (`dc_can_see_care`) enforces this in the database too.
+- **Missing members tab.** `dc_absentee_candidates` lists members who have missed several
+  rehearsals in a row, with the date they were last present. Each one has **Open case** and a
+  pre-filled **WhatsApp** follow-up link.
+- **Cases.**
+  - Reasons: absence, welfare, illness, bereavement, celebration, new member, other.
+  - Priority: normal or high. Each case is assigned to a leader.
+  - Status: open → contacted → visited → resolved.
+  - A time-stamped follow-up log is kept with `dc_care_add_note`.
+
+## 59. Friendly 404 page (`/404.html`)
+
+A mistyped or old link now shows a branded page instead of a blank host error. It has buttons for
+Home, Sign in and Help, and works offline because the service worker precaches it.
+
+## 60. v14.1 quality fixes found by the Item 19 testing audit
+
+These bugs were found by testing in a real browser, not by reading the code:
+
+| Bug | Effect before the fix | Fix |
+|---|---|---|
+| `.admin-only { display:none }` in `style.css` was never cleared on `idcard.html` / `programs.html`, which only removed the `hidden` class | Administrators could not see the **Card Register**, **Card Design** or **New programme** controls | These pages now use `.dc-admin-only`. `test-javascript` fails the build if the pattern comes back. |
+| `members.html` export button had both `admin-only` and `hidden` (this was in the live build too) | The **Export members** button was never shown, even to administrators | Removed the conflicting `hidden`. Guarded by the same test. |
+| `attendance.html` forced `display:block` on the flex admin toolbar | Toolbar buttons stacked vertically | The toolbar now keeps `display:flex`. |
+| Page-guide button was fixed at `left:18px` | It covered **Sign Out / Powered by** at the foot of the sidebar on tablets and desktops, and sat above the open mobile drawer | On screens 1024px and wider it now sits just right of the sidebar. It is hidden while the drawer is open and stays below the drawer's z-index. Guarded by `npm run smoke:tablet`. |
+| Sidebar stacked above the content on Android tablets (the reported screenshots) | The page looked empty until you scrolled | Every page with `#app-sidebar` now has `body.app-shell`. Guarded by `smoke:tablet`, 80 checks. |

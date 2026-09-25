@@ -1,14 +1,14 @@
 # Backup, Google Drive Sync and Recovery
 
-DramaConnect v14.0 uses several complementary backup types. No single copy is enough.
+DramaConnect v14.1 uses several complementary backup types. No single copy is enough.
 
 ## Coverage matrix
 
 | Backup | Browser must be open? | Off-site? | Application rows | Auth credentials | Storage bytes | Primary purpose |
 |---|---:|---:|---:|---:|---:|---|
 | Downloaded portable archive | Yes | After you move it | All 25 app/config tables visible to an approved admin | No | No | Easy verified export/import |
-| Google Drive portable archive | Yes for creation | Yes | Same 25 tables | No | No | Convenient versioned copies |
-| Private Supabase vault | Yes for creation | **No** | Same 25 tables | No | No | Fast secondary copy in-project |
+| Google Drive portable archive | Yes for creation | Yes | Same 31 tables | No | No | Convenient versioned copies |
+| Private Supabase vault | Yes for creation | **No** | Same 31 tables | No | No | Fast secondary copy in-project |
 | Encrypted weekly public-schema dump | No | Yes, through rclone | All `public` schema objects/data | Separate Auth component | No | Database disaster recovery |
 | Encrypted Auth data dump | No | Yes, through rclone | N/A | `auth.users` and `auth.identities`; no sessions/tokens | No | Recreate user UUIDs and password hashes |
 | Encrypted Storage export | No | Yes, through rclone | Storage manifest | No | Yes, when service-role secret is configured | Restore avatars/gallery/media |
@@ -17,9 +17,9 @@ A portable archive is not a PostgreSQL dump. The vault is not independent of Sup
 
 ## Portable archive format
 
-The archive format is `dramaconnect-portable-archive`, version 2. It contains these 25 tables in dependency order:
+The archive format is `dramaconnect-portable-archive`, version 2. It contains these 31 tables in dependency order (the last six — ID cards, programmes, registrations, duty roster and pastoral care — were added in schema 14.1; 14.0 archives without them still verify and restore):
 
-`profiles`, `productions`, `rehearsals`, `events`, `polls`, `finances`, `announcements`, `messages`, `reminders`, `resources`, `inventory`, `tenant_settings`, `dc_platform_settings`, `dc_retention_settings`, `dc_site_license`, `activity_log`, `budgets`, `cast_list`, `attendance`, `inbox`, `tasks`, `poll_votes`, `event_rsvps`, `gallery`, `suggestions`.
+`profiles`, `productions`, `rehearsals`, `events`, `polls`, `finances`, `announcements`, `messages`, `reminders`, `resources`, `inventory`, `tenant_settings`, `dc_platform_settings`, `dc_retention_settings`, `dc_site_license`, `activity_log`, `budgets`, `cast_list`, `attendance`, `inbox`, `tasks`, `poll_votes`, `event_rsvps`, `gallery`, `suggestions`, `dc_card_settings`, `dc_programs`, `dc_member_cards`, `dc_program_registrations`, `dc_duty_roster`, `dc_care_cases`.
 
 Export safeguards:
 
@@ -46,14 +46,14 @@ The archive intentionally excludes Supabase Auth passwords/sessions, Storage obj
 node scripts/verify-portable-archive.mjs path/to/dramaconnect-archive.json
 ```
 
-The verifier has no application or npm dependency. A successful result identifies format/version, all 25 table manifests, keys, duplicate status, row counts, every table digest and the full seal. Keep at least one verified copy on a second device.
+The verifier has no application or npm dependency. A successful result identifies format/version, all 31 table manifests (25 for a legacy 14.0 archive), keys, duplicate status, row counts, every table digest and the full seal. Keep at least one verified copy on a second device.
 
 ### Browser restore modes
 
 - **Merge** — upserts the full verified archive in dependency order. Use when the target Supabase Auth project already contains the same user UUIDs.
 - **Degraded disaster recovery** — skips identity-dependent tables (`profiles`, `cast_list`, `attendance`, `inbox`, `tasks`, `poll_votes`, `event_rsvps`) and removes unrecoverable actor references from supported rows. The report states what was skipped.
 
-Every browser restore verifies the complete archive before its first write and reports attempted/restored/skipped rows by table. Restore is merge/upsert-only; it does not delete rows absent from the archive and is not one transaction across all 25 tables. A network/RLS failure may leave a partial merge. Preserve the report, correct the cause and rerun the same archive; primary-key upserts are designed to be repeatable.
+Every browser restore verifies the complete archive before its first write and reports attempted/restored/skipped rows by table. Restore is merge/upsert-only; it does not delete rows absent from the archive and is not one transaction across all 31 tables. A network/RLS failure may leave a partial merge. Preserve the report, correct the cause and rerun the same archive; primary-key upserts are designed to be repeatable.
 
 Use the encrypted database/Auth recovery set—not degraded browser mode—when exact identities must be recovered.
 
@@ -112,9 +112,11 @@ The vault is useful for quick rollback but shares the same Supabase failure doma
 
 Workflow: `.github/workflows/database-backup.yml` (weekly and manually dispatchable).
 
+> **Opt-in (v14.1).** If `SUPABASE_DB_URL`, `RCLONE_CONFIG_BASE64` or `BACKUP_PASSPHRASE` is missing, the run finishes **green** with the notice *"Unattended backup not enabled"*, still writes a `database-backup` anti-pause heartbeat, and skips the dump. Add all three secrets to switch the dump on. Optional: `SUPABASE_SERVICE_ROLE_KEY` (enables the Storage export), `RCLONE_REMOTE_NAME` (default `gdrive`), `BACKUP_RETENTION_DAYS`.
+
 It performs these stages:
 
-1. validates required secrets and passphrase strength;
+1. checks the opt-in secrets (skip green if absent) and passphrase strength (≥ 20 characters);
 2. queries the server version and uses the matching official PostgreSQL Docker image;
 3. creates a custom-format full `public` schema dump;
 4. creates a separate data-only custom dump of `auth.users` and `auth.identities`—sessions, refresh tokens and transient codes are deliberately excluded;

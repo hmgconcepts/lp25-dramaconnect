@@ -74,7 +74,17 @@ At the bottom you'll find **Dark Mode** and **Sign Out**.
   approval status and unit-leader assignment are administrator-managed.
 - **Birthdays:** see whose birthday it is. Automated Inbox/email greetings occur
   only if administrators deploy and secure the optional birthday bot.
-- **My ID Card:** view and print your branded membership card (with photo & QR code).
+- **My ID Card:** view and print your two-sided membership card. The **QR code** lets anyone
+  check that your card is genuine (it opens the Verify page). The **barcode** lets leaders mark
+  your attendance with a scanner. If you lose your card, ask an admin to *re-issue* it; the old
+  card stops working at once.
+- **Programmes:** see upcoming special programmes, register, and share the registration link with
+  friends. Guests do **not** need an account: they open the link, fill in the short form and get a
+  ticket with a QR code to show at the door.
+- **Calendar:** one month view of rehearsals, events, programmes, birthdays and **your** duties.
+  Tap *Download .ics* to add them all to your phone's calendar.
+- **Duty Roster:** see the duties you have been given and tap **Confirm**, **Decline** or
+  **Request swap** (declining or swapping needs a short reason).
 - **Profile photo:** in My Profile, tap **Upload Photo** — it shows on your ID
   card and in the directory.
 - **Directory:** browse members with photos and reach them via WhatsApp/email/socials.
@@ -112,6 +122,24 @@ Admins see **add / edit / delete** controls across the app:
 - **Activity Log:** review the audit trail of all admin actions.
 
 ---
+
+- **ID Card Register (ID Card page):** issue, re-issue, revoke, restore or extend cards, print
+  them in batches, and export the register to CSV. Set the card design and policy on the
+  *Card Design & Policy* tab.
+- **Programmes:**
+  1. Programmes → **New programme**. Fill in the details, then set Status to **Open**.
+  2. Click **Share** and copy the link for each channel (WhatsApp, Facebook, …). Each link is
+     tagged, so *Insights* shows which channel worked.
+  3. On the day, use **Check-in desk**: scan tickets with the camera or a USB scanner, or add
+     walk-ins.
+  4. Open **Insights** for turnout, first-timers, channels, demographics and ratings. Export
+     the list to CSV with one click.
+- **Duty Roster (admins and unit leaders):** choose a date, service and role, tick the members
+  and click **Assign**. Watch the replies come in.
+- **Care & Follow-up (admins and unit leaders):** the *Missing members* tab lists people who
+  keep missing rehearsals. Open a case, message them on WhatsApp, and log each contact until
+  the case is resolved.
+- **Scan ID Cards (Attendance page):** mark rehearsal attendance by scanning member cards.
 
 ## Handy Tips
 

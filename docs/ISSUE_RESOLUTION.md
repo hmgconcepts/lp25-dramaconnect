@@ -64,7 +64,7 @@ JWT modes.
 
 ## 5. Stale installed application shell
 
-The v14.0 service worker uses cache `dramaconnect-v14.0`, network-first
+The v14.1 service worker uses cache `dramaconnect-v14.1`, network-first
 navigation, and network-only handling for cross-origin/backend requests. Deploy
 `sw.js` with the rest of the release, then hard-refresh once. For a later app
 release, change the cache identifier to that release version.

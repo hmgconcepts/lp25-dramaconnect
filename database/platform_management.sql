@@ -273,13 +273,15 @@ DECLARE v_row public.dc_platform_settings%ROWTYPE;
 BEGIN
   IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
   IF p_idle_timeout_minutes NOT BETWEEN 10 AND 720 THEN RAISE EXCEPTION 'Idle timeout must be between 10 and 720 minutes'; END IF;
-  IF p_login_audit_retention_days NOT BETWEEN 7 AND 730 THEN RAISE EXCEPTION 'Login audit retention must be between 7 and 730 days'; END IF;
+  -- NULL means "keep the current value": retention is owned by the Storage Manager, so
+  -- Platform Health saves security state without supplying it.
+  IF p_login_audit_retention_days IS NOT NULL AND p_login_audit_retention_days NOT BETWEEN 7 AND 730 THEN RAISE EXCEPTION 'Login audit retention must be between 7 and 730 days'; END IF;
 
   UPDATE public.dc_platform_settings SET
     lockdown_enabled = COALESCE(p_lockdown_enabled, FALSE),
     lockdown_message = left(COALESCE(NULLIF(btrim(p_lockdown_message), ''), 'DramaConnect is temporarily in maintenance mode.'), 500),
     idle_timeout_minutes = p_idle_timeout_minutes,
-    login_audit_retention_days = p_login_audit_retention_days,
+    login_audit_retention_days = COALESCE(p_login_audit_retention_days, login_audit_retention_days),
     updated_at = NOW(), updated_by = auth.uid()
   WHERE id = 1 RETURNING * INTO v_row;
 
@@ -290,7 +292,7 @@ BEGIN
   UPDATE public.dc_retention_settings SET
     login_audit_days = greatest(7, least(730, p_login_audit_retention_days)),
     updated_at = NOW(), updated_by = auth.uid()
-  WHERE id = 1;
+  WHERE id = 1 AND p_login_audit_retention_days IS NOT NULL;
 
   INSERT INTO public.dc_login_audit (user_id, email, event_type, metadata)
   SELECT auth.uid(), p.email, 'security_changed',

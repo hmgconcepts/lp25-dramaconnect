@@ -55,10 +55,10 @@ These are active the moment `database/complete-schema.sql` has been run. You do 
 
 1. Sign in as an administrator.
 2. Open **Platform Health**.
-3. The **Protection layers** table should list at least one source.
-4. The quorum banner above it must state how many layers are fresh and how many days of headroom remain.
+3. The **Protection layers** matrix lists **every** layer (L1–L12) with a state pill: **Reporting**, **⚠ Silent** (was running, stopped) or **Not set up** (has never reported) — each non-reporting row shows its one-line fix.
+4. The banner above it states how many layers are fresh, how many days of headroom remain and — new in v14.1 — warns *"Only human traffic is keeping the project awake"* when site visits and button presses are the only fresh sources (`automatedQuorum = false`). Human traffic stops during holidays; aim for at least two **automated** layers reporting.
 
-If the table says *"No source rows yet"*, go to [Layer 9](#layer-9--manual-heartbeat-button) and press the button once. That creates the first row; every later layer updates it.
+Press **Test heartbeat** ([Layer 9](#layer-9--manual-heartbeat-button)) once to create the first row.
 
 ---
 
@@ -103,11 +103,11 @@ Think of it as **twelve independent clocks**. Each one pokes the database on its
 | **Can wake a paused project?** | ❌ No. It lives inside the database. |
 | **Value** | Keeps the project warm from the inside; costs nothing. |
 
-The schema already attempts this. To confirm it took:
+> **Changed in v14.1.** The live audit found the `pg-cron` source had **never** written a row: the installer only scheduled the job if `pg_cron` was *already* enabled. The schema now runs `CREATE EXTENSION IF NOT EXISTS pg_cron` itself (inside a guarded block, so a project where the extension is unavailable still installs cleanly) and then schedules `dramaconnect-internal-heartbeat` for `17 3 * * *` (daily at 03:17 UTC).
 
-1. Supabase dashboard → **Database → Extensions**.
-2. Search `pg_cron`. If it is **enabled**, the installer scheduled `dramaconnect-internal-heartbeat` for `17 3 * * *` (daily at 03:17 UTC).
-3. If it is **disabled**, enable it, then re-run `database/complete-schema.sql` — it is safe to re-run, and it will create the job on the second pass.
+To activate it on an existing project, re-run `database/complete-schema.sql` once in the SQL Editor (it is safe to re-run). Look for the notice `Scheduled dramaconnect-internal-heartbeat via pg_cron.` in the output.
+
+If the job still does not appear: **Database → Extensions** → search `pg_cron` → **Enable**, then re-run the schema.
 
 **Verify:** in the **SQL Editor**, run
 
@@ -143,67 +143,54 @@ This layer costs nothing but is not dependable on its own: a quiet week with no 
 | | |
 |---|---|
 | **Cost** | Free (2,000 minutes/month on the free tier; this uses ~1 minute/month) |
-| **Time** | ~5 minutes, once |
-| **Can wake a paused project?** | ✅ Yes |
+| **Time** | 0 minutes — works as soon as the repository is on GitHub |
+| **Can wake a paused project?** | ✅ Yes (it keeps it from pausing; Layer 10 restores it) |
 | **Value** | Reliable, auditable, runs whether or not anyone visits the site. |
 
-The workflow file already exists at `.github/workflows/keep-alive.yml` and runs every **Monday and Thursday at 06:17 UTC**. You only supply two secrets.
+The workflow file already exists at `.github/workflows/keep-alive.yml` and runs every **Monday and Thursday at 06:17 UTC**.
 
-### Step A — Copy your two values from Supabase
+> **Changed in v14.1 — no secrets required.** A live audit (24 Sep 2026) found every run of this workflow failing at a *"Validate required secrets"* step because the secrets had never been added, so this layer had **never protected the project**. The workflow now finds your project in this order and uses the first one found:
+>
+> 1. repository **secrets** `SUPABASE_URL` / `SUPABASE_ANON_KEY` (optional),
+> 2. repository **variables** with the same names (optional),
+> 3. the public URL and anon key already in **`assets/js/config.js`**.
+>
+> The anon key is public by design (it is already served to every browser and constrained by RLS), so reading it from `config.js` is safe. Secrets only matter if you want the workflow to target a different project from the website.
 
-1. Open **supabase.com** → your project.
-2. Click **Project Settings** (the gear, bottom-left) → **API**.
-3. Under **Project URL**, copy the URL. It looks like `https://abcdefghijklmnop.supabase.co`.
-4. Under **Project API keys**, copy the **`anon` `public`** key. It is a long string beginning `eyJhbGciOi...`.
+### Step A — Confirm it is enabled
 
-> ⚠️ **Copy the `anon` key, never the `service_role` key.** The `service_role` key bypasses all security. If you are unsure which is which: the `anon` key is labelled **"public"** and is safe in a browser.
+1. Open your repository on **github.com** → click the **Actions** tab.
+2. If GitHub shows *"Workflows aren't being run on this forked repository"* or a green **I understand my workflows, go ahead and enable them** button, click it.
 
-### Step B — Create the first secret
+### Step B — Test it immediately (do not skip)
 
-1. Open your repository on **github.com**.
-2. Click **Settings** (top-right of the repo, *not* your account settings).
-3. In the left sidebar, expand **Secrets and variables** → click **Actions**.
-4. Click the green **New repository secret** button.
-5. **Name:** type exactly `SUPABASE_URL` (uppercase, underscore).
-6. **Secret:** paste the Project URL from step A3.
-7. Click **Add secret**.
-
-### Step C — Create the second secret
-
-1. Click **New repository secret** again.
-2. **Name:** type exactly `SUPABASE_ANON_KEY`.
-3. **Secret:** paste the anon key from step A4.
-4. Click **Add secret**.
-
-You should now see both secrets listed. Their values are hidden and cannot be viewed again — that is normal and correct.
-
-### Step D — Test it immediately (do not skip)
-
-1. Click the **Actions** tab at the top of your repository.
-2. In the left sidebar, click **Supabase resilience heartbeat**.
-3. Click the **Run workflow** dropdown (right side) → click the green **Run workflow** button.
-4. Wait about 30 seconds and refresh the page.
-5. A run appears. Click it. Click the **heartbeat** job.
-6. Expand **Send and verify database heartbeat**.
+1. **Actions** → left sidebar → **Supabase resilience heartbeat**.
+2. Click **Run workflow** (right side) → green **Run workflow** button.
+3. Wait about 30 seconds and refresh. Open the new run → **heartbeat** job.
+4. Expand **Write and verify database heartbeat**.
 
 **✅ Success looks like this:**
 
 ```
-Verified Supabase heartbeat response.
+✅ Heartbeat written and verified: {"status":"written","source":"github-actions","at":"…"}
 ```
 
-and the run has a **green checkmark**.
+(`"status":"throttled"` is also success — it means a heartbeat from this source was written in the last 5 minutes.)
 
-**Verify in DramaConnect:** **Platform Health → Protection layers** — a `github-actions` row now exists with today's timestamp.
+**Verify in DramaConnect:** **Platform Health → Protection layers** — the **L3 · GitHub Actions** row shows **Reporting** with today's time.
+
+### Step C (optional) — Pin the project with secrets
+
+Only if the website and the workflow must use different projects: **Settings → Secrets and variables → Actions → New repository secret**, add `SUPABASE_URL` (e.g. `https://abcdefghijklmnop.supabase.co`, nothing after `.co`) and `SUPABASE_ANON_KEY` (the **anon / public** key — never the `service_role` key). Trailing slashes and stray spaces are cleaned automatically.
 
 ### ❌ If it fails
 
-| Error | Cause | Fix |
+| Message in the log | Cause | Fix |
 |---|---|---|
-| `Missing SUPABASE_URL repository secret.` | Secret name misspelled | The name must be **exactly** `SUPABASE_URL`. Delete and recreate it. |
-| `SUPABASE_URL must be an https://*.supabase.co project URL.` | You pasted the anon key into the URL secret, or included a trailing `/dashboard` | Use `https://abcdefgh.supabase.co` — nothing after `.co`. |
-| `jq: command not found` | Should not happen on GitHub's runners | Re-run the workflow. If persistent, open an issue. |
-| `Non-200 response` | Wrong anon key, or project paused | Confirm the key; if paused, restore at supabase.com first. |
+| ⚠ `Heartbeat not configured` (run is green) | `assets/js/config.js` still has placeholders and no secrets exist | Fill in `assets/js/config.js` (see `DEPLOYMENT.md`) and push, or add the optional secrets. |
+| ❌ `Heartbeat RPC missing` | The database schema is not installed | Run `database/complete-schema.sql` once in the Supabase SQL Editor, then re-run. |
+| ❌ `Heartbeat failed … after 4 attempts` | Project paused, or wrong key in a secret | Restore at supabase.com (or let Layer 10 do it); check any secret you added overrides the right project. |
+| ⚠ `Push rejected` (Layer 4 step) | Actions cannot push the anti-freeze commit | **Settings → Actions → General → Workflow permissions → Read and write permissions → Save.** |
 
 ---
 
@@ -248,70 +235,46 @@ Both are correct. The first means the repo is already fresh; the second means th
 | | |
 |---|---|
 | **Cost** | Free on Hobby |
-| **Time** | ~3 minutes |
-| **Can wake a paused project?** | ✅ Yes |
+| **Time** | 0 minutes — active on the next deployment |
+| **Can wake a paused project?** | ✅ Yes (keeps it from pausing) |
 | **Value** | Independent of GitHub entirely — a completely separate company's scheduler. |
 
-Because Vercel already hosts the site, this costs nothing extra and takes three minutes.
+Everything is already in the repository:
 
-### Step A — Add the cron entry
+- `vercel.json` → `"crons": [{ "path": "/api/keep-alive", "schedule": "41 4 * * *" }]` (daily at 04:41 UTC — the most frequent schedule Hobby allows).
+- `api/keep-alive.js` → the endpoint.
 
-1. Open your project on **vercel.com**.
-2. Go to **Settings → Project** (or edit `vercel.json` in the repo).
+> **Changed in v14.1 — no environment variables required.** The live endpoint returned **HTTP 503 `cron_secret_not_configured`** because it refused to run until `CRON_SECRET` was set, so Vercel's cron had never written a heartbeat. The endpoint now:
+>
+> 1. uses `SUPABASE_URL` / `SUPABASE_ANON_KEY` from Vercel environment variables **if present**,
+> 2. otherwise reads them from the site's own public `assets/js/config.js`,
+> 3. checks `CRON_SECRET` **only if you set one** (Vercel sends it automatically as `Authorization: Bearer …` on cron calls; the comparison is timing-safe).
 
-**Option 1 — `vercel.json` (recommended, version-controlled).** Add this to the existing `vercel.json`:
+### Step A — Deploy
+
+Push to GitHub (or **Deployments → ⋯ → Redeploy** on vercel.com). Vercel registers the cron from `vercel.json` automatically: **vercel.com → project → Settings → Cron Jobs** lists `/api/keep-alive`.
+
+### Step B — Verify
+
+Open `https://YOUR-SITE.vercel.app/api/keep-alive` in a browser. Success:
 
 ```json
-{
-  "crons": [
-    { "path": "/api/keep-alive", "schedule": "23 4 * * *" }
-  ]
-}
+{"ok":true,"status":"written","source":"vercel-cron","at":"…","config":"assets/js/config.js"}
 ```
 
-**Option 2 — dashboard.** **Settings → Cron Jobs → Create Cron Job**. Path `/api/keep-alive`, schedule **Daily**.
+`"config"` tells you where the connection came from (`environment` or `assets/js/config.js`). `"status":"throttled"` is also success. Then **Platform Health → L5 · Vercel Cron** shows **Reporting**.
 
-### Step B — Create the endpoint
+### Step C (optional hardening) — CRON_SECRET
 
-Create `api/keep-alive.js` in the repository root:
+**Settings → Environment Variables → Add** `CRON_SECRET` = a long random string (e.g. from `openssl rand -hex 32`), Production scope, then **Redeploy**. From then on, only Vercel's cron (and callers sending `Authorization: Bearer <secret>`) are accepted; opening the URL in a browser returns `401 unauthorized` — that is expected.
 
-```js
-// Vercel Cron keep-alive. Runs on Vercel's infrastructure, so it reaches the
-// database even when no human has visited the site.
-export default async function handler(req, res) {
-  const url  = process.env.SUPABASE_URL;
-  const key  = process.env.SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    return res.status(500).json({ ok: false, error: 'Missing SUPABASE_URL or SUPABASE_ANON_KEY.' });
-  }
-  try {
-    const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/rpc/dc_keep_alive`, {
-      method: 'POST',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ p_source: 'vercel-cron' })
-    });
-    const body = await response.json();
-    return res.status(response.ok ? 200 : response.status).json({ ok: response.ok, body });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: String(error) });
-  }
-}
-```
+| Response | Meaning | Fix |
+|---|---|---|
+| `503 supabase_not_configured` | No env vars and `config.js` still has placeholders | Fill in `assets/js/config.js` or add the two env vars, then redeploy. |
+| `401 unauthorized` | `CRON_SECRET` is set and the caller did not send it | Expected for manual browser tests once hardened. |
+| `502 heartbeat_rejected` / `heartbeat_unreachable` | Supabase rejected or did not answer the call (paused project or schema missing) | Restore the project / run `database/complete-schema.sql`. |
 
-### Step C — Add the environment variables
-
-1. **vercel.com** → project → **Settings → Environment Variables**.
-2. Add `SUPABASE_URL` = your Project URL.
-3. Add `SUPABASE_ANON_KEY` = your anon key.
-4. **Redeploy** (Deployments → ⋯ → Redeploy) so the new variables take effect.
-
-**Verify:** visit `https://your-site.vercel.app/api/keep-alive`. You should see `{"ok":true,"body":{"ok":true,"status":"written","source":"vercel-cron",...}}`. Then check **Platform Health** for a `vercel-cron` row.
-
-> Hobby accounts allow **one** cron job, which is exactly what you need.
+> Hobby accounts allow a small number of daily cron jobs; this uses one.
 
 ---
 
@@ -422,68 +385,47 @@ A ready-made script ships at `scripts/google-apps-script-keep-alive.gs`.
 
 This is worth the ten minutes because it turns silence into a warning.
 
-### Part 1 — Deploy the Edge Function
+### Part 1 — Deploy the Edge Function (from the GitHub website — no CLI)
 
-Install the Supabase CLI once (requires Node.js):
+> **Fixed in v14.1.** Earlier versions of this guide told you to create a new function called `keep-alive`; the repository actually ships `supabase/functions/ping`. The live URL `…/functions/v1/ping` returned **404** because nothing had ever been deployed, and the function also refused to run without `PING_SECRET`. Now `PING_SECRET` is **optional**, `supabase/config.toml` sets `verify_jwt = false` for `ping`, and a one-click workflow deploys it.
+
+The function needs **no secrets of its own**: Supabase automatically provides `SUPABASE_URL` and `SUPABASE_ANON_KEY` to every Edge Function.
+
+**A. Create a Supabase access token (once)**
+
+1. Open **supabase.com/dashboard/account/tokens** → **Generate new token**.
+2. Name it `github-deploy` → **Generate token** → copy it (it is shown only once).
+
+**B. Save it in GitHub**
+
+1. Repository → **Settings → Secrets and variables → Actions → New repository secret**.
+2. **Name:** `SUPABASE_ACCESS_TOKEN` — **Secret:** paste the token → **Add secret**.
+   (This same secret also upgrades Layer 10 from heartbeat-only to automatic restore.)
+
+**C. Deploy**
+
+1. **Actions** tab → left sidebar → **Deploy Supabase Edge Functions** → **Run workflow**.
+2. Leave the box as `ping` (or type `ping birthday-bot run-reminders notify-approval admin-create-member` to deploy everything) → **Run workflow**.
+3. Open the run. Success ends with:
+
+```
+✅ Deployed: ping
+Ping URL for UptimeRobot / cron-job.org: https://YOURPROJECTREF.supabase.co/functions/v1/ping
+Self-test → HTTP 200 {"ok":true,"status":"written","source":"edge-ping",…}
+```
+
+The project ref is read from `assets/js/config.js`; add an optional `SUPABASE_PROJECT_REF` secret only if the functions belong to a different project.
+
+**Alternative — CLI on your own computer:**
 
 ```bash
-npm install -g supabase
+npx supabase login
+npx supabase functions deploy ping --project-ref YOURPROJECTREF --no-verify-jwt
 ```
 
-Then, in your project folder:
+**Test it.** Open `https://YOURPROJECTREF.supabase.co/functions/v1/ping` in a browser → `{"ok":true,…,"source":"edge-ping"}`. `?source=cron-job-org` records the call under Layer 7 instead.
 
-```bash
-supabase login
-supabase link --project-ref YOURPROJECTREF
-supabase functions new keep-alive
-```
-
-Find your project ref under **Project Settings → General → Reference ID**.
-
-Replace the contents of `supabase/functions/keep-alive/index.ts` with:
-
-```ts
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-Deno.serve(async (req) => {
-  try {
-    const url = Deno.env.get('SUPABASE_URL')!
-    const key = Deno.env.get('SUPABASE_ANON_KEY')!
-
-    const client = createClient(url, key)
-    const { data, error } = await client.rpc('dc_keep_alive', { p_source: 'edge-ping' })
-
-    if (error) throw error
-
-    return new Response(JSON.stringify({ ok: true, data }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200
-    })
-  } catch (error) {
-    return new Response(JSON.stringify({ ok: false, error: String(error) }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 500
-    })
-  }
-})
-```
-
-Deploy it:
-
-```bash
-supabase secrets set SUPABASE_ANON_KEY=your_anon_key_here
-supabase functions deploy keep-alive --no-verify-jwt
-```
-
-`--no-verify-jwt` is required so UptimeRobot can call the function without signing in. The function only performs a heartbeat — it exposes no data.
-
-**Test it.** Open in a browser:
-
-```
-https://YOURPROJECTREF.supabase.co/functions/v1/keep-alive
-```
-
-You should see `{"ok":true,"data":{...}}`.
+**Optional hardening — PING_SECRET.** Supabase → **Edge Functions → Secrets** → add `PING_SECRET` = a long random string. Monitors must then call `…/ping?token=YOUR_SECRET` (or send header `x-ping-secret`); other callers get `401`. Without it the endpoint is still safe: it only writes a throttled heartbeat and returns no data.
 
 ### Part 2 — Create the UptimeRobot monitor
 
@@ -494,7 +436,7 @@ You should see `{"ok":true,"data":{...}}`.
 |---|---|
 | Monitor Type | **HTTP(s)** |
 | Friendly Name | `DramaConnect Keep-Alive` |
-| URL | `https://YOURPROJECTREF.supabase.co/functions/v1/keep-alive` |
+| URL | `https://YOURPROJECTREF.supabase.co/functions/v1/ping` (add `?token=…` only if you set `PING_SECRET`) |
 | Monitoring Interval | **Every 30 minutes** (free tier permits 5-minute; 30 is plenty) |
 | Monitor Timeout | default |
 
@@ -542,41 +484,50 @@ Add a **second** monitor pointed at `https://your-site.vercel.app` so you learn 
 | **Time** | ~10 minutes, once |
 | **Value** | If a pause **ever** happens, this un-pauses the project without you. |
 
-This is the safety net beneath the safety net. It runs from `.github/workflows/auto-restore.yml` every 12 hours, asks Supabase's Management API whether the project is paused, and restores it if so.
+This is the safety net beneath the safety net. It runs from `.github/workflows/auto-restore.yml` every 12 hours.
+
+> **Changed in v14.1 — works in two modes.** Previously the watchdog failed at step 2 on every run because three secrets were missing, so it neither restored nor heartbeated.
+>
+> | Mode | What you add | What it does every 12 h |
+> |---|---|---|
+> | **Heartbeat-only** (default, zero setup) | nothing | Writes an `auto-restore` heartbeat using `assets/js/config.js`. Log shows a blue `Heartbeat-only mode` notice. |
+> | **Full restore** | `SUPABASE_ACCESS_TOKEN` secret | Asks the Management API for the project status; if `INACTIVE`/paused it calls the official restore endpoint, polls up to 10 minutes until `ACTIVE_HEALTHY`, then heartbeats. |
+>
+> The access token cannot be derived from anything public, so it is the one secret this layer genuinely needs for restores.
 
 ### Step A — Create a Supabase access token
 
 1. Go to **supabase.com/dashboard/account/tokens**.
-2. Click **Generate new token**. Name it `dramaconnect-watchdog`.
+2. Click **Generate new token**. Name it `dramaconnect-watchdog` (or reuse the token from Layer 8).
 3. **Copy it immediately** — it is shown once and never again.
 
-### Step B — Find your project reference
+### Step B — Add one secret
 
-**Project Settings → General → Reference ID.** A short string like `abcdefghijklmnop`.
+**GitHub → Settings → Secrets and variables → Actions → New repository secret** → Name `SUPABASE_ACCESS_TOKEN` → paste → **Add secret**.
 
-### Step C — Add three secrets
+The project reference is read from `assets/js/config.js` automatically. Add `SUPABASE_PROJECT_REF` (Project Settings → General → Reference ID) and `SUPABASE_URL` secrets **only** if the watchdog must watch a different project from the website.
 
-In **GitHub → Settings → Secrets and variables → Actions**, add:
-
-| Secret name | Value |
-|---|---|
-| `SUPABASE_ACCESS_TOKEN` | the token from Step A |
-| `SUPABASE_PROJECT_REF` | the reference from Step B |
-| `SUPABASE_URL` | `https://abcdefghijklmnop.supabase.co` (already added for Layer 3) |
-
-### Step D — Test it
+### Step C — Test it
 
 **Actions → Supabase paused-project recovery watchdog → Run workflow.**
 
-**Healthy output:**
+**Healthy output (full restore mode):**
 
 ```
-Project is ACTIVE_HEALTHY. No action needed.
+Management API HTTP 200 — project status: ACTIVE_HEALTHY
+Project is up.
+✅ auto-restore heartbeat written: {…"source":"auto-restore"…}
 ```
 
-That is the result you want. It proves the watchdog can see your project and would act if it were paused.
+**Healthy output (heartbeat-only mode):** the `Heartbeat-only mode` notice followed by `✅ auto-restore heartbeat written`.
 
-> 💡 **Access tokens can expire.** If you ever see `401 Unauthorized` in this workflow, generate a new token and update the secret. The Layer 11 quorum banner is what will alert you to fix it.
+| Log message | Meaning | Fix |
+|---|---|---|
+| ❌ `Invalid access token` | The token is wrong, revoked or expired | Generate a new token and update the secret. This failure is intentionally loud. |
+| ❌ `Project did not become healthy within 10 minutes` | Supabase is slow to restore | Re-run later or restore from the dashboard. |
+| ⚠ `Heartbeat not accepted` (heartbeat-only mode) | Project paused or schema missing | Add the token so it can restore, or restore manually; run `database/complete-schema.sql` if never installed. |
+
+> 💡 **Access tokens can expire.** The **Platform Health** matrix will show **L10** as *Silent* if the watchdog stops reporting.
 
 ---
 
@@ -624,6 +575,9 @@ Because the database records **each source separately** (`dc_heartbeat_sources`)
 | `quorum` | `true` when **two or more** independent sources are fresh |
 | `singlePointOfFailure` | `true` when exactly **one** source remains — you are one failure from silence |
 | `silentSources` | **The names** of the schedulers that stopped reporting |
+| `automatedSourcesFresh` | *(v14.1)* Fresh sources **excluding** `site-visit`, `manual-button` and `external` |
+| `automatedQuorum` | *(v14.1)* `true` when at least one unattended scheduler is fresh — `false` means only people are keeping the project awake |
+| `neverReported` | *(v14.1)* Automated layers that have **never** written a row (e.g. a workflow that was never configured) |
 
 ### Where you see it
 
@@ -688,6 +642,12 @@ If you see `function public.dc_heartbeat_health() does not exist`, re-run `datab
 | **Value** | The ultimate fallback: a real PostgreSQL dump, independent of DramaConnect itself. |
 
 Layers 1–11 all prevent a pause. **This one assumes everything failed** and ensures you can still rebuild.
+
+> **Changed in v14.1 — heartbeat always, dump opt-in.** The live run history showed this workflow failing whenever its secrets were absent. Now:
+>
+> - **Without the backup secrets** the run is **green**: it writes a `database-backup` heartbeat (so it still counts as an anti-pause layer, using `assets/js/config.js`) and shows the notice `Unattended backup not enabled` naming the missing secrets. In-app backups (**Admin Data → Backup**) keep working.
+> - **With the secrets** it additionally dumps, encrypts, uploads and remotely verifies the archive. A real dump failure is still red — only configuration absence is treated as "not enabled".
+> - Full secret-by-secret setup lives in `docs/BACKUP_AND_RECOVERY.md → Unattended encrypted backup to Google Drive`; Steps A–C below are the short version.
 
 The workflow `.github/workflows/database-backup.yml` runs **Sundays at 02:53 UTC**, dumps the database with `pg_dump`, encrypts it with `gpg`, and uploads it to cloud storage via `rclone`.
 
@@ -810,13 +770,23 @@ Its last run should say `Project is ACTIVE_HEALTHY. No action needed.`
 | `permission denied for function dc_keep_alive` | Grants lost | Re-run the schema |
 | Heartbeat stuck on *No evidence* | `heartbeat_days` window too narrow, or no layer runs | **Settings → Resilience**; widen the window; configure Layer 3 |
 | `New row violates row-level security policy` | Calling as anon instead of authenticated | Sign in first; never use the `service_role` key in the browser |
-| GitHub workflow never triggers | Secrets missing, or 60-day freeze | Check secret names; see Layer 4 |
+| GitHub workflow never triggers | 60-day freeze, or Actions disabled | **Actions** tab → enable workflows; see Layer 4 (secrets are no longer required) |
+| ⚠ `Heartbeat not configured` (Layer 3) | No URL/key in secrets, variables **or** `assets/js/config.js` | Fill in `assets/js/config.js` and push |
+| ❌ `Heartbeat RPC missing` | Schema not installed on that project | Run `database/complete-schema.sql` |
+| ❌ `Heartbeat failed … after 4 attempts` | Project paused, or wrong key | Restore the project; check the anon key in `config.js` |
+| ⚠ `Push rejected` (Layer 4) | Workflow permissions are read-only | **Settings → Actions → General → Workflow permissions → Read and write** |
 | `Project is PAUSED` in watchdog logs | It worked — the pause happened | Confirm the project is restored at supabase.com |
-| Watchdog shows `401 Unauthorized` | Access token expired | Generate a new token; update `SUPABASE_ACCESS_TOKEN` |
+| ❌ Watchdog `Invalid access token` | Access token wrong/expired | Generate a new token; update `SUPABASE_ACCESS_TOKEN` |
+| Watchdog shows `Heartbeat-only mode` | No `SUPABASE_ACCESS_TOKEN` | Normal. Add the token (Layer 10) for automatic restores |
+| ℹ `Unattended backup not enabled` | Backup secrets absent (opt-in) | Normal. See Layer 12 to enable dumps |
+| `…/functions/v1/ping` returns **404** | Edge Function never deployed | Run **Actions → Deploy Supabase Edge Functions** (Layer 8) |
+| `…/functions/v1/ping` returns **401** | `PING_SECRET` set, caller lacks `?token=` | Add the token to the monitor URL, or delete the secret |
 | UptimeRobot emails you a failure | Edge Function down, or project paused | Open the function URL in a browser; restore the project if needed |
 | `singlePointOfFailure: true` | Only one scheduler running | Add a second external layer (Layer 5 or 7) |
 | A source is tagged ⚠ SILENT | That scheduler stopped | Read the layer's section above and re-test it |
-| Vercel Cron returns `Missing SUPABASE_URL` | Env vars not set or not redeployed | Add them, then **Redeploy** |
+| `/api/keep-alive` returns `503 supabase_not_configured` | No env vars and `config.js` still has placeholders | Fill in `config.js` or add env vars; **Redeploy** |
+| `/api/keep-alive` returns `401 unauthorized` | `CRON_SECRET` set; manual browser call | Expected once hardened — Vercel's own cron still succeeds |
+| Banner: *Only human traffic is keeping the project awake* | No automated layer fresh (`automatedQuorum: false`) | Enable Layers 3, 5, 8 or 10 |
 | Apps Script shows *Authorization required* every run | Trigger not authorised | Re-run once manually and click through the consent flow |
 
 ---
@@ -826,11 +796,13 @@ Its last run should say `Project is ACTIVE_HEALTHY. No action needed.`
 Give this to whoever runs the ministry website. Every box must be ticked.
 
 - [ ] `database/complete-schema.sql` installed → *installed successfully ✅*
-- [ ] Layer 3 — GitHub Actions heartbeat: two secrets added, test run **green**
+- [ ] Layer 1 — `cron.job` query returns `dramaconnect-internal-heartbeat`
+- [ ] Layer 3 — GitHub Actions heartbeat: test run **green** with `✅ Heartbeat written and verified`
 - [ ] Layer 4 — workflow permissions allow **Read and write**
-- [ ] Layer 5 — **Vercel Cron** configured (second independent provider)
+- [ ] Layer 5 — `/api/keep-alive` returns `"ok":true` (second independent provider)
+- [ ] Layer 8 — `…/functions/v1/ping` returns `"ok":true`; UptimeRobot monitor **Up**
 - [ ] Layer 9 — **💓 Test heartbeat** pressed once, toast confirmed
-- [ ] Layer 10 — watchdog run says `Project is ACTIVE_HEALTHY`
+- [ ] Layer 10 — watchdog run says `project status: ACTIVE_HEALTHY` (token added)
 - [ ] Layer 11 — quorum banner present, **no single point of failure**
 - [ ] Layer 12 — one encrypted dump exists in cloud storage
 - [ ] Drive backup connected, one manual backup completed and verified
@@ -847,20 +819,20 @@ Give this to whoever runs the ministry website. Every box must be ticked.
 |---|---|---|---|---|---|
 | 1 | `pg_cron` heartbeat | Inside Supabase | ❌ No | Automatic | ☐ |
 | 2 | Site-visit heartbeat | Members' browsers | ✅ Yes | Automatic | ☐ |
-| 3 | GitHub Actions heartbeat | GitHub | ✅ Yes | ~5 min | ☐ |
+| 3 | GitHub Actions heartbeat | GitHub | ✅ Yes | Automatic (reads `config.js`) | ☐ |
 | 4 | Self-committing workflow | GitHub | ✅ Yes | Automatic | ☐ |
-| 5 | Vercel Cron | Vercel | ✅ Yes | ~3 min | ☐ |
+| 5 | Vercel Cron | Vercel | ✅ Yes | Automatic on deploy | ☐ |
 | 6 | Google Apps Script | Google | ✅ Yes | ~5 min | ☐ |
 | 7 | cron-job.org | cron-job.org | ✅ Yes | ~3 min | ☐ |
 | 8 | Edge Function + UptimeRobot | Supabase + UptimeRobot | ✅ Yes **+ alerts you** | ~10 min | ☐ |
 | 9 | Manual heartbeat button | You | ✅ Yes | 0 min | ☐ |
-| 10 | Auto-Restore Watchdog | GitHub | ✅ Un-pauses | ~10 min | ☐ |
+| 10 | Auto-Restore Watchdog | GitHub | ✅ Un-pauses | Heartbeat automatic; restore needs 1 secret (~3 min) | ☐ |
 | 11 | Quorum + dead-scheduler detection | Inside Supabase | ⚠️ Warns you | Automatic | ☐ |
 | 12 | Weekly encrypted dump | GitHub | ➖ Rebuilds | ~15 min | ☐ |
 
 **You do not need all twelve.** The recommended configuration is:
 
-> **Layer 3 + Layer 5 + Layer 9 + Layer 11 — with Layer 10 if you can spare ten minutes.**
+> **Layers 1, 2, 3, 4, 5, 9, 11 run with zero setup once deployed.** Spend ~10 minutes adding `SUPABASE_ACCESS_TOKEN` — it unlocks both **Layer 8** (deploy the ping function, then an UptimeRobot monitor that emails you) and **Layer 10** (automatic restore).
 
 That gives you two independent providers, a human override, early warning, and automatic un-pausing. Everything else is defence in depth.
 
@@ -909,4 +881,4 @@ Two printable companions exist:
 
 ---
 
-*Last reviewed for DramaConnect v14.0 · Supabase free tier · all tools used are free.*
+*Last reviewed for DramaConnect v14.1 · Supabase free tier · all tools used are free.*

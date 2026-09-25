@@ -1,4 +1,4 @@
-# ✅ DramaConnect v14.0 — First-Time Setup Checklist
+# ✅ DramaConnect v14.1 — First-Time Setup Checklist
 
 Follow the mandatory sections in order. The core app can be launched quickly; production resilience, OAuth and verified recovery require additional provider setup and a rehearsal.
 
@@ -16,7 +16,7 @@ Follow the mandatory sections in order. The core app can be launched quickly; pr
 - [ ] **B1.** Copy only the Supabase **Project URL** and **anon/publishable** key.
 - [ ] **B2.** Put them in `assets/js/config.js` as `SUPABASE_URL` and `SUPABASE_KEY`.
 - [ ] **B3.** Confirm no placeholder remains and no database password, service-role key, Management API token, cron secret or OAuth client secret exists in any frontend file.
-- [ ] **B4.** Confirm `CONFIG.APP_VERSION` is `v14.0` and deploy the matching `sw.js`.
+- [ ] **B4.** Confirm `CONFIG.APP_VERSION` is `v14.1` and deploy the matching `sw.js`.
 
 ## C. Publish the site — choose one
 
@@ -49,7 +49,7 @@ Use `SUPABASE_FREE_TIER_PROTECTION.md` for the exact procedure.
 
 Use `BACKUP_AND_RECOVERY.md`.
 
-- [ ] **F1.** In **Admin Data → Local**, download the full 25-table portable archive.
+- [ ] **F1.** In **Admin Data → Local**, download the full 31-table portable archive.
 - [ ] **F2.** Run `node scripts/verify-portable-archive.mjs ARCHIVE.json`; retain the successful output in the private backup register.
 - [ ] **F3.** Enable Google Drive API and create an OAuth **Web application** client with the exact production origin.
 - [ ] **F4.** Save only the public OAuth client ID in **Admin Data → Drive**; connect explicitly with `drive.file` scope.
@@ -74,6 +74,17 @@ Use `BACKUP_AND_RECOVERY.md`.
 - [ ] **H2.** Scheduled reminders: set a strong `CRON_SECRET` and follow `SCHEDULED_REMINDERS.md`.
 - [ ] **H3.** Birthday greetings: use the same secured scheduler pattern in `BIRTHDAY_BOT.md`.
 - [ ] **H4.** Approval email webhook: configure `NOTIFY_WEBHOOK_SECRET`, `APP_URL` and provider secrets according to `EMAIL_NOTIFICATIONS.md`.
+
+## H+. v14.1 identity, programmes and team operations
+
+- [ ] **J1.** After re-running `database/complete-schema.sql`, open **ID Card** as an administrator and confirm that the *Card Register* and *Card Design & Policy* tabs are visible.
+- [ ] **J2.** On *Card Design & Policy*, set the validity (months), accent colour and back-of-card text. Then **Issue** a card to yourself.
+- [ ] **J3.** Scan your card's QR code with a phone. `verify.html` must show **VALID**. Revoke the card: the same scan must now show **REVOKED**. Restore it afterwards.
+- [ ] **J4.** Point a USB/Bluetooth barcode scanner at the barcode while Attendance → **Scan ID Cards** is open. Your row must turn *present*.
+- [ ] **J5.** Programmes → **New programme** → Status **Open** → **Share**. Open the WhatsApp link in a private window, register a test guest, and confirm that a ticket with a QR code appears.
+- [ ] **J6.** On the **Check-in desk**, scan that ticket, then open **Insights**. Registrations = 1, checked in = 1, channel = WhatsApp.
+- [ ] **J7.** Calendar shows rehearsals, events, birthdays and the programme. Roster: assign yourself a duty and confirm it. Care: the *Missing members* tab loads.
+- [ ] **J8.** Visit `/does-not-exist`. The branded 404 page must appear.
 
 ## I. Final verification and operations
 

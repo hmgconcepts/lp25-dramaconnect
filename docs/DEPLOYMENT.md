@@ -1,4 +1,4 @@
-# 🚀 Deployment Guide — DramaConnect Enterprise v14.0
+# 🚀 Deployment Guide — DramaConnect Enterprise v14.1
 
 This guide deploys the static application and its required Supabase database controls. Resilience, Google Drive and unattended recovery are separate operational stages; do not claim production readiness until they are configured and tested.
 
@@ -51,7 +51,7 @@ const CONFIG = {
 
 The anon key is designed for browser use and is constrained by RLS. Never place a database password, service-role key, Management API token, backup passphrase, rclone configuration, `PING_SECRET`, `CRON_SECRET` or Google client secret in static files.
 
-Before publish, confirm `APP_VERSION: 'v14.0'` and service-worker cache `dramaconnect-v14.0`.
+Before publish, confirm `APP_VERSION: 'v14.1'` and service-worker cache `dramaconnect-v14.1`.
 
 ## Stage 3 — Publish the static site
 
@@ -74,9 +74,9 @@ Before publish, confirm `APP_VERSION: 'v14.0'` and service-worker cache `dramaco
 1. Import the repository.
 2. Framework preset: **Other**; no build/output override is required.
 3. Deploy.
-4. If using the included Cron, configure protected Production environment values `SUPABASE_URL`, `SUPABASE_ANON_KEY` and a high-entropy `CRON_SECRET`, then redeploy. Follow `SUPABASE_FREE_TIER_PROTECTION.md` and current Vercel plan limits.
+4. The included Vercel Cron (`/api/keep-alive`, daily `41 4 * * *`) needs **no** environment variables: it reads the public URL/anon key from `assets/js/config.js`. After deploying, open `https://YOUR-SITE.vercel.app/api/keep-alive` and expect `"ok":true`. Optional hardening: add a Production `CRON_SECRET` and redeploy (manual browser calls then return 401 — expected). See `SUPABASE_FREE_TIER_PROTECTION.md` → Layer 5.
 
-Hard-refresh after each release. The v14.0 service worker uses network-first navigation, independent same-origin shell caching and never caches Supabase/API/CDN traffic.
+Hard-refresh after each release. The v14.1 service worker uses network-first navigation, independent same-origin shell caching and never caches Supabase/API/CDN traffic.
 
 ## Stage 4 — Bootstrap the first administrator
 
@@ -100,11 +100,14 @@ Follow `docs/SUPABASE_FREE_TIER_PROTECTION.md` completely.
 
 Minimum production setup:
 
-1. Confirm `site-visit` and administrator `manual-button` heartbeat rows.
-2. Add GitHub Actions secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY`; manually run **Supabase resilience heartbeat**.
-3. Deploy the secret-protected `ping` Edge Function and configure at least one daily external monitor with HTTP/body validation.
-4. Add `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF`; manually test the recovery watchdog while the project is healthy.
-5. Optional: configure Vercel Cron, Apps Script and `pg_cron` as additional independent sources.
+1. Confirm `site-visit` and administrator `manual-button` heartbeat rows (**Platform Health → Test heartbeat**).
+2. **Actions** tab → enable workflows if prompted → **Supabase resilience heartbeat → Run workflow**. No secrets are required (it falls back to `assets/js/config.js`); expect `✅ Heartbeat written and verified`.
+3. **Settings → Actions → General → Workflow permissions → Read and write** (Layer 4 self-commit against the 60-day freeze).
+4. Add the repository secret `SUPABASE_ACCESS_TOKEN` (supabase.com/dashboard/account/tokens). Then run **Deploy Supabase Edge Functions** (deploys `ping`) and **Supabase paused-project recovery watchdog** (expect `project status: ACTIVE_HEALTHY`).
+5. Create an UptimeRobot HTTP monitor for `https://YOURREF.supabase.co/functions/v1/ping?source=edge-ping`.
+6. Re-run `database/complete-schema.sql` once so it enables `pg_cron` and schedules the internal job.
+7. Open `/api/keep-alive` to confirm Vercel Cron. Optional extras: Apps Script, cron-job.org.
+8. **Platform Health → Protection layers** should show L1, L2, L3, L5, L8, L9 and L10 as **Reporting** within a day, and the banner must not say *Only human traffic*.
 
 A heartbeat reduces inactivity risk but is not a backup, SLA or guarantee against provider pause/outage.
 
@@ -112,7 +115,7 @@ A heartbeat reduces inactivity risk but is not a backup, SLA or guarantee agains
 
 Follow `docs/BACKUP_AND_RECOVERY.md`.
 
-1. Download a 25-table portable archive in Settings and verify it with:
+1. Download a 31-table portable archive in Settings and verify it with:
 
    ```bash
    node scripts/verify-portable-archive.mjs ARCHIVE.json
@@ -129,9 +132,41 @@ Follow `docs/BACKUP_AND_RECOVERY.md`.
 - `admin-create-member`: deploy with normal gateway JWT verification; see `ADMIN_CREATE_MEMBER.md`.
 - `notify-approval`: set its documented webhook/admin authorization and email-provider secrets.
 - `birthday-bot` and `run-reminders`: set a strong shared/dedicated `CRON_SECRET` and configure the scheduler's matching header.
-- `ping`: intentionally deploy with `--no-verify-jwt`, but only after setting high-entropy `PING_SECRET`; the function performs its own narrow authorization.
+- `ping`: deployed with `verify_jwt = false` (`supabase/config.toml`) by the **Deploy Supabase Edge Functions** workflow. It only writes a throttled heartbeat and returns no data, so `PING_SECRET` is **optional**; if you set it, monitors must add `?token=…`.
 
 Never make service-role automations publicly invocable without their documented function-level check.
+
+## Stage 8 — Identity cards and programmes (v14.1)
+
+1. **ID card design:** as an administrator, open **ID Card → Settings**. Choose the template and validity period, then save. Open **ID Card → Register**, select members and choose **Issue**. Every card gets a random verification token plus a Code 128 barcode of the member code.
+2. **Scan test (mandatory):** print one card, or show it on screen at full brightness.
+   - Scan the **QR** with a phone camera. It must open `/pages/verify.html?t=…` and show **Valid**.
+   - Scan the **barcode** with a USB/Bluetooth scanner into the **Attendance → Scan** box. It must record attendance.
+   - If the barcode fails, print at 100% scale (no "fit to page") on matte paper. Code 128 needs its quiet zones.
+3. **Revocation test:** revoke the test card. The verify page must show **Revoked**, and scanning it at the attendance desk must be refused.
+4. **Programme:** open **Programmes → New**. Fill in the details, set status **Open**, then save.
+   - Choose **Share**: copy the link or download the QR poster. Each channel has its own tracked link (`?src=whatsapp`, `?src=instagram`, …).
+   - Open the link in a private window and register as a guest. A ticket QR must appear.
+5. **Check-in desk:** open **Programmes → Desk** and scan that ticket. It must turn **Checked in**, and **Insights** must count one registration, one check-in and the channel.
+6. **Roster and care:** assign a test duty on **Duty Roster** and confirm it as that member. Then open **Care** and run *Find absentees*.
+
+## Upgrading an existing v14.0 site to v14.1
+
+Follow this order exactly. Deploying the pages before the SQL makes the new pages show "schema update required".
+
+1. **Back up first:** Admin Data → *Download portable archive*, then run the verifier:
+   `node scripts/verify-portable-archive.mjs ARCHIVE.json`
+2. **Database:** Supabase → SQL Editor → paste **all** of `database/complete-schema.sql` → Run. Running it twice is safe. It adds the six v14.1 tables, the card and programme functions, the pg_cron keep-alive job and the fixed `dc_update_platform_settings`.
+3. **Repository clean-up.** The live repo, checked at commit `6ac22a3`, carries three stray files: `.github/workflows/a`, plus `gitignore` and `nojekyll` in the root. Delete all three (open each file on GitHub → ⋯ → *Delete file*). The dotted `.gitignore` and `.nojekyll` are the real ones.
+4. **Push the v14.1 files.** Replace the repository contents with the v14.1 package, keeping `assets/js/config.js` with your real URL and anon key. Commit and push; Vercel redeploys automatically. Confirm that `.github/workflows/` now contains `keep-alive.yml`, `auto-restore.yml`, `deploy-edge-functions.yml` and `database-backup.yml`. The files keep the same names, but their contents must be **overwritten**. The old `keep-alive.yml` fails at "Validate required secrets" whenever the secrets are absent; the new one falls back to `assets/js/config.js`.
+5. **Secrets:** GitHub → Settings → Secrets and variables → Actions → *New repository secret*:
+   - `SUPABASE_ACCESS_TOKEN`, created at supabase.com/dashboard/account/tokens.
+   - `PING_SECRET` and `CRON_SECRET` are optional.
+6. **Edge functions:** Actions → **Deploy Supabase Edge Functions** → *Run workflow*. Afterwards, `https://YOURREF.supabase.co/functions/v1/ping` must return JSON, not 404.
+7. **Workflows:** Actions → run **keep-alive** and then **auto-restore** once each. Both must be green.
+8. **Vercel:** open `https://YOURSITE/api/keep-alive`. It must return `{"ok":true…}`. A `503 supabase_not_configured` means `config.js` still has placeholders.
+9. **Browsers:** hard-refresh. The footer must show v14.1 and the service-worker cache must be `dramaconnect-v14.1`.
+10. **Verify:** Platform Health → Protection layers must show L1, L2, L3, L5, L8, L9 and L10 as *Reporting* within 24 h. Then complete Stage 8.
 
 ## Post-deployment verification
 
@@ -142,7 +177,7 @@ Never make service-role automations publicly invocable without their documented 
 - [ ] Direct RLS tests cover anonymous, pending, member, unit leader and administrator—not just UI visibility.
 - [ ] Production/event/finance/attendance/RSVP/task/poll/message paths work.
 - [ ] Reports export; phone/tablet menu works; optional install can be declined.
-- [ ] Current service-worker cache is `dramaconnect-v14.0`.
+- [ ] Current service-worker cache is `dramaconnect-v14.1`.
 - [ ] Daily external heartbeat and manually dispatched watchdog both pass.
 - [ ] A complete encrypted backup set exists remotely and one recovery rehearsal passed.
 
@@ -157,12 +192,20 @@ Never make service-role automations publicly invocable without their documented 
 | Admin settings hidden | Caller is not approved admin | Complete bootstrap; inspect authoritative profile row. |
 | Drive Connect fails | Wrong OAuth type/origin/test user | Use Web application client, exact HTTPS origin, Drive API and consent test user. |
 | Drive schedule says overdue | No still-valid memory token | Administrator explicitly reconnects and runs a verified backup; automatic code never opens OAuth. |
-| Edge ping 401 | Missing/stale `PING_SECRET` | Update function secret/monitor and rotate if disclosed. |
-| Vercel endpoint 401 | Cron secret missing/mismatch | Configure protected Production `CRON_SECRET` and redeploy. |
+| Edge ping 404 | Function never deployed | Run **Actions → Deploy Supabase Edge Functions**. |
+| Edge ping 401 | `PING_SECRET` set; monitor lacks `?token=` | Add the token to the monitor URL, or delete the secret. |
+| Vercel endpoint 401 | `CRON_SECRET` set; manual browser call | Expected once hardened; Vercel's cron sends the secret automatically. |
+| Vercel endpoint 503 `supabase_not_configured` | `config.js` has placeholders and no env vars | Fill in `assets/js/config.js`, redeploy. |
+| Sidebar stacks above content on a tablet | Page `<body>` lacks `app-shell` | All pages ship it; `layout.js` self-heals. Verify with `npm run smoke:tablet`. |
+| Vercel endpoint 503 `cron_secret_not_configured` | An **older** `api/keep-alive.js` (pre-v14.1) is still deployed; it refused to run without `CRON_SECRET` | Upload the v14.1 `api/keep-alive.js` and `vercel.json` (it works with no secret; `CRON_SECRET` is optional hardening), redeploy, then open `/api/keep-alive` — expect `200 {"ok":true…}`. |
+| Actions → keep-alive run fails at **Validate required secrets** | Older `.github/workflows/keep-alive.yml` still in the repo | Overwrite all four files in `.github/workflows/` with the v14.1 copies and delete any stray file (e.g. `.github/workflows/a`). The v14.1 workflow reads `assets/js/config.js` when secrets are absent and warns instead of failing. |
+| Platform Health → **Save security state** fails (`null value … login_audit_retention_days` / NaN) | Database still has the pre-v14.1 `dc_update_platform_settings`, while the page no longer sends a retention value (retention is edited only in Storage Manager) | Rerun all of `database/complete-schema.sql` (v14.1 keeps the current retention when the argument is NULL), reload, save again. |
+| `/pages/programs.html`, `/verify.html` or `/404.html` return 404 | Partial upload — only some v14.1 files were pushed | Upload the **whole** v14.1 folder (all 43 pages, `assets/js/dc-codes.js`, `assets/js/vendor/`, `database/identity_and_programs.sql`, `supabase/config.toml`), keeping the folder structure. |
+| ID card barcode/QR will not scan | Printed at < 100 % scale, glossy glare, or `vendor/` scripts missing | Print at **Actual size**; confirm `assets/js/vendor/qrcode-generator.js` loads (200) on the live site; test with Attendance → camera scanner or any phone QR app. |
 | Weekly dump cannot connect | Paused project/wrong DB URL/pool mode/password | Activate project; use direct/session URL, URL-encoded password and SSL. |
 | Archive verifier fails | Truncated/modified/corrupt copy | Do not restore; download again or choose another fully verified backup. |
 | Styling is plain + low-bandwidth warning | Tailwind CDN unavailable | Local safety CSS keeps features usable; retry on a better connection. |
-| Old UI persists | Older service worker/cache | Deploy matching v14.0 `sw.js`, close tabs, hard-refresh/unregister stale worker if needed. |
+| Old UI persists | Older service worker/cache | Deploy matching v14.1 `sw.js`, close tabs, hard-refresh/unregister stale worker if needed. |
 
 ## Updating later
 

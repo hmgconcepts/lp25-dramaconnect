@@ -131,11 +131,18 @@ restored.
 > The script is **cumulative and idempotent** — safe to re-run. If it is interrupted or errors partway, simply run it
 > again from the top.
 
-- [ ] **Verification** — run this and confirm 25 tables:
+- [ ] **Verification** — run this; it must return **zero rows** (every one of the 31 archived tables exists). Any row it returns names a table the schema did not create — rerun `database/complete-schema.sql` from the top:
 
 ```sql
-SELECT COUNT(*) FROM information_schema.tables
-WHERE table_schema='public' AND table_type='BASE TABLE';
+SELECT t AS missing_table FROM unnest(ARRAY[
+  'profiles', 'productions', 'rehearsals', 'events', 'polls', 'finances',
+  'announcements', 'messages', 'reminders', 'resources', 'inventory', 'tenant_settings',
+  'dc_platform_settings', 'dc_retention_settings', 'dc_site_license', 'activity_log', 'budgets', 'cast_list',
+  'attendance', 'inbox', 'tasks', 'poll_votes', 'event_rsvps', 'gallery',
+  'suggestions', 'dc_card_settings', 'dc_programs', 'dc_member_cards', 'dc_program_registrations', 'dc_duty_roster',
+  'dc_care_cases'
+]) AS t
+WHERE to_regclass('public.' || t) IS NULL;
 ```
 
 ---
@@ -365,4 +372,4 @@ Fill this in once things are calm. It makes the next incident faster.
 
 ---
 
-*Part of the DramaConnect v14.0 resilience suite. Review this document twice a year.*
+*Part of the DramaConnect v14.1 resilience suite. Review this document twice a year.*
