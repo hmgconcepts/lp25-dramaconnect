@@ -327,10 +327,12 @@
             const view = SCAN_VIEW[res.result] || SCAN_VIEW.invalid;
             const box = document.getElementById('scan-result');
             box.className = 'mt-4 rounded-xl border-2 p-4 text-sm ' + view[0];
-            const safePhoto = Utils.safeImageUrl(res.avatar_url);
-            const photo = safePhoto
-                ? `<img src="${UI.esc(safePhoto)}" alt="" class="h-16 w-16 rounded-xl object-cover border">`
-                : (res.full_name ? `<div class="h-16 w-16 rounded-xl rccg-blue text-white flex items-center justify-center text-lg font-bold">${UI.esc(Utils.initials(res.full_name))}</div>` : '');
+            // Photo with the shared Drive fallback chain (utils.js) → initials if unviewable.
+            const photo = (res.avatar_url || res.full_name)
+                ? Utils.photoImg(res.avatar_url, { name: res.full_name || '?', alt: 'Card holder photo',
+                    className: 'h-16 w-16 rounded-xl object-cover border rccg-blue text-white flex-shrink-0',
+                    initialsStyle: 'display:flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:700;' })
+                : '';
             box.innerHTML = `<div class="flex gap-3 items-center">${photo}<div>
                 <div class="font-extrabold"><i class="fas ${view[1]} mr-1"></i>${view[2]}</div>
                 ${res.full_name ? `<div class="text-base font-bold text-slate-900">${UI.esc(res.full_name)}</div>` : ''}

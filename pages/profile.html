@@ -45,7 +45,7 @@
                                 <button id="avatar-link-btn" class="dc-btn bg-blue-600 text-white text-sm whitespace-nowrap">Save Link</button>
                                 <button id="avatar-remove" class="dc-btn bg-red-100 text-red-700 text-sm whitespace-nowrap hidden">Remove</button>
                             </div>
-                            <p class="text-[11px] text-slate-400 mt-2">To save database storage, direct file uploads are disabled. Please paste a link to a public Google Drive photo.</p>
+                            <p class="text-[11px] text-slate-400 mt-2">To save database storage, direct file uploads are disabled. Paste a Google Drive photo link whose sharing is set to <b>Anyone with the link</b> — the same photo appears on your ID card, the member list and card verification.</p>
                         </div>
                     </div>
                 </div>
@@ -189,6 +189,21 @@
             renderAvatar();
             document.getElementById('avatar-remove').onclick = removeAvatar;
             
+            function photoLoads(urls, timeoutMs = 9000) {
+                return new Promise(resolve => {
+                    let i = 0, done = false;
+                    const timer = setTimeout(() => { done = true; resolve(false); }, timeoutMs);
+                    (function next() {
+                        if (done) return;
+                        if (i >= urls.length) { clearTimeout(timer); done = true; return resolve(false); }
+                        const im = new Image();
+                        im.referrerPolicy = 'no-referrer';
+                        im.onload = () => { if (done) return; clearTimeout(timer); done = true; resolve(im.naturalWidth > 0); };
+                        im.onerror = () => { i++; next(); };
+                        im.src = urls[i];
+                    })();
+                });
+            }
             document.getElementById('avatar-link-btn').onclick = async () => {
                 const link = document.getElementById('avatar-link').value.trim();
                 if (!link) return UI.toast('Enter a link first.', 'warning');
@@ -196,11 +211,21 @@
                 try {
                     let parsed;
                     try { parsed = new URL(link); } catch (_e) { throw new Error('Enter a valid Google Drive HTTPS link.'); }
-                    if (parsed.protocol !== 'https:' || !/(^|\.)drive\.google\.com$/i.test(parsed.hostname))
-                        throw new Error('Only public Google Drive HTTPS links are accepted.');
-                    const gdMatch = parsed.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/) || parsed.search.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-                    if (!gdMatch) throw new Error('Could not find a Google Drive file ID in that link.');
-                    const finalUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(gdMatch[1])}&sz=w800`;
+                    if (parsed.protocol !== 'https:') throw new Error('Only HTTPS Google Drive links are accepted.');
+                    // Accepts drive.google.com/file/d/ID, open?id=, uc?id=, thumbnail?id=, docs.google.com and lh3 links.
+                    const fileId = Utils.drivePhotoId(link);
+                    if (!fileId) throw new Error('Could not find a Google Drive file ID in that link. Use Drive → Share → Copy link.');
+                    const finalUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w800`;
+                    // Pre-save check (plain image load, no CORS mode) so members learn immediately
+                    // if the file is private instead of discovering a blank ID card later.
+                    UI.showLoader('Checking the photo can be displayed...');
+                    const loads = await photoLoads(Utils.photoSources(finalUrl));
+                    UI.hideLoader();
+                    if (!loads) {
+                        const go = await UI.confirm('We could not display this photo. In Google Drive open the file → Share → General access → "Anyone with the link" (Viewer), then try again. Save the link anyway?', 'Photo not viewable yet');
+                        if (!go) return;
+                    }
+                    UI.showLoader('Saving link...');
                     await DB.updateMember(me.id, { avatar_url: finalUrl });
                     me.avatar_url = finalUrl;
                     renderAvatar();

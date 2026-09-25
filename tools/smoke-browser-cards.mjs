@@ -99,6 +99,21 @@ async function openPage(browser, file, fake, viewport = { width: 1200, height: 1
         return route.fulfill({ status: 200, body, contentType: type });
       } catch { return route.fulfill({ status: 404, body: 'not found' }); }
     }
+    // Google Drive emulation, matching production behaviour observed with curl:
+    // /thumbnail → 302 to lh3 WITHOUT Access-Control-Allow-Origin. File ids starting
+    // with GOOD are shared publicly, PRIV are private (403 everywhere), THRT have the
+    // thumbnail endpoint throttled (429) while lh3 still serves the image.
+    if (url.host === 'drive.google.com' || url.host === 'lh3.googleusercontent.com') {
+      const id = url.searchParams.get('id') || (url.pathname.match(/\/d\/([^=/]+)/) || [])[1] || '';
+      if (url.host === 'drive.google.com' && url.pathname === '/thumbnail') {
+        if (id.startsWith('GOOD')) return route.fulfill({ status: 302, headers: { location: `https://lh3.googleusercontent.com/d/${id}=w800` }, body: '' });
+        return route.fulfill({ status: id.startsWith('THRT') ? 429 : 403, contentType: 'text/html', body: 'denied' });
+      }
+      if (url.host === 'lh3.googleusercontent.com' && (id.startsWith('GOOD') || id.startsWith('THRT'))) {
+        return route.fulfill({ status: 200, contentType: 'image/png', body: await fs.readFile(path.join(root, 'assets/img/rccg_logo.png')) });
+      }
+      return route.fulfill({ status: 403, contentType: 'text/html', body: 'denied' });
+    }
     // SMOKE_CDN=1 lets the real Tailwind/Font Awesome CDNs through so screenshots look like production.
     if (process.env.SMOKE_CDN && /cdn\.tailwindcss\.com|cdnjs\.cloudflare\.com/.test(url.host)) return route.continue();
     if (/supabase-js/.test(url.href)) return route.fulfill({ status: 200, contentType: 'application/javascript', body: `(${fakeSupabase})();` });
@@ -162,6 +177,72 @@ try {
       ok(w > 0 && w < 400, 'CDN blocked → offline Tailwind keeps the app shell laid out', String(w));
     }
     await page.locator('#my-card').screenshot({ path: '/tmp/smoke-idcard.png' }).catch(() => page.screenshot({ path: '/tmp/smoke-idcard.png', fullPage: true }));
+    await context.close();
+  }
+
+  console.log('ID card photo (Google Drive links, fallback chain, no CORS mode)');
+  {
+    const withPhoto = (avatar, logo = null) => cardJson('valid')
+      .replace('avatar_url: null', `avatar_url: '${avatar}'`)
+      .replace('logo_url: null', `logo_url: ${logo ? `'${logo}'` : 'null'}`);
+    const cases = [
+      ['public Drive photo renders on the card', 'https://drive.google.com/thumbnail?id=GOODphoto123456789&sz=w800', 'img', /lh3\.googleusercontent\.com\/d\/GOODphoto/],
+      ['legacy /file/d/ link is normalised and renders', 'https://drive.google.com/file/d/GOODlegacy12345678/view?usp=sharing', 'img', /GOODlegacy/],
+      ['throttled thumbnail falls back to lh3 and renders', 'https://drive.google.com/thumbnail?id=THRTphoto123456789&sz=w800', 'img', /lh3\.googleusercontent\.com\/d\/THRTphoto/],
+      ['private Drive photo degrades to initials (no broken image)', 'https://drive.google.com/thumbnail?id=PRIVphoto123456789&sz=w800', 'div', /^MM$/]
+    ];
+    for (const [label, avatar, tag, re] of cases) {
+      const { page, context, errors } = await openPage(browser, '/pages/idcard.html', {
+        user: MEMBER, tables: { profiles: [MEMBER], tenant_settings: [{ id: 1, org_name: 'Test Parish', app_name: 'DramaConnect' }] },
+        rpc: { dc_my_card: withPhoto(avatar, 'https://drive.google.com/thumbnail?id=PRIVlogo1234567890&sz=w400') }
+      });
+      const res = await page.waitForFunction((want) => {
+        const el = document.querySelector('#my-card .photo');
+        if (!el) return null;
+        if (want === 'img' && el.tagName === 'IMG' && el.complete && el.naturalWidth > 0) return { tag: 'img', src: el.currentSrc || el.src, co: el.hasAttribute('crossorigin') };
+        if (want === 'div' && el.tagName === 'DIV') return { tag: 'div', text: el.textContent.trim() };
+        return null;
+      }, tag, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => null);
+      ok(!!res && res.tag === tag && re.test(tag === 'img' ? res.src : res.text) && !res.co, label, JSON.stringify(res));
+      if (label.startsWith('public')) {
+        const logo = await page.waitForFunction(() => {
+          const im = document.querySelector('#my-card .band img');
+          return im && im.complete && im.naturalWidth > 0 && /rccg_logo\.png/.test(im.src) ? im.src : null;
+        }, null, { timeout: 10000 }).then(h => h.jsonValue()).catch(() => null);
+        ok(!!logo, 'unviewable tenant logo falls back to the bundled logo', String(logo));
+        const nocors = await page.evaluate(() => document.querySelectorAll('img[crossorigin]').length);
+        ok(nocors === 0, 'no <img crossorigin> left on the ID card page (root cause of the missing photo)', String(nocors));
+        const proof = await page.evaluate(() => new Promise(r => {
+          const a = new Image(); a.crossOrigin = 'anonymous';
+          a.onload = () => r('loaded'); a.onerror = () => r('blocked');
+          a.src = 'https://drive.google.com/thumbnail?id=GOODproof12345678&sz=w800';
+        }));
+        ok(proof === 'blocked', 'regression proof: the same Drive URL in CORS mode is blocked by the browser', proof);
+        const ids = await page.evaluate(() => [
+          'https://drive.google.com/file/d/1AbC_dEf-123456789/view?usp=sharing',
+          'https://drive.google.com/open?id=1AbC_dEf-123456789',
+          'https://drive.google.com/uc?export=view&id=1AbC_dEf-123456789',
+          'https://docs.google.com/uc?id=1AbC_dEf-123456789',
+          'https://lh3.googleusercontent.com/d/1AbC_dEf-123456789=w800',
+          'https://example.com/me.jpg'
+        ].map(u => Utils.drivePhotoId(u)));
+        ok(ids.slice(0, 5).every(x => x === '1AbC_dEf-123456789') && ids[5] === '', 'Utils.drivePhotoId understands every Drive link shape', JSON.stringify(ids));
+        await page.locator('#my-card').screenshot({ path: '/tmp/smoke-idcard-photo.png' }).catch(() => {});
+      }
+      ok(errors.length === 0, `no page errors (${label})`, errors.join(' | '));
+      await context.close();
+    }
+    // Public verification + attendance scan show the same resilient photo.
+    const { page, context, errors } = await openPage(browser, `/pages/verify.html?c=${TOKEN}`, {
+      tables: { tenant_settings: [{ id: 1, org_name: 'Test Parish', app_name: 'DramaConnect' }] },
+      rpc: { dc_verify_card: withPhoto('https://drive.google.com/thumbnail?id=THRTverify12345678&sz=w800') }
+    });
+    const vr = await page.waitForFunction(() => {
+      const im = document.querySelector('img[alt="Card holder photo"]');
+      return im && im.complete && im.naturalWidth > 0 ? im.src : null;
+    }, null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => null);
+    ok(!!vr && /lh3/.test(vr), 'verify.html shows the holder photo via the fallback chain', String(vr));
+    ok(errors.length === 0, 'no page errors on verify.html (photo)', errors.join(' | '));
     await context.close();
   }
 

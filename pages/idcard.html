@@ -229,15 +229,23 @@
         }
 
         /* ---------------- rendering (all values escaped; images built as elements) --------------- */
+        /* NOTE: never put crossorigin on these <img> tags. Google Drive answers with a
+           302 redirect that has no CORS header, so a CORS-mode request is refused and
+           the photo silently disappears (the original "photo not showing" bug). */
         function photoHtml(card) {
-            const url = Utils.safeImageUrl(card.avatar_url);
-            return url ? `<img class="photo" src="${esc(url)}" alt="Member photo" crossorigin="anonymous" referrerpolicy="no-referrer">`
-                       : `<div class="photo">${esc(Utils.initials(card.full_name || 'Member'))}</div>`;
+            return Utils.photoImg(card.avatar_url, { className: 'photo', name: card.full_name || 'Member', alt: 'Member photo' });
+        }
+        /* Decorative image with every candidate URL chained; hidden if all fail. */
+        function chainedImg(sources, alt, extra = '') {
+            const list = sources.filter(Boolean);
+            if (!list.length) return '';
+            return `<img src="${esc(list[0])}" alt="${esc(alt)}" referrerpolicy="no-referrer" decoding="async" ${extra}`
+                 + ` data-fallbacks="${esc(JSON.stringify(list.slice(1)))}">`;
         }
         function brand(card) {
             return {
                 org: card.org_name || tenant.org_name || CONFIG.APP_NAME || 'Drama Department',
-                logo: Utils.safeImageUrl(card.logo_url || tenant.logo_url) || DEFAULT_LOGO
+                logos: Utils.photoSources(card.logo_url || tenant.logo_url).concat([DEFAULT_LOGO])
             };
         }
         function ribbon(card) {
@@ -257,7 +265,7 @@
             const no = card.member_no || 'PENDING';
             return `<div class="dc-card tpl-${esc(s.template || 'classic')}" data-side="front">
                 ${ribbon(card)}
-                <div class="band"><img src="${esc(b.logo)}" alt="" crossorigin="anonymous"><div><div class="org">${esc(b.org)}</div><div class="kind">Member Identity Card</div></div></div>
+                <div class="band">${chainedImg(b.logos, '')}<div><div class="org">${esc(b.org)}</div><div class="kind">Member Identity Card</div></div></div>
                 <div class="front-body">${photoHtml(card)}
                     <div style="min-width:0;flex:1">
                         <div class="name">${esc(card.full_name || 'Member')}</div>
@@ -278,7 +286,7 @@
                 try { qr = DCCodes.qrSvg(DCCodes.verifyUrl(card.card_token), { size: 102, ecl: 'M', label: 'Scan to verify ' + (card.full_name || 'member') }); }
                 catch (e) { qr = '<div style="font-size:2mm">QR unavailable</div>'; }
             }
-            const sigUrl = Utils.safeImageUrl(s.signature_url);
+            const sigImg = chainedImg(Utils.photoSources(s.signature_url), 'Signature');
             return `<div class="dc-card tpl-${esc(s.template || 'classic')}" data-side="back">
                 ${ribbon(card)}
                 <div class="back-body">
@@ -288,7 +296,7 @@
                         <div>${esc(s.back_note || 'This card identifies the holder as a registered member. It is not transferable and remains the property of the department.')}</div>
                         <div style="margin-top:.8mm">${esc(s.contact_line || 'If found, please return it to the department office.')}</div>
                         <div style="margin-top:.8mm">Issued <b>${esc(fmt(card.issued_at))}</b> · Expires <b>${esc(fmt(card.expires_at))}</b></div>
-                        <div class="sig">${sigUrl ? `<img src="${esc(sigUrl)}" alt="Signature" crossorigin="anonymous">` : ''}
+                        <div class="sig">${sigImg}
                             <div class="line">${esc(s.signatory_name || 'Authorised signatory')}${s.signatory_title ? ' — ' + esc(s.signatory_title) : ''}</div></div>
                     </div>
                 </div>
@@ -322,12 +330,19 @@
         }
 
         /* ------------------------------ printing ------------------------------ */
-        function waitForImages(root, timeoutMs = 6000) {
-            const imgs = Array.from(root.querySelectorAll('img'));
-            return Promise.race([
-                Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(r => { img.onload = img.onerror = r; }))),
-                new Promise(r => setTimeout(r, timeoutMs))
-            ]);
+        /* Resolve once every image has settled: loaded, or exhausted its fallback chain
+           (the global handler in utils.js swaps src on error, so a single error event
+           is not "done"). Polling avoids clobbering img.onerror. */
+        function waitForImages(root, timeoutMs = 8000) {
+            const started = Date.now();
+            return new Promise(resolve => {
+                (function tick() {
+                    const pending = Array.from(root.querySelectorAll('img')).some(img =>
+                        !img.complete || (img.naturalWidth === 0 && img.hasAttribute('data-fallbacks') && img.getAttribute('data-fallbacks') !== '[]'));
+                    if (!pending || Date.now() - started > timeoutMs) return resolve();
+                    setTimeout(tick, 120);
+                })();
+            });
         }
         async function printCards(cards, layout = 'pairs') {
             if (!cards.length) return UI.toast('Select at least one card to print.', 'error');

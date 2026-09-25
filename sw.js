@@ -4,7 +4,7 @@
  * - Never caches Supabase/API or cross-origin CDN traffic.
  * - Uses network-first navigation so deployments are not pinned to stale HTML.
  */
-const CACHE = 'dramaconnect-v14.1';
+const CACHE = 'dramaconnect-v14.1.1';
 const CORE = [
   './',
   './index.html',
