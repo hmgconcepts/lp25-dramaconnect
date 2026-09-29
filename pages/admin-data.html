@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="app-version" content="14.1"><title>Admin Data — DramaConnect</title>
+  <meta name="app-version" content="14.2"><title>Admin Data — DramaConnect</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
@@ -13,13 +13,15 @@
 <body class="bg-slate-50 min-h-screen app-shell"><div id="app-sidebar"></div>
 <main class="app-main p-4 md:p-8"><div id="page-header"></div>
   <div class="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-    <strong>Verified data portability:</strong> archives include all 25 application/configuration tables, paginate beyond API row limits, and carry per-table plus whole-archive SHA-256 seals. Storage object bytes and Supabase Auth passwords are separate recovery domains.
+    <strong>Verified data portability:</strong> archives include every supported application and configuration table, paginate beyond API row limits, and carry per-table plus whole-archive SHA-256 seals. Storage object bytes and Supabase Auth passwords are separate recovery domains.
   </div>
   <div class="flex flex-wrap gap-2 mb-5" role="tablist">
     <button class="tab-btn active px-4 py-2 rounded-xl bg-white border font-bold" data-tab="local">Local archive</button>
     <button class="tab-btn px-4 py-2 rounded-xl bg-white border font-bold" data-tab="drive">Google Drive</button>
     <button class="tab-btn px-4 py-2 rounded-xl bg-white border font-bold" data-tab="vault">Supabase vault</button>
     <button class="tab-btn px-4 py-2 rounded-xl bg-white border font-bold" data-tab="history">Run history</button>
+    <button class="tab-btn px-4 py-2 rounded-xl bg-white border font-bold" data-tab="tables">Table explorer</button>
+    <button class="tab-btn px-4 py-2 rounded-xl bg-white border font-bold" data-tab="hub">Restore hub</button>
   </div>
 
   <section id="tab-local" class="tab-panel space-y-5">
@@ -108,6 +110,57 @@
   <section id="tab-vault" class="tab-panel hidden space-y-5"><div class="card p-6"><h2 class="font-extrabold text-lg dark-text">Private Supabase backup vault</h2><p class="text-sm text-slate-500 mt-2">Encrypted in transit and private by RLS. The 50 MiB browser limit protects free-tier storage and device memory. Keep an independent off-provider copy.</p><div class="flex gap-2 flex-wrap mt-4"><button id="vault-upload" class="btn btn-primary">Upload verified archive</button><button id="vault-refresh" class="btn btn-secondary">Refresh vault</button></div><p id="vault-status" class="status-line text-sm mt-3"></p></div><div class="card overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Path</th><th class="p-3 text-left">Updated</th><th class="p-3 text-left">Size</th><th class="p-3 text-right">Actions</th></tr></thead><tbody id="vault-list"><tr><td colspan="4" class="p-5 text-slate-400">Refresh to inspect the private vault.</td></tr></tbody></table></div></div></section>
 
   <section id="tab-history" class="tab-panel hidden"><div class="card overflow-hidden"><div class="p-5 flex justify-between items-center"><div><h2 class="font-extrabold dark-text">Backup & restore run history</h2><p class="text-xs text-slate-500">Database-coordinated leases prevent overlapping operations.</p></div><button id="history-refresh" class="btn btn-secondary">Refresh</button></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Started</th><th class="p-3 text-left">Operation</th><th class="p-3 text-left">Status</th><th class="p-3 text-left">Rows / size</th><th class="p-3 text-left">SHA-256 / error</th></tr></thead><tbody id="history-list"></tbody></table></div></div></section>
+
+  <!-- ============ Table explorer ============ -->
+  <section id="tab-tables" class="tab-panel hidden space-y-5">
+    <div class="card p-6">
+      <h2 class="font-extrabold dark-text">🔎 Browse, export or clean one table</h2>
+      <p class="text-sm text-slate-500 mt-1">Look inside any table before you export or delete something. Reads are paginated and never cached. Deleting a row is permanent — export first, and remember that a verified archive or the Archive Vault is what makes a delete recoverable.</p>
+      <div class="grid sm:grid-cols-3 gap-3 mt-4 items-end">
+        <label class="text-sm font-bold">Table<select id="te-table" class="form-input mt-1 w-full"></select></label>
+        <label class="text-sm font-bold">Rows to preview<select id="te-limit" class="form-input mt-1 w-full"><option value="25">25</option><option value="50" selected>50</option><option value="200">200</option></select></label>
+        <div class="flex flex-wrap gap-2">
+          <button id="te-load" class="btn btn-primary">Preview</button>
+          <button id="te-csv" class="btn btn-secondary">Export CSV</button>
+          <button id="te-json" class="btn btn-secondary">Export JSON</button>
+        </div>
+      </div>
+      <p id="te-status" class="status-line text-sm mt-3 text-slate-600">Pick a table and press Preview.</p>
+      <div class="overflow-x-auto mt-3"><div id="te-table-wrap" class="text-sm text-slate-400">Nothing loaded yet.</div></div>
+    </div>
+    <div class="card p-6">
+      <h2 class="font-extrabold dark-text">🎬 Sample data for training</h2>
+      <p class="text-sm text-slate-500 mt-1">Loads a handful of clearly-labelled demo rows (productions, rehearsals, events, announcements, tasks, finance entries) so you can train the team or try a feature without touching real records. Every row is prefixed <span class="mono">DEMO —</span> so it can be removed again in one click, and it never creates accounts.</p>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button id="demo-load" class="btn btn-primary">Load sample data</button>
+        <button id="demo-clear" class="btn btn-secondary" style="color:#b91c1c;border-color:#b91c1c">Delete sample data</button>
+        <span id="demo-status" class="status-line text-sm self-center"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Restore hub ============ -->
+  <section id="tab-hub" class="tab-panel hidden space-y-5">
+    <div class="card p-6">
+      <h2 class="font-extrabold dark-text">🗃️ Universal restore hub — everything that can be restored, in one place</h2>
+      <p class="text-sm text-slate-500 mt-1">Every restorable copy this deployment can produce, with the tool that owns it. Use this as the checklist when something goes wrong.</p>
+      <div class="overflow-x-auto mt-4">
+        <table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Source</th><th class="p-3 text-left">What it contains</th><th class="p-3 text-left">Restore from</th><th class="p-3 text-right">Action</th></tr></thead>
+          <tbody>
+            <tr class="border-t"><td class="p-3 font-bold">Verified database archive</td><td class="p-3">All application tables, per-table and whole-archive SHA-256 seals</td><td class="p-3">Local archive → Verify or restore (merge or recovery mode)</td><td class="p-3 text-right"><button class="btn btn-secondary btn-sm" data-goto="local">Open</button></td></tr>
+            <tr class="border-t"><td class="p-3 font-bold">Google Drive backups</td><td class="p-3">Same archives, stored in the department's own Drive</td><td class="p-3">Google Drive tab → Download / Restore</td><td class="p-3 text-right"><button class="btn btn-secondary btn-sm" data-goto="drive">Open</button></td></tr>
+            <tr class="border-t"><td class="p-3 font-bold">Supabase private vault</td><td class="p-3">Archives in the private <span class="mono">dramaconnect-backups</span> bucket</td><td class="p-3">Supabase vault tab</td><td class="p-3 text-right"><button class="btn btn-secondary btn-sm" data-goto="vault">Open</button></td></tr>
+            <tr class="border-t"><td class="p-3 font-bold">Archive Vault batches</td><td class="p-3">Exactly the rows archived off the end of a table (JSON)</td><td class="p-3">Listed below — Restore puts the rows back</td><td class="p-3 text-right"><button class="btn btn-secondary btn-sm" id="hub-refresh">Refresh</button></td></tr>
+            <tr class="border-t"><td class="p-3 font-bold">Table CSV / JSON</td><td class="p-3">One table, human-readable</td><td class="p-3">Table explorer tab → export, then re-import via CSV in the owning page</td><td class="p-3 text-right"><button class="btn btn-secondary btn-sm" data-goto="tables">Open</button></td></tr>
+            <tr class="border-t"><td class="p-3 font-bold">Storage objects</td><td class="p-3">Avatars and gallery files (not inside database archives)</td><td class="p-3">Supabase Storage dashboard, or <span class="mono">scripts/export-storage.mjs</span></td><td class="p-3 text-right"><a class="btn btn-secondary btn-sm" href="storage-manager.html">Storage Manager</a></td></tr>
+          </tbody></table>
+      </div>
+    </div>
+    <div class="card overflow-hidden">
+      <div class="p-5"><h2 class="font-extrabold dark-text">Archive Vault batches</h2><p class="text-xs text-slate-500">Rows that were archived off the oldest end of a table. Restoring is additive: nothing newer is overwritten and rows whose parents no longer exist are skipped.</p></div>
+      <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Archived</th><th class="p-3 text-left">Table</th><th class="p-3 text-left">Rows</th><th class="p-3 text-left">File</th><th class="p-3 text-left">Restored</th><th class="p-3 text-right">Actions</th></tr></thead><tbody id="hub-list"><tr><td colspan="6" class="p-5 text-slate-400">Press Refresh to list the vault.</td></tr></tbody></table></div>
+    </div>
+  </section>
 </main>
 <script src="../assets/js/config.js"></script><script src="../assets/js/resilience.js"></script><script src="../assets/js/platform-management.js"></script><script src="../assets/js/data-portability.js"></script><script src="../assets/js/drive-sync.js"></script><script src="../assets/js/i18n.js"></script><script src="../assets/js/ui.js"></script><script src="../assets/js/auth.js"></script><script src="../assets/js/db.js"></script><script src="../assets/js/utils.js"></script><script src="../assets/js/layout.js"></script><script src="../assets/js/install.js"></script>
 <script src="../assets/js/page-guide.js"></script>
@@ -151,7 +204,7 @@
     box.classList.remove('hidden');
   }
 
-  function tabs() { document.querySelectorAll('.tab-btn').forEach(b => b.onclick=()=>{ document.querySelectorAll('.tab-btn').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.tab-panel').forEach(x=>x.classList.add('hidden')); $(`tab-${b.dataset.tab}`).classList.remove('hidden'); if(b.dataset.tab==='history') loadHistory(); }); }
+  function tabs() { document.querySelectorAll('.tab-btn').forEach(b => b.onclick=()=>{ document.querySelectorAll('.tab-btn').forEach(x=>x.classList.toggle('active',x===b)); document.querySelectorAll('.tab-panel').forEach(x=>x.classList.add('hidden')); $(`tab-${b.dataset.tab}`).classList.remove('hidden'); if(b.dataset.tab==='history') loadHistory(); if(b.dataset.tab==='hub') hubRender(); }); }
 
   async function loadSettings() { const s=await DriveSync.getSettings(true); $('google-client-id').value=s?.google_client_id||''; $('drive-folder').value=s?.drive_folder_name||'DramaConnect Backups'; $('interval-days').value=s?.interval_days||7; $('retention-count').value=s?.retention_count||12; $('grace-hours').value=s?.overdue_grace_hours||24; $('schedule-enabled').checked=Boolean(s?.schedule_enabled); syncDrivePill(); }
   function syncDrivePill(){ const s=DriveSync.status(); $('drive-pill').textContent=s.connected?'Connected':'Disconnected'; $('drive-pill').className=`badge ${s.connected?'badge-success':'badge-warning'}`; }
@@ -179,6 +232,15 @@
   async function loadHistory(){const body=$('history-list');body.innerHTML='<tr><td colspan="5" class="p-5 text-slate-400">Loading…</td></tr>';try{const h=await Resilience.getHealth();body.innerHTML=h.runs.length?'':'<tr><td colspan="5" class="p-5 text-slate-400">No coordinated runs recorded.</td></tr>';h.runs.forEach(r=>{const tr=document.createElement('tr');tr.className='border-t';const color=r.status==='succeeded'?'text-emerald-700':r.status==='failed'?'text-red-600':'text-amber-700';tr.innerHTML=`<td class="p-3">${UI.esc(date(r.started_at))}</td><td class="p-3"><b>${UI.esc(r.destination)}</b><div class="text-xs text-slate-400">${UI.esc(r.trigger_source)}</div></td><td class="p-3 font-bold ${color}">${UI.esc(r.status)}</td><td class="p-3">${Number(r.archive_rows||0).toLocaleString()} / ${bytes(r.archive_size)}</td><td class="p-3 mono text-xs max-w-xs break-all">${UI.esc(r.archive_sha256||r.error_message||'—')}</td>`;body.appendChild(tr);});}catch(e){body.innerHTML=`<tr><td colspan="5" class="p-5 text-red-600">${UI.esc(err(e))}</td></tr>`;}}
 
   async function init(){const me=await Auth.requireAdmin();if(!me)return;Layout.renderSidebar('admin-data',me);$('page-header').innerHTML=Layout.renderHeader('Admin Data','Verified archives, Google Drive sync, private vault and recovery history');Layout.setDate();Layout.loadSaaSBranding?.();Layout.registerPWA();tabs();DataPortability.TABLES.forEach(t=>{const o=document.createElement('option');o.value=t.name;o.textContent=t.name;$('csv-table').appendChild(o);});
+    // ---- Item 21 surfaces: table explorer, sample data, restore hub ----
+    fillTableExplorer();
+    $('te-load').onclick = teRender;
+    $('te-csv').onclick = teExportCsv;
+    $('te-json').onclick = teExportJson;
+    $('demo-load').onclick = demoLoad;
+    $('demo-clear').onclick = demoClear;
+    $('hub-refresh').onclick = hubRender;
+    document.querySelectorAll('[data-goto]').forEach(b => { b.onclick = () => document.querySelector(`.tab-btn[data-tab="${b.dataset.goto}"]`)?.click(); });
     $('local-export').onclick=async e=>{busy(e.currentTarget,true,'Building & verifying…');try{const r=await DataPortability.downloadLocal({onProgress:p=>status('local-status',p.table?`Reading ${p.table}: ${p.rows||0} rows…`:'Building archive…')});status('local-status',`Downloaded ${r.filename}; ${r.metadata.rows} rows; ${r.metadata.sha256}.`,'ok');}catch(x){status('local-status',err(x),'error');}finally{busy(e.currentTarget,false);}};
     $('archive-file').onchange=async e=>{selectedArchive=null;try{const a=await DataPortability.parseArchiveFile(e.target.files[0]);const v=await DataPortability.verifyArchive(a);selectedArchive=a;$('archive-review').classList.remove('hidden');$('archive-summary').innerHTML=`<p class="text-emerald-700 font-bold">Integrity verified</p><p>${Number(v.totalRows).toLocaleString()} rows across ${v.tableCount} tables.</p><p class="mono text-xs break-all mt-1">${UI.esc(a.seal.digest)}</p>`;}catch(x){$('archive-review').classList.add('hidden');status('local-status',err(x),'error');}};
     $('local-restore').onclick=async e=>{if(!selectedArchive)return;if($('restore-confirm').value!=='RESTORE'){UI.toast('Type RESTORE exactly.','warning');return;}busy(e.currentTarget,true,'Restoring…');try{
@@ -215,5 +277,128 @@
     try{await loadSettings();}catch(e){status('drive-status',err(e),'error');}loadHistory();
   }
   init();
+  /* ---------------- Table explorer, sample data and restore hub ---------------- */
+  const TE_TABLES = () => (window.DataPortability ? DataPortability.TABLES.map(t => t.name) : []);
+  function fillTableExplorer() {
+    const sel = $('te-table');
+    if (!sel || (sel.options && sel.options.length)) return;
+    (window.DataPortability ? DataPortability.TABLES.map(t => t.name) : []).forEach(t => sel.add(new Option(t, t)));
+  }
+  async function teRender() {
+    const table = $('te-table').value, limit = Number($('te-limit').value);
+    status('te-status', 'Reading…');
+    try {
+      const db = window.supabaseClient || window.sb;
+      const { data, error } = await db.from(table).select('*').limit(limit);
+      if (error) throw error;
+      const rows = data || [];
+      const { count } = await db.from(table).select('*', { count: 'exact', head: true });
+      const cols = rows.length ? Object.keys(rows[0]) : [];
+      $('te-table-wrap').innerHTML = rows.length
+        ? `<table class="w-full text-sm"><thead class="bg-slate-50"><tr>${cols.map(c => `<th class="p-2 text-left text-xs uppercase">${UI.esc(c)}</th>`).join('')}<th class="p-2 text-right">Delete</th></tr></thead>
+           <tbody>${rows.map(r => `<tr class="border-t">${cols.map(c => `<td class="p-2">${UI.esc(String(r[c] ?? '—')).slice(0, 120)}</td>`).join('')}<td class="p-2 text-right"><button class="btn btn-danger btn-sm" data-del="${UI.esc(String(r.id ?? r[cols[0]]))}">Delete</button></td></tr>`).join('')}</tbody></table>`
+        : '<p class="text-slate-400">This table is empty.</p>';
+      $('te-table-wrap').querySelectorAll('[data-del]').forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.del;
+          if (prompt(`Type DELETE ${id} to remove that row from ${table}. This is permanent without a backup.`) !== `DELETE ${id}`) return;
+          try {
+            const { error: delError } = await (window.supabaseClient || window.sb).from(table).delete().eq('id', id);
+            if (delError) throw delError;
+            UI.toast('Row deleted.', 'success');
+            teRender();
+          } catch (e) { UI.toast(err(e), 'error', 9000); }
+        };
+      });
+      status('te-status', `${Number(count ?? rows.length).toLocaleString()} row(s) in ${table}; showing ${rows.length}. Press an export button for the whole table.`, 'ok');
+    } catch (e) { status('te-status', err(e), 'error'); $('te-table-wrap').innerHTML = `<p class="text-red-600">${UI.esc(err(e))}</p>`; }
+  }
+  async function teExportCsv() {
+    try { const n = await DataPortability.downloadTableCsv($('te-table').value); status('te-status', `${n.toLocaleString()} row(s) exported as CSV.`, 'ok'); }
+    catch (e) { status('te-status', err(e), 'error'); }
+  }
+  async function teExportJson() {
+    const table = $('te-table').value;
+    try {
+      const db = window.supabaseClient || window.sb;
+      const { data, error } = await db.from(table).select('*');
+      if (error) throw error;
+      const text = JSON.stringify({ table, exportedAt: new Date().toISOString(), rows: data || [] }, null, 2);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = `${table}-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+      status('te-status', `${(data || []).length.toLocaleString()} row(s) exported as JSON.`, 'ok');
+    } catch (e) { status('te-status', err(e), 'error'); }
+  }
+
+  /** Sample rows are prefixed DEMO — so they can be found and removed exactly. */
+  const DEMO_SPECS = [
+    { table: 'productions', values: { title: 'DEMO — The Prodigal Son', performance_date: null, director: 'DEMO Director' } },
+    { table: 'productions', values: { title: 'DEMO — Christmas Cantata', performance_date: null, director: 'DEMO Director' } },
+    { table: 'rehearsals', values: { notes: 'DEMO — Tuesday evening rehearsal' } },
+    { table: 'rehearsals', values: { notes: 'DEMO — Saturday full run' } },
+    { table: 'events', values: { title: 'DEMO — Drama Night', event_date: new Date(Date.now() + 14 * 864e5).toISOString(), location: 'DEMO Main hall', description: 'Sample event created by the sample-data button.' } },
+    { table: 'announcements', values: { title: 'DEMO — Costume fitting', body: 'Sample announcement. Safe to delete.', author_name: 'DEMO' } },
+    { table: 'tasks', values: { title: 'DEMO — Print scripts', detail: 'Sample task. Safe to delete.', assigned_by: 'DEMO', status: 'open', priority: 'normal' } },
+    { table: 'finances', values: { description: 'DEMO — Sample income', type: 'income', amount: 25000 } },
+    { table: 'finances', values: { description: 'DEMO — Sample expense', type: 'expense', amount: 8000 } }
+  ];
+  async function demoLoad() {
+    if (prompt('Type LOAD DEMO to add clearly-labelled sample rows. They can be removed again with one click.') !== 'LOAD DEMO') return;
+    const db = window.supabaseClient || window.sb;
+    let added = 0, failed = [];
+    for (const spec of DEMO_SPECS) {
+      const values = { ...spec.values };
+      if (spec.table === 'productions' && values.performance_date === null) delete values.performance_date;
+      const { error } = await db.from(spec.table).insert([values]);
+      if (error) failed.push(`${spec.table}: ${error.message}`); else added++;
+    }
+    status('demo-status', failed.length ? `Added ${added} row(s); ${failed.length} failed (${failed[0]}).` : `Added ${added} sample row(s). Delete them any time with "Delete sample data".`, failed.length ? 'error' : 'ok');
+  }
+  async function demoClear() {
+    if (prompt('Type DELETE DEMO to remove every sample row (only rows beginning with "DEMO").') !== 'DELETE DEMO') return;
+    const db = window.supabaseClient || window.sb;
+    const specs = [['productions', 'title'], ['rehearsals', 'notes'], ['events', 'title'], ['announcements', 'title'], ['tasks', 'title'], ['finances', 'description']];
+    let removed = 0, fails = [];
+    for (const [table, column] of specs) {
+      const { data, error } = await db.from(table).delete().like(column, 'DEMO%').select('id');
+      if (error) fails.push(`${table}: ${error.message}`); else removed += (data || []).length;
+    }
+    status('demo-status', fails.length ? `Removed ${removed} row(s); ${fails.length} table(s) could not be cleaned (${fails[0]}).` : `Removed ${removed} sample row(s).`, fails.length ? 'error' : 'ok');
+  }
+
+  async function hubRender() {
+    const body = $('hub-list');
+    try {
+      const list = await PlatformManagement.listArchives();
+      body.innerHTML = list.length ? '' : '<tr><td colspan="6" class="p-5 text-slate-400">No archived batches yet. Create one from the Storage Manager → Archive Vault.</td></tr>';
+      list.forEach(a => {
+        const tr = document.createElement('tr'); tr.className = 'border-t';
+        tr.innerHTML = `<td class="p-3 text-xs">${date(a.created_at)}</td><td class="p-3 mono text-xs">${UI.esc(a.table_name)}</td><td class="p-3">${Number(a.row_count).toLocaleString()}</td>
+          <td class="p-3 mono text-[11px] break-all">${UI.esc(a.object_path)}</td>
+          <td class="p-3">${a.restored_at ? `<span class="text-emerald-700 font-bold">${Number(a.restored_rows || 0).toLocaleString()} row(s) on ${date(a.restored_at)}</span>` : '—'}</td>
+          <td class="p-3 text-right"><button class="btn btn-primary btn-sm" data-restore="1">Restore</button></td>`;
+        const b = tr.querySelector('[data-restore]');
+        b.onclick = async () => {
+          if (!confirm(`Restore ${Number(a.row_count).toLocaleString()} archived row(s) into ${a.table_name}?\n\nNothing newer is overwritten and rows whose parents no longer exist are skipped.`)) return;
+          try {
+            const db = window.supabaseClient || window.sb;
+            const { data, error } = await db.storage.from('dramaconnect-backups').download(a.object_path);
+            if (error) throw error;
+            const parsed = JSON.parse(await data.text());
+            const out = await PlatformManagement.archiveRestore(a.id, parsed.rows || []);
+            UI.toast(`Restored ${out.restoredRows} of ${out.offered} row(s).`, 'success', 9000);
+            hubRender();
+          } catch (e) { UI.toast(err(e), 'error', 10000); }
+        };
+        body.appendChild(tr);
+      });
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="6" class="p-5 text-red-600">${UI.esc(err(e))}${/42P01|PGRST205|does not exist|schema cache/i.test(err(e)) ? ' — run database/complete-schema.sql once to install the Archive Vault.' : ''}</td></tr>`;
+    }
+  }
+
 })();
 </script></body></html>

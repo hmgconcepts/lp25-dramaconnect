@@ -153,7 +153,10 @@ const TOPICS = [
   'install the app', 'export csv', 'notifications', 'dark mode',
   'where did the backup controls go', 'contact support',
   'register people for a special programme', 'barcode will not scan', 'duty roster swap',
-  'download calendar ics', 'follow up absent members'
+  'download calendar ics', 'follow up absent members',
+  // Item 21 capabilities
+  'hmg fleet console', 'geofence check-in', 'two-step verification', 'authenticator app',
+  'archive vault', 'who signed in recently', 'where is the analytics', 'table sizes'
 ];
 for (const t of TOPICS) {
   const res = A.answer(t);
@@ -173,6 +176,18 @@ const pr = A.answer('how do we share a registration link on social media');
 check('B4. programme query resolves to Programmes', /Programmes/.test(pr.r) && /src=/.test(pr.r));
 const bc = A.answer('my barcode is not scanning');
 check('B4. barcode query resolves to ID cards', /Code 128/.test(bc.r));
+
+// Item 21 topics must resolve to the right page and content.
+const fleet = A.answer('how do I connect the HMG fleet console');
+check('B4. Fleet Console query resolves to Platform Health', /Platform Health/i.test(fleet.r) && /sc_keep_alive/.test(fleet.r) && /hmgfleetconsole/.test(fleet.r));
+const geo = A.answer('can we require members to be at the venue to check in');
+check('B4. geofence query resolves to Settings', /Settings/.test(geo.r) && /Use this device/.test(geo.r) && /radius/i.test(geo.r));
+const mfa = A.answer('how do I set up two step verification with an authenticator app');
+check('B4. two-step query resolves to Settings', /Settings/.test(mfa.r) && /QR code/.test(mfa.r) && /authenticator/i.test(mfa.r));
+const vault = A.answer('how do I free database space without losing data');
+check('B4. archive vault query resolves to Storage Manager', /Storage Manager/.test(vault.r) && /Archive Vault/.test(vault.r));
+const signin = A.answer('who signed in from which device');
+check('B4. sign-in audit query resolves to Platform Health', /Platform Health/.test(signin.r) && /sign-in/i.test(signin.r) && /device/i.test(signin.r));
 
 // "this page" must resolve to the page in the sandbox location.
 const thisPage = A.answer('explain this page');

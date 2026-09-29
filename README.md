@@ -1,4 +1,4 @@
-# 🎭 DramaConnect Enterprise v14.1 — RCCG LP 25 Drama Department
+# 🎭 DramaConnect Enterprise v14.2 — RCCG LP 25 Drama Department
 
 DramaConnect is a complete institutional management hub for the RCCG LP 25
 Drama Department. It can operate within the free allowances of Supabase and a
@@ -10,7 +10,19 @@ and pricing can change, so confirm current limits before rollout.
 
 ---
 
-## ✨ Feature set (v14.1 build)
+## ✨ Feature set (v14.2 build)
+
+### New in v14.2: fleet-grade operations, analytics and settings
+
+- **HMG Fleet Console integration.** This deployment answers the console's exact contract — `sc_keep_alive`, the public `sc_keepalive` heartbeat row and `sc_license_status` — so one console can monitor, ping and wake it with a single click, and its GitHub workflow can protect every client project from one secret. Platform Health proves the contract from inside the app. See [docs/SUPABASE_FREE_TIER_PROTECTION.md](docs/SUPABASE_FREE_TIER_PROTECTION.md) → Layers 14–15.
+- **Where the last ping came from.** The keep-alive panel names the layer that sent the most recent heartbeat, with total pings, a pause countdown and all **14 layers** listed — including the ones that have never run — each with the specific fix.
+- **Schema Doctor.** Probes every SQL pack for its tables, functions, views and storage buckets and says exactly which pack to run. Turns "the fix did not work" into "this pack was never installed".
+- **Analytics, rebuilt.** Five tabs over one authoritative RPC: attendance trends, membership growth, income vs expense, punctuality against the call time, per-member breakdown, units/roles/gender/parishes, top attendees, a follow-up list that links straight into Care, and programme turnout with ratings.
+- **Audit / Activity Log, rebuilt.** Summary KPIs, database-side filtering by period/action/person, free-text search, CSV and print-ready PDF export, plus the two-step **export-then-purge** retention workflow.
+- **Settings, rebuilt as one control plane.** Branding, organisation time zone and language, accessibility (high contrast, larger text, reduced motion, dyslexia-friendly font, underlined links, strong focus, text size), attendance policy and an optional **venue geofence** for self check-in, **authenticator-app two-step verification**, module access switching, the assistant toggle and system information.
+- **Storage Manager with an Archive Vault.** Exact table sizes, quota posture, retention horizons, and a delete-safe archive flow (export → upload to the private bucket → verify row count and SHA-256 → delete → restorable later).
+- **Admin Data additions.** A table explorer (preview, export CSV/JSON, delete a row with a typed confirmation), DEMO-labelled sample data for training, and a **restore hub** mapping every recovery source to its owner tool.
+- **Longer version tolerance.** Schema 14.2; 14.0 and 14.1 archives still restore.
 
 ### New in v14.1: identity, programmes and team operations
 

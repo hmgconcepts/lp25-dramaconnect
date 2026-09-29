@@ -203,8 +203,9 @@
             const code = document.getElementById('checkin-code').value.trim();
             if (!code) { UI.toast('Enter the check‑in code.', 'warning'); return; }
             try {
-                await DB.selfCheckIn(current, me.id, code);
-                UI.toast('You are checked in. ✅', 'success');
+                const res = await DB.selfCheckIn(current, me.id, code);
+                const where = res && res.geofence && res.distanceM != null ? ` Location verified (~${res.distanceM} m from the venue).` : '';
+                UI.toast('You are checked in. ✅' + where, 'success');
                 document.getElementById('checkin-code').value = '';
                 loadAtt(current);
             } catch (e) { UI.toast(e.message, 'error'); }

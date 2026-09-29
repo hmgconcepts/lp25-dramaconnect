@@ -90,15 +90,15 @@ const sw = await fs.readFile(path.join(root, 'sw.js'), 'utf8');
 for (const required of ['assets/js/platform-management.js', ...requiredPages.map((p) => `pages/${p}`)]) {
   if (!sw.includes(required)) fail(`sw.js: missing control-plane precache entry ${required}`);
 }
-if (!/dramaconnect-v14\.1/.test(sw)) fail('sw.js: release cache is not v14.1');
+if (!/dramaconnect-v14\.2/.test(sw)) fail('sw.js: release cache is not v14.2');
 
 const portability = await fs.readFile(path.join(root, 'assets', 'js', 'data-portability.js'), 'utf8');
-if (!/SCHEMA_VERSION\s*=\s*['"]14\.1['"]/.test(portability)) fail('data-portability.js: schema version is not 14.1');
+if (!/SCHEMA_VERSION\s*=\s*['"]14\.2['"]/.test(portability)) fail('data-portability.js: schema version is not 14.2');
 const tableMatch = portability.match(/const TABLES\s*=\s*Object\.freeze\(\[([\s\S]*?)\]\);/);
 if (!tableMatch) fail('data-portability.js: TABLES declaration not found');
 else {
   const tableCount = [...tableMatch[1].matchAll(/name:\s*['"][a-z0-9_]+['"]/gi)].length;
-  if (tableCount !== 31) fail(`data-portability.js: expected 31 archive tables; found ${tableCount}`);
+  if (tableCount !== 33) fail(`data-portability.js: expected 33 archive tables; found ${tableCount}`);
 }
 
 // Regression guard (Item 19 audit): style.css forces `.admin-only { display:none }`, so removing the

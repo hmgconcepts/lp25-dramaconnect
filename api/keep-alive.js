@@ -6,6 +6,9 @@
 //   • Supabase URL + anon key come from Vercel env vars when present, otherwise
 //     from this deployment's own public assets/js/config.js (the same two
 //     PUBLIC values every browser already receives). Zero setup.
+//   • ?source=<layer> lets ANY free scheduler reuse this endpoint (cron-job.org,
+//     UptimeRobot, Apps Script, the HMG Fleet Console) and still be labelled
+//     correctly on Platform Health. Unknown values fall back to vercel-cron.
 //   • CRON_SECRET is OPTIONAL hardening. When it is set, only callers that send
 //     "Authorization: Bearer <CRON_SECRET>" (Vercel Cron does this
 //     automatically) may trigger a write. When it is not set, any GET works —
@@ -56,15 +59,34 @@ async function resolveConnection(request) {
 export default async function handler(request, response) {
   response.setHeader('Cache-Control', 'no-store, max-age=0');
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    response.setHeader('Allow', 'GET, HEAD');
+  if (!['GET', 'HEAD', 'POST'].includes(request.method)) {
+    response.setHeader('Allow', 'GET, HEAD, POST');
     return response.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
+
+  /**
+   * Any scheduler can reuse this endpoint — cron-job.org, UptimeRobot, the HMG
+   * Fleet Console, Zapier/Make, or a Google Apps Script — by adding
+   * ?source=<layer>. The value is mapped onto the same allow-list the database
+   * uses, so a wrong or hostile value can never create a bogus layer row.
+   */
+  const SOURCE_ALIASES = {
+    'vercel-cron': 'vercel-cron', 'vercel': 'vercel-cron', 'cron': 'vercel-cron',
+    'cron-job-org': 'cron-job-org', 'cronjob': 'cron-job-org',
+    'uptimerobot': 'edge-ping', 'uptime-robot': 'edge-ping', 'edge': 'edge-ping',
+    'fleet': 'fleet-console', 'fleet-console': 'fleet-console', 'hmg-fleet': 'fleet-console',
+    'fleet-actions': 'fleet-actions', 'github-actions': 'github-actions',
+    'apps-script': 'apps-script', 'google-apps-script': 'apps-script'
+  };
 
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && !sameSecret(request.headers.authorization || '', `Bearer ${cronSecret}`)) {
     return response.status(401).json({ ok: false, error: 'unauthorized' });
   }
+
+  let requested = '';
+  try { requested = String(new URL(request.url, 'https://local').searchParams.get('source') || '').toLowerCase(); } catch (_) { requested = ''; }
+  const source = SOURCE_ALIASES[requested] || 'vercel-cron';
 
   const conn = await resolveConnection(request);
   if (!conn) {
@@ -84,9 +106,9 @@ export default async function handler(request, response) {
         apikey: conn.key,
         Authorization: `Bearer ${conn.key}`,
         'Content-Type': 'application/json',
-        'User-Agent': 'DramaConnect-Vercel-Cron/14.1'
+        'User-Agent': 'DramaConnect-Vercel-Cron/14.2'
       },
-      body: JSON.stringify({ p_source: 'vercel-cron' }),
+      body: JSON.stringify({ p_source: source }),
       cache: 'no-store',
       signal: controller.signal
     });
@@ -94,7 +116,7 @@ export default async function handler(request, response) {
     if (!upstream.ok || payload?.ok !== true) {
       return response.status(502).json({ ok: false, error: 'heartbeat_rejected', upstreamStatus: upstream.status, code: payload?.code || null });
     }
-    return response.status(200).json({ ok: true, status: payload.status, source: payload.source, at: payload.at, config: conn.from });
+    return response.status(200).json({ ok: true, status: payload.status, source: payload.source, at: payload.at, config: conn.from, requested: requested || null });
   } catch (error) {
     return response.status(error?.name === 'AbortError' ? 504 : 502).json({
       ok: false,

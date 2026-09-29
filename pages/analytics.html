@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Attendance Analytics | DramaConnect Enterprise</title>
+    <meta name="app-version" content="14.2">
+    <title>Analytics | DramaConnect Enterprise</title>
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -13,36 +14,166 @@
     <link rel="stylesheet" href="../assets/css/style.css">
     <link rel="stylesheet" href="../assets/css/fallback.css">
     <script src="../assets/js/boot.js"></script>
+    <style>
+      .an-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:0 0 1rem}
+      .an-tabs button{border-radius:9999px;padding:.45rem 1rem;font-size:.82rem;font-weight:700;background:#e2e8f0;color:#334155;border:0;cursor:pointer}
+      .an-tabs button[aria-selected="true"]{background:#1d4ed8;color:#fff}
+      .an-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem}
+      .an-card{border-radius:1rem;padding:.9rem 1rem;background:#fff;border:1px solid #e2e8f0}
+      .an-card .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:700}
+      .an-card .v{font-size:1.45rem;font-weight:900;line-height:1.15;margin-top:.15rem}
+      .an-card .s{font-size:.72rem;color:#64748b;margin-top:.15rem}
+      .an-bars{display:flex;align-items:flex-end;gap:3px;height:140px;padding-top:1rem}
+      .an-bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+      .an-bars .b i{width:100%;border-radius:4px 4px 0 0;background:#2563eb;min-height:2px}
+      .an-bars .b i.alt{background:#f97316}
+      .an-bars .b small{font-size:9px;color:#64748b;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      .an-meter{display:grid;grid-template-columns:minmax(90px,28%) 1fr auto;gap:.5rem;align-items:center;font-size:.82rem;margin:.35rem 0}
+      .an-meter .t{height:10px;background:#e2e8f0;border-radius:9999px;overflow:hidden}
+      .an-meter .t i{display:block;height:100%;border-radius:9999px;background:linear-gradient(90deg,#2563eb,#7c3aed)}
+      .an-table{width:100%;border-collapse:collapse;font-size:.82rem}
+      .an-table th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;padding:.5rem;border-bottom:1px solid #e2e8f0}
+      .an-table td{padding:.5rem;border-bottom:1px solid #f1f5f9;vertical-align:top}
+      @media print{.no-print,#app-sidebar,.an-tabs{display:none!important}.app-main{margin:0!important}}
+    </style>
 </head>
 <body class="bg-slate-50 min-h-screen app-shell">
     <div id="app-sidebar"></div>
     <main class="app-main">
         <div id="page-header"></div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div class="glass-card p-5 border-l-4 border-blue-600"><p class="text-xs font-bold text-slate-400 uppercase">Sessions</p><h2 id="k-sessions" class="text-2xl font-black text-slate-800">—</h2></div>
-            <div class="glass-card p-5 border-l-4 border-green-600"><p class="text-xs font-bold text-slate-400 uppercase">Avg Attendance</p><h2 id="k-avg" class="text-2xl font-black text-slate-800">—</h2></div>
-            <div class="glass-card p-5 border-l-4 border-yellow-500"><p class="text-xs font-bold text-slate-400 uppercase">Best Attendee</p><h2 id="k-best" class="text-base font-black text-slate-800">—</h2></div>
-            <div class="glass-card p-5 border-l-4 border-red-600"><p class="text-xs font-bold text-slate-400 uppercase">Members Tracked</p><h2 id="k-members" class="text-2xl font-black text-slate-800">—</h2></div>
+        <div class="flex flex-wrap gap-2 items-end mb-4 no-print">
+            <label class="text-xs font-bold">Period
+                <select id="months" class="form-input mt-1"><option value="3">Last 3 months</option><option value="6">Last 6 months</option><option value="12" selected>Last 12 months</option><option value="24">Last 24 months</option><option value="36">Last 36 months</option></select>
+            </label>
+            <button id="refresh" class="dc-btn btn-primary"><i class="fas fa-rotate"></i> Refresh</button>
+            <button id="print" class="dc-btn btn-secondary"><i class="fas fa-print"></i> Print / PDF</button>
+            <span id="generated" class="text-xs text-slate-500 ml-auto"></span>
         </div>
+        <div id="an-error" class="hidden mb-4 rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-700"></div>
 
-        <div class="glass-card p-6 md:p-8 mb-6">
-            <h3 class="text-lg font-bold text-slate-800 mb-4"><i class="fas fa-chart-bar text-blue-600 mr-2"></i> Attendance Rate by Member</h3>
-            <div class="h-80"><canvas id="chart"></canvas></div>
-        </div>
+        <nav class="an-tabs" role="tablist" aria-label="Analytics sections">
+            <button role="tab" data-tab="overview" aria-selected="true">📈 Overview</button>
+            <button role="tab" data-tab="attendance" aria-selected="false">📊 Attendance</button>
+            <button role="tab" data-tab="members" aria-selected="false">👥 Members</button>
+            <button role="tab" data-tab="participation" aria-selected="false">🤝 Participation</button>
+            <button role="tab" data-tab="programmes" aria-selected="false">🎟️ Programmes &amp; events</button>
+        </nav>
 
-        <div class="glass-card p-6 md:p-8">
-            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
-                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-table text-blue-600 mr-2"></i> Per-Member Breakdown</h3>
-                <button id="export" class="dc-btn bg-green-600 text-white text-sm py-2"><i class="fas fa-file-excel mr-1"></i> Export Excel</button>
+        <!-- ================= OVERVIEW ================= -->
+        <section data-panel="overview">
+            <div class="an-grid mb-5" id="kpi-overview"><p class="text-slate-400 text-sm">Loading…</p></div>
+            <div class="grid lg:grid-cols-2 gap-5 mb-5">
+                <div class="glass-card p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-chart-column text-blue-600 mr-2"></i>Attendance rate by month</h3>
+                    <p class="text-xs text-slate-500 mb-2">Present ÷ expected attendances. Before a member joined they are not counted as absent.</p>
+                    <div id="chart-months" class="an-bars"></div>
+                </div>
+                <div class="glass-card p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-users-line text-blue-600 mr-2"></i>Membership growth</h3>
+                    <p class="text-xs text-slate-500 mb-2">New members (bar) and total approved members at month end (label).</p>
+                    <div id="chart-members" class="an-bars"></div>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="enterprise-table" id="tbl">
-                    <thead><tr><th>Member</th><th>Present</th><th>Excused</th><th>Absent</th><th>Sessions</th><th>Rate</th></tr></thead>
-                    <tbody id="tbody"><tr><td colspan="6" class="text-center text-slate-400 py-8">Loading…</td></tr></tbody>
-                </table>
+            <div class="grid lg:grid-cols-2 gap-5 mb-5">
+                <div class="glass-card p-6" id="card-finance">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-scale-balanced text-blue-600 mr-2"></i>Income vs expense by month</h3>
+                    <p class="text-xs text-slate-500 mb-2">Blue = income, orange = expense, from the Finance register.</p>
+                    <div id="chart-finance" class="an-bars"></div>
+                    <p id="finance-totals" class="text-xs text-slate-500 mt-2"></p>
+                </div>
+                <div class="glass-card p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-ticket text-blue-600 mr-2"></i>Programme registrations by month</h3>
+                    <p class="text-xs text-slate-500 mb-2">Public registrations captured through shareable programme links.</p>
+                    <div id="chart-regs" class="an-bars"></div>
+                </div>
             </div>
-        </div>
+        </section>
+
+        <!-- ================= ATTENDANCE ================= -->
+        <section data-panel="attendance" hidden>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                <div class="glass-card p-5 border-l-4 border-blue-600"><p class="text-xs font-bold text-slate-400 uppercase">Sessions</p><h2 id="k-sessions" class="text-2xl font-black text-slate-800">—</h2></div>
+                <div class="glass-card p-5 border-l-4 border-green-600"><p class="text-xs font-bold text-slate-400 uppercase">Avg Attendance</p><h2 id="k-avg" class="text-2xl font-black text-slate-800">—</h2></div>
+                <div class="glass-card p-5 border-l-4 border-yellow-500"><p class="text-xs font-bold text-slate-400 uppercase">Best Attendee</p><h2 id="k-best" class="text-base font-black text-slate-800">—</h2></div>
+                <div class="glass-card p-5 border-l-4 border-red-600"><p class="text-xs font-bold text-slate-400 uppercase">Members Tracked</p><h2 id="k-members" class="text-2xl font-black text-slate-800">—</h2></div>
+            </div>
+            <div class="an-grid mb-5" id="kpi-attendance"></div>
+            <div class="glass-card p-6 mb-5">
+                <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-clock text-blue-600 mr-2"></i>Punctuality (self check-in vs call time)</h3>
+                <p class="text-xs text-slate-500 mb-3" id="punctuality-note"></p>
+                <div id="punctuality-bars"></div>
+            </div>
+            <div class="glass-card p-6 mb-5">
+                <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-calendar-check text-blue-600 mr-2"></i>Recent rehearsal sessions</h3>
+                <div class="overflow-x-auto"><table class="an-table"><thead><tr><th>Date</th><th>Present</th><th>Excused</th><th>Absent</th><th>Eligible</th><th>Rate</th></tr></thead><tbody id="sessions-body"><tr><td colspan="6" class="text-slate-400">Loading…</td></tr></tbody></table></div>
+            </div>
+            <div class="glass-card p-6">
+                <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                    <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-table text-blue-600 mr-2"></i>Per-Member Breakdown</h3>
+                    <div class="flex flex-wrap gap-2 items-end no-print">
+                        <label class="text-xs font-bold">Search<input id="member-search" class="form-input mt-1" placeholder="Name or unit"></label>
+                        <label class="text-xs font-bold">Minimum rate<select id="rate-filter" class="form-input mt-1"><option value="0">All</option><option value="50">Below 50%</option><option value="75">Below 75%</option><option value="90">Below 90%</option></select></label>
+                        <button id="export" class="dc-btn bg-green-600 text-white text-sm"><i class="fas fa-file-excel mr-1"></i> Export Excel</button>
+                        <button id="export-csv" class="dc-btn btn-secondary text-sm"><i class="fas fa-file-csv mr-1"></i> CSV</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="enterprise-table" id="tbl">
+                        <thead><tr><th>Member</th><th>Present</th><th>Excused</th><th>Absent</th><th>Sessions</th><th>Rate</th></tr></thead>
+                        <tbody id="tbody"><tr><td colspan="6" class="text-center text-slate-400 py-8">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <p id="member-count" class="text-xs text-slate-500 mt-2"></p>
+            </div>
+        </section>
+
+        <!-- ================= MEMBERS ================= -->
+        <section data-panel="members" hidden>
+            <div class="an-grid mb-5" id="kpi-members"></div>
+            <div class="grid lg:grid-cols-2 gap-5 mb-5">
+                <div class="glass-card p-6"><h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-people-group text-blue-600 mr-2"></i>Unit / department</h3><div id="by-unit"></div></div>
+                <div class="glass-card p-6"><h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-user-shield text-blue-600 mr-2"></i>Roles &amp; gender</h3><div id="by-role"></div><div id="by-gender" class="mt-4"></div></div>
+            </div>
+            <div class="grid lg:grid-cols-2 gap-5">
+                <div class="glass-card p-6"><h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-church text-blue-600 mr-2"></i>Parishes</h3><div id="by-parish"></div></div>
+                <div class="glass-card p-6"><h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-cake-candles text-blue-600 mr-2"></i>Birthdays this month</h3><div id="birthdays"></div></div>
+            </div>
+        </section>
+
+        <!-- ================= PARTICIPATION ================= -->
+        <section data-panel="participation" hidden>
+            <div class="an-grid mb-5" id="kpi-participation"></div>
+            <div class="grid lg:grid-cols-2 gap-5 mb-5">
+                <div class="glass-card p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-trophy text-yellow-500 mr-2"></i>Top 10 attendees</h3>
+                    <div class="overflow-x-auto"><table class="an-table"><thead><tr><th>Member</th><th>Unit</th><th>Present</th><th>Rate</th></tr></thead><tbody id="top-body"></tbody></table></div>
+                </div>
+                <div class="glass-card p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-triangle-exclamation text-red-600 mr-2"></i>Needs follow-up</h3>
+                    <p class="text-xs text-slate-500 mb-2">Below 50% attendance, or 3+ rehearsals without appearing. Open a care case to follow up.</p>
+                    <div class="overflow-x-auto"><table class="an-table"><thead><tr><th>Member</th><th>Rate</th><th>Missed in a row</th><th class="no-print">Action</th></tr></thead><tbody id="risk-body"></tbody></table></div>
+                </div>
+            </div>
+            <div class="grid lg:grid-cols-3 gap-5">
+                <div class="glass-card p-6"><h3 class="text-base font-bold text-slate-800 mb-2"><i class="fas fa-hand-holding-heart text-blue-600 mr-2"></i>Care cases</h3><div id="care-summary"></div></div>
+                <div class="glass-card p-6"><h3 class="text-base font-bold text-slate-800 mb-2"><i class="fas fa-list-check text-blue-600 mr-2"></i>Tasks</h3><div id="task-summary"></div></div>
+                <div class="glass-card p-6"><h3 class="text-base font-bold text-slate-800 mb-2"><i class="fas fa-current-location text-blue-600 mr-2"></i>Registration sources</h3><div id="source-summary"></div></div>
+            </div>
+        </section>
+
+        <!-- ================= PROGRAMMES ================= -->
+        <section data-panel="programmes" hidden>
+            <div class="an-grid mb-5" id="kpi-programmes"></div>
+            <div class="glass-card p-6 mb-5">
+                <h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-ticket text-blue-600 mr-2"></i>Programme performance</h3>
+                <div class="overflow-x-auto"><table class="an-table"><thead><tr><th>Programme</th><th>Status</th><th>Starts</th><th>Registered</th><th>Capacity</th><th>Checked in</th><th>First timers</th><th>Rating</th></tr></thead><tbody id="prog-body"></tbody></table></div>
+            </div>
+            <div class="glass-card p-6">
+                <h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-calendar-days text-blue-600 mr-2"></i>Upcoming event RSVPs</h3>
+                <div id="rsvp-summary"></div>
+            </div>
+        </section>
     </main>
 
     <script src="../assets/js/config.js"></script>
@@ -60,69 +191,242 @@
 <script src="../assets/js/page-guide.js"></script>
 <script src="../assets/js/assistant.js"></script>
     <script>
-        let me = null, rows = [], chart = null;
-        async function init() {
-            me = await Auth.checkSession();
-            if (!me) return;
-            Layout.renderSidebar('analytics', me);
-            document.getElementById('page-header').innerHTML = Layout.renderHeader('Attendance Analytics', 'Participation rates & trends');
-            Layout.setDate();
-            if (Layout.loadNotifications) Layout.loadNotifications(me);
-            document.getElementById('export').onclick = () => Utils.exportToExcel(rows, 'attendance-analytics.xlsx');
-            load();
-        }
-        async function load() {
-            try {
-                const [members, rehearsals, report] = await Promise.all([
-                    DB.getMembers(), DB.getRehearsals(), DB.getAttendanceReport()
-                ]);
-                const sessions = rehearsals.length;
-                document.getElementById('k-sessions').innerText = sessions;
-                document.getElementById('k-members').innerText = members.length;
+    (() => {
+      'use strict';
+      // Null-safe lookup: a missing element must never abort a whole render.
+      const $ = id => document.getElementById(id) || { textContent: '', innerHTML: '', classList: { add() {}, remove() {} }, style: {}, value: '', dataset: {} };
+      const esc = v => UI.esc(v ?? '');
+      const n = v => Number(v || 0).toLocaleString();
+      const pct = v => (v == null || v === '' ? '—' : `${Number(v).toFixed(Number(v) % 1 ? 1 : 0)}%`);
+      const rate = (p, e) => (Number(e) > 0 ? Math.round((Number(p) / Number(e)) * 100) : null);
+      const money = v => `₦${Number(v || 0).toLocaleString()}`;
+      const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      let me = null, data = null, rows = [];
 
-                // tally per member
-                const stat = {};
-                members.forEach(m => stat[m.id] = { name: m.full_name || m.email || 'Member', present: 0, excused: 0, absent: 0 });
-                report.forEach(a => {
-                    if (!stat[a.member_id]) return;
-                    if (a.status === 'present') stat[a.member_id].present++;
-                    else if (a.status === 'excused') stat[a.member_id].excused++;
-                });
-                rows = Object.values(stat).map(s => {
-                    const absent = Math.max(0, sessions - s.present - s.excused);
-                    const rate = sessions ? Math.round(s.present / sessions * 100) : 0;
-                    return { Member: s.name, Present: s.present, Excused: s.excused, Absent: absent, Sessions: sessions, Rate: rate + '%', _rate: rate };
-                }).sort((a, b) => b._rate - a._rate);
+      const card = (label, value, sub) => `<div class="an-card"><div class="l">${esc(label)}</div><div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
+      const meter = (label, value, max, text) => `<div class="an-meter"><span>${esc(label)}</span><span class="t"><i style="width:${max ? Math.min(100, (Number(value) / max) * 100) : 0}%"></i></span><span>${text}</span></div>`;
+      function bars(host, items, opts = {}) {
+        const max = Math.max(1, ...items.map(i => Number(i.value) || 0));
+        host.innerHTML = items.length ? items.map(i => {
+          const h = Math.max(2, Math.round(((Number(i.value) || 0) / max) * 100));
+          return `<div class="b" title="${esc(i.title || `${i.label}: ${i.value}`)}"><i class="${i.alt ? 'alt' : ''}" style="height:${h}%"></i><small>${esc(i.label)}</small></div>`;
+        }).join('') : '<p class="text-slate-400 text-sm">No data for this period.</p>';
+      }
+      function monthLabel(ym) { const [y, m] = String(ym).split('-'); return `${MONTH[Number(m) - 1]} ${String(y).slice(2)}`; }
 
-                const avg = rows.length ? Math.round(rows.reduce((a, b) => a + b._rate, 0) / rows.length) : 0;
-                document.getElementById('k-avg').innerText = avg + '%';
-                document.getElementById('k-best').innerText = rows.length ? rows[0].Member : '—';
+      /* -------- Legacy fallback (database installed before the analytics pack) -------- */
+      async function legacyAnalytics(months) {
+        const [members, rehearsals, report] = await Promise.all([DB.getMembers(), DB.getRehearsals(), DB.getAttendanceReport()]);
+        const sessions = rehearsals.length;
+        const stat = {};
+        members.forEach(m => stat[m.id] = { id: m.id, name: m.full_name || m.email || 'Member', unit: m.unit, present: 0, excused: 0, expected: sessions });
+        report.forEach(a => { const s = stat[a.member_id]; if (!s) return; if (a.status === 'present') s.present++; else if (a.status === 'excused') s.excused++; });
+        const list = Object.values(stat);
+        const now = new Date();
+        const monthly = [];
+        for (let i = months - 1; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const inMonth = rehearsals.filter(r => String(r.rehearsal_date).slice(0, 7) === key);
+          const present = report.filter(a => a.status === 'present' && inMonth.some(r => r.id === a.rehearsal_id)).length;
+          monthly.push({ month: key, rehearsals: inMonth.length, present, expected: inMonth.length * members.length,
+            newMembers: members.filter(m => String(m.created_at || '').slice(0, 7) === key).length,
+            totalMembers: members.filter(m => String(m.created_at || '') <= key + '-31').length, registrations: 0 });
+        }
+        return {
+          legacy: true, months, isAdmin: Auth.isAdmin(me), generatedAt: new Date().toISOString(),
+          settings: { callTime: '16:00', lateAfterMinutes: 15, timezone: 'Africa/Lagos' },
+          kpis: {
+            membersApproved: members.length, membersPending: 0, admins: members.filter(m => m.role === 'admin').length,
+            unitLeaders: members.filter(m => m.is_unit_leader).length, newMembers30d: 0,
+            rehearsalsTotal: sessions, rehearsals30d: rehearsals.filter(r => new Date(r.rehearsal_date) >= new Date(Date.now() - 30 * 864e5)).length,
+            rehearsalsUpcoming: rehearsals.filter(r => new Date(r.rehearsal_date) > new Date()).length,
+            attendanceRateAll: list.length ? Math.round(list.reduce((s, x) => s + (rate(x.present, x.expected) || 0), 0) / list.length) : null,
+            eventsUpcoming: 0, productionsUpcoming: 0, programmesOpen: 0, registrations: 0, checkedIn: 0,
+            tasksOpen: 0, tasksOverdue: 0, careOpen: 0, cardsActive: 0, suggestionsNew: 0, birthdaysThisMonth: members.filter(m => Number(m.birth_month) === now.getMonth() + 1).length
+          },
+          monthly,
+          recentRehearsals: rehearsals.slice(-12).reverse().map(r => {
+            const rowsx = report.filter(a => a.rehearsal_id === r.id);
+            return { date: r.rehearsal_date, present: rowsx.filter(a => a.status === 'present').length, excused: rowsx.filter(a => a.status === 'excused').length,
+              absent: rowsx.filter(a => a.status === 'absent').length, eligible: members.length };
+          }),
+          byUnit: Object.entries(list.reduce((acc, x) => { const u = x.unit || 'Unassigned'; acc[u] = acc[u] || { members: 0, present: 0, expected: 0 }; acc[u].members++; acc[u].present += x.present; acc[u].expected += x.expected; return acc; }, {}))
+            .map(([unit, v]) => ({ unit, members: v.members, rate: rate(v.present, v.expected) })),
+          byRole: { admin: members.filter(m => m.role === 'admin').length, unitLeader: members.filter(m => m.is_unit_leader && m.role !== 'admin').length, member: members.filter(m => m.role !== 'admin' && !m.is_unit_leader).length },
+          gender: list.reduce((a, x) => a, {}),
+          parishes: [], birthdays: members.filter(m => Number(m.birth_month) === now.getMonth() + 1).map(m => ({ name: m.full_name, day: m.birth_day, unit: m.unit })),
+          punctuality: { measured: 0, onTime: 0, late: 0, byHour: {} },
+          topMembers: [...list].sort((a, b) => (rate(b.present, b.expected) || 0) - (rate(a.present, a.expected) || 0)).slice(0, 10)
+            .map(x => ({ name: x.name, unit: x.unit, present: x.present, expected: x.expected, rate: rate(x.present, x.expected) })),
+          atRisk: list.filter(x => x.expected >= 3 && (rate(x.present, x.expected) || 0) < 50)
+            .map(x => ({ id: x.id, name: x.name, unit: x.unit, present: x.present, expected: x.expected, rate: rate(x.present, x.expected), missedStreak: 0 })),
+          programmes: [], registrationSources: {}, care: {}, tasks: {}, eventRsvps: {},
+          members: list.map(x => ({ id: x.id, name: x.name, unit: x.unit, present: x.present, excused: x.excused, expected: x.expected }))
+        };
+      }
 
-                renderTable(); renderChart();
-            } catch (e) { document.getElementById('tbody').innerHTML = `<tr><td colspan="6" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
-        }
-        function renderTable() {
-            const body = document.getElementById('tbody');
-            if (!rows.length) { body.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-8">No data.</td></tr>'; return; }
-            body.innerHTML = rows.map(r => `
-                <tr>
-                    <td class="font-semibold text-slate-800">${UI.esc(r.Member)}</td>
-                    <td>${r.Present}</td><td>${r.Excused}</td><td>${r.Absent}</td><td>${r.Sessions}</td>
-                    <td><span class="badge ${r._rate>=75?'badge-green':r._rate>=40?'badge-yellow':'badge-red'}">${r.Rate}</span></td>
-                </tr>`).join('');
-        }
-        function renderChart() {
-            const top = rows.slice(0, 15);
-            const ctx = document.getElementById('chart').getContext('2d');
-            if (chart) chart.destroy();
-            if (typeof Chart === 'undefined') return;
-            chart = new Chart(ctx, {
-                type: 'bar',
-                data: { labels: top.map(r => r.Member), datasets: [{ label: 'Attendance %', data: top.map(r => r._rate), backgroundColor: '#2563eb', borderRadius: 6 }] },
-                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } }
-            });
-        }
-        init();
+      async function load() {
+        const months = Number($('months').value);
+        try {
+          $('an-error').classList.add('hidden');
+          try { data = await PlatformManagement.analytics(months); }
+          catch (e) { console.warn('Analytics RPC unavailable, using the local report:', e); data = await legacyAnalytics(months); }
+          if (data.legacy) UI.toast('Showing the basic report — run database/complete-schema.sql for the full Analytics pack.', 'warning', 9000);
+          render();
+        } catch (e) { $('an-error').textContent = PlatformManagement.clean(e); $('an-error').classList.remove('hidden'); }
+      }
+
+      function render() {
+        const k = data.kpis || {};
+        $('generated').textContent = `Generated ${new Date(data.generatedAt || Date.now()).toLocaleString()}${data.legacy ? ' (basic mode)' : ''}`;
+
+        /* ---------- Overview ---------- */
+        $('kpi-overview').innerHTML = [
+          card('Approved members', n(k.membersApproved), `${n(k.membersPending)} awaiting approval`),
+          card('Attendance (all time)', pct(k.attendanceRateAll), 'present ÷ expected'),
+          card('Attendance (30 days)', pct(k.attendanceRate30d), 'recent participation'),
+          card('Rehearsals held', n(k.rehearsalsTotal), `${n(k.rehearsalsUpcoming)} upcoming`),
+          card('New members (30 days)', n(k.newMembers30d), 'joined recently'),
+          card('Admins / leaders', `${n(k.admins)} / ${n(k.unitLeaders)}`, 'approved accounts'),
+          card('Programme registrations', n(k.registrations), `${n(k.programmesOpen)} programme(s) open`),
+          card('ID cards active', n(k.cardsActive), 'not revoked or expired')
+        ].join('');
+        const monthly = data.monthly || [];
+        bars($('chart-months'), monthly.map(m => ({ label: monthLabel(m.month), value: rate(m.present, m.expected) || 0, title: `${monthLabel(m.month)}: ${rate(m.present, m.expected) || 0}% (${m.present}/${m.expected})` })));
+        bars($('chart-members'), monthly.map(m => ({ label: `${m.totalMembers}`, value: m.newMembers, title: `${monthLabel(m.month)}: +${m.newMembers} (total ${m.totalMembers})` })));
+        bars($('chart-regs'), monthly.map(m => ({ label: monthLabel(m.month), value: m.registrations || 0, alt: true, title: `${monthLabel(m.month)}: ${m.registrations || 0} registration(s)` })));
+        if (data.isAdmin && monthly.some(m => m.income != null)) {
+          $('card-finance').classList.remove('hidden');
+          const items = [];
+          monthly.forEach(m => { items.push({ label: monthLabel(m.month), value: m.income || 0, title: `${monthLabel(m.month)} income ${money(m.income)}` }); });
+          $('chart-finance').innerHTML = '';
+          const max = Math.max(1, ...monthly.flatMap(m => [Number(m.income || 0), Number(m.expense || 0)]));
+          $('chart-finance').innerHTML = monthly.map(m => `<div class="b" title="${esc(`${monthLabel(m.month)}: in ${money(m.income)} / out ${money(m.expense)}`)}">
+              <div style="display:flex;gap:2px;align-items:flex-end;width:100%;height:100%">
+                <i style="flex:1;height:${Math.max(2, ((Number(m.income) || 0) / max) * 100)}%;background:#2563eb;border-radius:4px 4px 0 0"></i>
+                <i style="flex:1;height:${Math.max(2, ((Number(m.expense) || 0) / max) * 100)}%;background:#f97316;border-radius:4px 4px 0 0"></i>
+              </div><small>${esc(monthLabel(m.month))}</small></div>`).join('');
+          const inSum = monthly.reduce((s, m) => s + Number(m.income || 0), 0);
+          const outSum = monthly.reduce((s, m) => s + Number(m.expense || 0), 0);
+          $('finance-totals').textContent = `Income ${money(inSum)} · expense ${money(outSum)} · balance ${money(inSum - outSum)} over ${data.months} month(s).`;
+        } else $('card-finance').classList.add('hidden');
+
+        /* ---------- Attendance ---------- */
+        $('kpi-attendance').innerHTML = [
+          card('Rehearsals (30 days)', n(k.rehearsals30d), `${n(k.rehealsalsTotal || k.rehearsalsTotal)} in total`),
+          card('Attendance (30 days)', pct(k.attendanceRate30d), ''),
+          card('Attendance (all time)', pct(k.attendanceRateAll), '')
+        ].join('');
+        const p = data.punctuality || {};
+        const callTime = (data.settings && data.settings.callTime) || '16:00';
+        $('punctuality-note').textContent = p.measured
+          ? `Measured ${n(p.measured)} recorded arrival(s) against a ${callTime} call time (+${(data.settings && data.settings.lateAfterMinutes) || 15} min grace). ${n(p.onTime)} on time, ${n(p.late)} late.`
+          : `No self check-in timestamps in this period. Members who check in themselves (Attendance page) are measured against the ${callTime} call time set in Settings.`;
+        $('punctuality-bars').innerHTML = p.measured
+          ? meter('On time', p.onTime, p.measured, `${n(p.onTime)} (${Math.round((p.onTime / p.measured) * 100)}%)`) + meter('Late', p.late, p.measured, `${n(p.late)} (${Math.round((p.late / p.measured) * 100)}%)`) +
+            Object.entries(p.byHour || {}).sort((a, b) => Number(a[0]) - Number(b[0])).map(([h, c]) => meter(`${String(h).padStart(2, '0')}:00`, c, Math.max(...Object.values(p.byHour || { 0: 1 })), `${n(c)} arrival(s)`)).join('')
+          : '<p class="text-slate-400 text-sm">No data yet.</p>';
+        $('sessions-body').innerHTML = (data.recentRehearsals || []).map(s => `<tr><td>${esc(new Date(s.date).toLocaleDateString())}</td><td>${n(s.present)}</td><td>${n(s.excused)}</td><td>${n(s.absent)}</td><td>${n(s.eligible)}</td><td><span class="badge ${(rate(s.present, s.eligible) || 0) >= 75 ? 'badge-green' : (rate(s.present, s.eligible) || 0) >= 40 ? 'badge-yellow' : 'badge-red'}">${pct(rate(s.present, s.eligible))}</span></td></tr>`).join('') || '<tr><td colspan="6" class="text-slate-400">No rehearsals recorded.</td></tr>';
+
+        // Per-member table
+        const members = data.members || (data.topMembers || []).map(x => ({ ...x, excused: 0 })).concat((data.atRisk || []).map(x => ({ ...x, excused: 0 })));
+        rows = members.map(m => {
+          const absent = Math.max(0, Number(m.expected || 0) - Number(m.present || 0) - Number(m.excused || 0));
+          return { Member: m.name, Present: Number(m.present || 0), Excused: Number(m.excused || 0), Absent: absent,
+            Sessions: Number(m.expected || 0), Rate: `${rate(m.present, m.expected) || 0}%`, _rate: rate(m.present, m.expected) || 0, _name: m.name, _unit: m.unit || '' };
+        }).sort((a, b) => b._rate - a._rate);
+        $('k-sessions').textContent = n(k.rehearsalsTotal);
+        $('k-members').textContent = n(k.membersApproved);
+        $('k-avg').textContent = pct(k.attendanceRateAll);
+        $('k-best').textContent = rows.length ? rows[0].Member : '—';
+        renderMembers();
+
+        /* ---------- Members ---------- */
+        $('kpi-members').innerHTML = [
+          card('Approved', n(k.membersApproved)), card('Pending approval', n(k.membersPending)),
+          card('Unit leaders', n(k.unitLeaders)), card('Administrators', n(k.admins)),
+          card('New (30 days)', n(k.newMembers30d)), card('Birthdays this month', n(k.birthdaysThisMonth))
+        ].join('');
+        const units = data.byUnit || [];
+        const maxU = Math.max(1, ...units.map(u => u.members));
+        $('by-unit').innerHTML = units.length ? units.map(u => meter(u.unit, u.members, maxU, `${n(u.members)} member(s)${u.rate != null ? ` · ${pct(u.rate)}` : ''}`)).join('') : '<p class="text-slate-400 text-sm">No units recorded.</p>';
+        const r = data.byRole || {};
+        $('by-role').innerHTML = meter('Administrators', r.admin, k.membersApproved, n(r.admin)) + meter('Unit leaders', r.unitLeader, k.membersApproved, n(r.unitLeader)) + meter('Members', r.member, k.membersApproved, n(r.member));
+        const g = data.gender || {};
+        $('by-gender').innerHTML = Object.keys(g).length ? Object.entries(g).map(([key, v]) => meter(key, v, Math.max(...Object.values(g)) || 1, n(v))).join('') : '';
+        const par = data.parishes || [];
+        $('by-parish').innerHTML = par.length ? par.map(x => meter(x.parish, x.members, Math.max(...par.map(y => y.members)), n(x.members))).join('') : '<p class="text-slate-400 text-sm">No parish recorded on member profiles.</p>';
+        const bd = data.birthdays || [];
+        $('birthdays').innerHTML = bd.length ? bd.map(b => `<div class="an-meter"><span>${esc(b.name)}</span><span class="t"><i style="width:${((Number(b.day) || 1) / 31) * 100}%"></i></span><span>${esc(b.unit || '')} · day ${n(b.day)}</span></div>`).join('') : '<p class="text-slate-400 text-sm">No birthdays this month.</p>';
+
+        /* ---------- Participation ---------- */
+        $('kpi-participation').innerHTML = [
+          card('Care cases open', n(k.careOpen), 'follow-up needed'), card('Tasks open', n(k.tasksOpen), `${n(k.tasksOverdue)} overdue`),
+          card('Suggestions new', n(k.suggestionsNew), 'awaiting review'), card('Registered for programmes', n(k.registrations), `${n(k.checkedIn)} checked in`)
+        ].join('');
+        const top = data.topMembers || [];
+        $('top-body').innerHTML = top.length ? top.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.unit || '—')}</td><td>${n(x.present)}</td><td>${pct(x.rate)}</td></tr>`).join('') : '<tr><td colspan="4" class="text-slate-400">Not enough sessions yet.</td></tr>';
+        const risk = data.atRisk || [];
+        $('risk-body').innerHTML = risk.length ? risk.map(x => `<tr><td>${esc(x.name)}<div class="text-xs text-slate-500">${esc(x.unit || '')}</div></td><td>${pct(x.rate)}</td><td>${n(x.missedStreak)}</td><td class="no-print">${x.id ? `<a class="dc-btn ghost" href="care.html?member=${esc(x.id)}" title="Open a care case in Care &amp; Follow-up">Open care case</a>` : '<span class="text-xs text-slate-400">—</span>'}</td></tr>`).join('') : '<tr><td colspan="4" class="text-slate-400">Everyone with enough sessions is above 50%. 🎉</td></tr>';
+        const care = data.care || {};
+        $('care-summary').innerHTML = Object.keys(care).length ? Object.entries(care).map(([s, v]) => meter(s, v, Math.max(...Object.values(care)), n(v))).join('') : '<p class="text-slate-400 text-sm">No care cases.</p>';
+        const tasks = data.tasks || {};
+        $('task-summary').innerHTML = (Object.keys(tasks).length ? Object.entries(tasks).map(([s, v]) => meter(s, v, Math.max(...Object.values(tasks)), n(v))).join('') : '<p class="text-slate-400 text-sm">No tasks.</p>') + (k.tasksOverdue ? `<p class="text-xs text-amber-700 mt-2">${n(k.tasksOverdue)} task(s) past their due date — see <a class="underline" href="tasks.html">Tasks</a>.</p>` : '');
+        const src = data.registrationSources || {};
+        $('source-summary').innerHTML = Object.keys(src).length ? Object.entries(src).sort((a, b) => b[1] - a[1]).map(([s, v]) => meter(s, v, Math.max(...Object.values(src)), n(v))).join('') : '<p class="text-slate-400 text-sm">No registrations yet. Share a programme link from <a class="underline" href="programs.html">Programmes</a>.</p>';
+
+        /* ---------- Programmes ---------- */
+        $('kpi-programmes').innerHTML = [
+          card('Programmes (recent)', n((data.programmes || []).length), `${n(k.programmesOpen)} open now`),
+          card('Registrations', n(k.registrations), 'excluding cancellations'),
+          card('Checked in', n(k.checkedIn), k.registrations ? `${Math.round((k.checkedIn / k.registrations) * 100)}% turnout` : ''),
+          card('Upcoming events', n(k.eventsUpcoming), 'from the Events page')
+        ].join('');
+        const progs = data.programmes || [];
+        $('prog-body').innerHTML = progs.length ? progs.map(x => `<tr><td><b>${esc(x.title)}</b></td><td>${esc(x.status)}</td><td>${x.startsAt ? esc(new Date(x.startsAt).toLocaleDateString()) : '—'}</td><td>${n(x.registered)}</td><td>${x.capacity ? n(x.capacity) : 'unlimited'}</td><td>${n(x.checkedIn)}</td><td>${n(x.firstTimers)}</td><td>${x.rating ? `${Number(x.rating).toFixed(2)} ★` : '—'}</td></tr>`).join('') : '<tr><td colspan="8" class="text-slate-400">No programmes yet.</td></tr>';
+        const rsvp = data.eventRsvps || {};
+        $('rsvp-summary').innerHTML = Object.keys(rsvp).length ? Object.entries(rsvp).map(([s, v]) => meter(s, v, Math.max(...Object.values(rsvp)), n(v))).join('') : '<p class="text-slate-400 text-sm">No RSVPs for upcoming events yet.</p>';
+      }
+
+      function renderMembers() {
+        const q = ($('member-search').value || '').toLowerCase().trim();
+        const below = Number($('rate-filter').value || 0);
+        const list = rows.filter(r => (!q || `${r._name} ${r._unit}`.toLowerCase().includes(q)) && (!below || r._rate < below));
+        $('tbody').innerHTML = list.length ? list.map(r => `
+          <tr>
+            <td class="font-semibold text-slate-800">${esc(r.Member)}${r._unit ? `<div class="text-xs text-slate-500">${esc(r._unit)}</div>` : ''}</td>
+            <td>${r.Present}</td><td>${r.Excused}</td><td>${r.Absent}</td><td>${r.Sessions}</td>
+            <td><span class="badge ${r._rate >= 75 ? 'badge-green' : r._rate >= 40 ? 'badge-yellow' : 'badge-red'}">${r.Rate}</span></td>
+          </tr>`).join('') : '<tr><td colspan="6" class="text-center text-slate-400 py-8">No members match this filter.</td></tr>';
+        $('member-count').textContent = `${list.length} of ${rows.length} member(s) shown.`;
+      }
+
+      async function init() {
+        me = await Auth.checkSession();
+        if (!me) return;
+        Layout.renderSidebar('analytics', me);
+        $('page-header').innerHTML = Layout.renderHeader('Analytics', 'Attendance, membership, participation and programme insight for the department');
+        Layout.setDate();
+        if (Layout.loadNotifications) Layout.loadNotifications(me);
+        // Tabs
+        document.querySelectorAll('.an-tabs button').forEach(b => {
+          b.onclick = () => {
+            document.querySelectorAll('.an-tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+            document.querySelectorAll('[data-panel]').forEach(p => { p.hidden = p.dataset.panel !== b.dataset.tab; });
+          };
+        });
+        $('refresh').onclick = load;
+        $('months').onchange = load;
+        $('print').onclick = () => window.print();
+        $('member-search').oninput = renderMembers;
+        $('rate-filter').onchange = renderMembers;
+        $('export').onclick = () => Utils.exportToExcel(rows.map(({ Member, Present, Excused, Absent, Sessions, Rate }) => ({ Member, Present, Excused, Absent, Sessions, Rate })), 'dramaconnect-analytics.xlsx');
+        $('export-csv').onclick = () => Utils.exportToCSV(rows.map(({ Member, Present, Excused, Absent, Sessions, Rate }) => ({ Member, Present, Excused, Absent, Sessions, Rate })), 'dramaconnect-analytics.csv');
+        load();
+      }
+      init();
+    })();
     </script>
 </body>
 </html>

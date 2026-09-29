@@ -1,21 +1,372 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="app-version" content="14.1"><title>Storage Manager — DramaConnect</title><script src="https://cdn.tailwindcss.com"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"><link rel="stylesheet" href="../assets/css/style.css"><link rel="stylesheet" href="../assets/css/fallback.css"><script src="../assets/js/boot.js"></script><style>.meter{height:10px;border-radius:999px;background:#e2e8f0;overflow:hidden}.meter>i{display:block;height:100%;background:#2563eb;border-radius:inherit}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}</style></head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="app-version" content="14.2">
+<title>Storage Manager — DramaConnect</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="stylesheet" href="../assets/css/fallback.css">
+<script src="../assets/js/boot.js"></script>
+<style>
+  .meterx{height:10px;border-radius:9999px;background:#e2e8f0;overflow:hidden}
+  .meterx>i{display:block;height:100%;background:#2563eb;border-radius:inherit}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .sm-table{width:100%;border-collapse:collapse;font-size:.82rem}
+  .sm-table th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;padding:.5rem;border-bottom:1px solid #e2e8f0}
+  .sm-table td{padding:.5rem;border-bottom:1px solid #f1f5f9;vertical-align:top}
+  .sm-hbar{display:grid;grid-template-columns:minmax(110px,30%) 1fr auto;gap:.5rem;align-items:center;font-size:.8rem;margin:.3rem 0}
+  .sm-hbar .t{height:10px;background:#e2e8f0;border-radius:9999px;overflow:hidden}
+  .sm-hbar .t i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#7c3aed);border-radius:9999px}
+  @media print{.no-print,#app-sidebar{display:none!important}.app-main{margin:0!important}}
+</style>
+</head>
 <body class="bg-slate-50 min-h-screen app-shell"><div id="app-sidebar"></div><main class="app-main p-4 md:p-8"><div id="page-header"></div>
-<div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-5"><div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Database usage</p><p id="db-usage" class="text-2xl font-extrabold dark-text mt-2">—</p><div class="meter mt-3"><i id="db-meter" style="width:0"></i></div></div><div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Storage usage</p><p id="storage-usage" class="text-2xl font-extrabold dark-text mt-2">—</p><div class="meter mt-3"><i id="storage-meter" style="width:0"></i></div></div><div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Storage objects</p><p id="object-count" class="text-2xl font-extrabold dark-text mt-2">—</p><p id="bucket-count" class="text-xs text-slate-500 mt-2">—</p></div><div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Usage posture</p><p id="usage-posture" class="text-2xl font-extrabold mt-2">—</p><p class="text-xs text-slate-500 mt-2">Quotas are planning inputs; set them to your current provider plan.</p></div></div>
-<div id="storage-error" class="hidden mb-5 rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-700"></div>
-<div class="grid xl:grid-cols-2 gap-5">
-<section class="card p-6"><div class="flex justify-between gap-3"><div><h2 class="text-lg font-extrabold dark-text">Quota & retention policy</h2><p class="text-sm text-slate-500">No automatic purge. Preview first; a recent verified backup and typed confirmation are mandatory.</p></div><button id="refresh" class="btn btn-secondary">Refresh</button></div><form id="policy" class="grid sm:grid-cols-2 gap-3 mt-5"><label class="text-sm font-bold">Database quota (MiB)<input id="database_quota_mb" type="number" class="form-input mt-1 w-full" min="50"></label><label class="text-sm font-bold">Storage quota (MiB)<input id="storage_quota_mb" type="number" class="form-input mt-1 w-full" min="50"></label><label class="text-sm font-bold">Warning threshold %<input id="warning_percent" type="number" class="form-input mt-1 w-full" min="20" max="95"></label><label class="text-sm font-bold">Critical threshold %<input id="critical_percent" type="number" class="form-input mt-1 w-full" min="40" max="99"></label><label class="text-sm font-bold">Activity-log days<input id="activity_log_days" type="number" class="form-input mt-1 w-full" min="30"></label><label class="text-sm font-bold">Backup-run days<input id="backup_run_days" type="number" class="form-input mt-1 w-full" min="30"></label><label class="text-sm font-bold">Heartbeat days<input id="heartbeat_days" type="number" class="form-input mt-1 w-full" min="14"></label><label class="text-sm font-bold">Login-audit days<input id="login_audit_days" type="number" class="form-input mt-1 w-full" min="7"></label><button class="btn btn-primary sm:col-span-2" type="submit">Save planning policy</button></form></section>
-<section class="card p-6"><h2 class="text-lg font-extrabold dark-text">Retention preview</h2><p class="text-sm text-slate-500">Rows older than each configured horizon. Purges are permanent.</p><div id="retention-list" class="space-y-3 mt-5"><p class="text-slate-400 text-sm">Loading…</p></div><div class="mt-5 border-t pt-5"><label class="text-sm font-bold">Verified backup SHA-256<input id="purge-sha" class="form-input mono text-xs mt-1 w-full" maxlength="64" placeholder="64 lowercase hexadecimal characters"></label><p class="text-xs text-slate-500 mt-2">Create a verified backup in <a href="admin-data.html" class="text-blue-600 font-bold">Admin Data</a>. Its successful run must be within 30 days.</p></div></section>
+
+<div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
+  <div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Database usage</p><p id="db-usage" class="text-2xl font-extrabold dark-text mt-2">—</p><div class="meterx mt-3"><i id="db-meter" style="width:0"></i></div></div>
+  <div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Storage usage</p><p id="storage-usage" class="text-2xl font-extrabold dark-text mt-2">—</p><div class="meterx mt-3"><i id="storage-meter" style="width:0"></i></div></div>
+  <div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Storage objects</p><p id="object-count" class="text-2xl font-extrabold dark-text mt-2">—</p><p id="bucket-count" class="text-xs text-slate-500 mt-2">—</p></div>
+  <div class="card p-5"><p class="text-xs uppercase font-bold text-slate-400">Usage posture</p><p id="usage-posture" class="text-2xl font-extrabold mt-2">—</p><p class="text-xs text-slate-500 mt-2">Quotas are planning inputs; set them to your current provider plan.</p></div>
 </div>
-<section class="card mt-5 overflow-hidden"><div class="p-5 flex flex-wrap justify-between items-center gap-3"><div><h2 class="font-extrabold dark-text">Bucket inventory</h2><p class="text-xs text-slate-500">Root-level browser inventory; database totals include all nested objects.</p></div><div class="flex gap-2"><select id="bucket" class="form-input"><option value="avatars">avatars</option><option value="gallery">gallery</option><option value="dramaconnect-backups">dramaconnect-backups (private)</option></select><button id="load-objects" class="btn btn-secondary">List root</button></div></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Name</th><th class="p-3 text-left">Type</th><th class="p-3 text-left">Size</th><th class="p-3 text-left">Updated</th><th class="p-3 text-right">Action</th></tr></thead><tbody id="objects"><tr><td colspan="5" class="p-5 text-slate-400">Choose a bucket and list its root.</td></tr></tbody></table></div></section>
+<div id="storage-error" class="hidden mb-5 rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-700"></div>
+
+<!-- Efficiency centre -->
+<section class="card p-6 mb-5">
+  <div class="flex flex-wrap justify-between items-start gap-3">
+    <div><h2 class="text-lg font-extrabold dark-text"><i class="fas fa-leaf text-emerald-600 mr-2"></i>Free-tier database efficiency centre</h2>
+    <p class="text-sm text-slate-500">The free plan gives 500&nbsp;MB of database and 1&nbsp;GB of file storage. Supabase makes the database read-only when it fills up, so keep the biggest, oldest tables small.</p></div>
+    <div class="flex gap-2"><button id="refresh" class="btn btn-secondary"><i class="fas fa-rotate"></i> Refresh</button><button id="analyse" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Analyse health</button></div>
+  </div>
+  <div id="health-advice" class="mt-4 text-sm"></div>
+  <div class="grid xl:grid-cols-2 gap-5 mt-5">
+    <div>
+      <p class="text-xs font-bold uppercase text-slate-400 mb-2">Table sizes (exact row counts)</p>
+      <div id="sizes-list" class="text-sm text-slate-400">Loading…</div>
+    </div>
+    <div>
+      <p class="text-xs font-bold uppercase text-slate-400 mb-2">Buckets</p>
+      <div id="bucket-bars" class="text-sm text-slate-400">Loading…</div>
+    </div>
+  </div>
+</section>
+
+<div class="grid xl:grid-cols-2 gap-5">
+  <!-- Policy -->
+  <section class="card p-6">
+    <h2 class="text-lg font-extrabold dark-text">Quota &amp; retention policy</h2>
+    <p class="text-sm text-slate-500">No automatic purge ever happens. Preview first; a recent verified backup and a typed confirmation are mandatory for every deletion. These horizons are read by Platform Health and the Activity log.</p>
+    <form id="policy" class="grid sm:grid-cols-2 gap-3 mt-5">
+      <label class="text-sm font-bold">Database quota (MiB)<input id="database_quota_mb" type="number" class="form-input mt-1 w-full" min="50"></label>
+      <label class="text-sm font-bold">Storage quota (MiB)<input id="storage_quota_mb" type="number" class="form-input mt-1 w-full" min="50"></label>
+      <label class="text-sm font-bold">Warning threshold %<input id="warning_percent" type="number" class="form-input mt-1 w-full" min="20" max="95"></label>
+      <label class="text-sm font-bold">Critical threshold %<input id="critical_percent" type="number" class="form-input mt-1 w-full" min="40" max="99"></label>
+      <label class="text-sm font-bold">Activity-log days<input id="activity_log_days" type="number" class="form-input mt-1 w-full" min="30" max="3650"></label>
+      <label class="text-sm font-bold">Backup-run days<input id="backup_run_days" type="number" class="form-input mt-1 w-full" min="30" max="3650"></label>
+      <label class="text-sm font-bold">Heartbeat days<input id="heartbeat_days" type="number" class="form-input mt-1 w-full" min="14" max="730"></label>
+      <label class="text-sm font-bold">Login-audit days<input id="login_audit_days" type="number" class="form-input mt-1 w-full" min="7" max="730"></label>
+      <button class="btn btn-primary sm:col-span-2" type="submit">Save planning policy</button>
+    </form>
+  </section>
+
+  <!-- Retention -->
+  <section class="card p-6">
+    <h2 class="text-lg font-extrabold dark-text">Retention preview &amp; guarded purge</h2>
+    <p class="text-sm text-slate-500">Rows older than each configured horizon. Purges are permanent and are recorded in the activity log.</p>
+    <div id="retention-list" class="space-y-3 mt-5"><p class="text-slate-400 text-sm">Loading…</p></div>
+    <div class="mt-5 border-t pt-5">
+      <label class="text-sm font-bold">Verified backup SHA-256<input id="purge-sha" class="form-input mono text-xs mt-1 w-full" maxlength="64" placeholder="Filled automatically from your last verified backup"></label>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button id="fill-sha" class="btn btn-secondary btn-sm">Use last verified backup</button>
+        <a href="admin-data.html" class="btn btn-secondary btn-sm">Create a verified backup</a>
+      </div>
+      <p class="text-xs text-slate-500 mt-2">A successful backup within 30 days is required. Prefer <b>Archive Vault</b> below: it keeps a restorable copy of exactly the rows it deletes.</p>
+    </div>
+  </section>
+</div>
+
+<!-- Archive Vault -->
+<section class="card p-6 mt-5">
+  <h2 class="text-lg font-extrabold dark-text"><i class="fas fa-box-archive text-blue-600 mr-2"></i>Archive Vault — move old rows into the 1&nbsp;GB file storage</h2>
+  <p class="text-sm text-slate-500">Deletes and file storage are separate: the database frees up only when rows are deleted. This does it safely — the old rows are exported to a JSON file, uploaded to the private <span class="mono">dramaconnect-backups</span> bucket, verified against its SHA-256 and the live row count, and only then deleted. Everything stays restorable.</p>
+  <div class="grid sm:grid-cols-3 gap-3 mt-4 items-end">
+    <label class="text-sm font-bold">Table<select id="vault-table" class="form-input mt-1 w-full"></select></label>
+    <label class="text-sm font-bold">Older than (days)<input id="vault-days" type="number" min="1" max="3650" value="365" class="form-input mt-1 w-full"></label>
+    <div class="flex flex-wrap gap-2">
+      <button id="vault-archive" class="btn btn-primary"><i class="fas fa-box-archive"></i> Archive old rows</button>
+      <button id="vault-list" class="btn btn-secondary"><i class="fas fa-list"></i> List archives</button>
+    </div>
+  </div>
+  <p id="vault-result" class="text-sm mt-3"></p>
+  <div class="overflow-x-auto mt-4">
+    <table class="sm-table"><thead><tr><th>Archived</th><th>Table</th><th>Rows</th><th>Cutoff</th><th>File</th><th>Restored</th><th class="no-print">Actions</th></tr></thead>
+      <tbody id="vault-body"><tr><td colspan="7" class="text-slate-400 p-5">Press "List archives" to see what is in the vault.</td></tr></tbody></table>
+  </div>
+  <details class="mt-4"><summary class="cursor-pointer text-sm font-bold text-slate-700">Advanced: purge by date without archiving (export first)</summary>
+    <p class="text-xs text-slate-500 mt-2">Use this only when you already exported the table from <a href="admin-data.html" class="text-blue-700 font-bold">Admin Data → Table CSV / portable JSON</a>. It deletes rows older than the horizon chosen above and requires the verified-backup SHA-256 from the panel on the right.</p>
+    <button id="vault-purge-plain" class="btn btn-secondary mt-2" style="color:#b91c1c;border-color:#b91c1c"><i class="fas fa-trash"></i> Purge (no archive) for the selected table</button>
+  </details>
+</section>
+
+<!-- Buckets -->
+<section class="card mt-5 overflow-hidden">
+  <div class="p-5 flex flex-wrap justify-between items-center gap-3">
+    <div><h2 class="font-extrabold dark-text">Bucket inventory</h2><p class="text-xs text-slate-500">Root-level browser inventory; database totals include all nested objects. Deleting a file is permanent — the archive JSON files in <span class="mono">dramaconnect-backups</span> are your restore copies.</p></div>
+    <div class="flex gap-2"><select id="bucket" class="form-input"><option value="avatars">avatars</option><option value="gallery">gallery</option><option value="dramaconnect-backups">dramaconnect-backups (private)</option></select><button id="load-objects" class="btn btn-secondary">List root</button></div>
+  </div>
+  <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-left">Name</th><th class="p-3 text-left">Type</th><th class="p-3 text-left">Size</th><th class="p-3 text-left">Updated</th><th class="p-3 text-right">Action</th></tr></thead><tbody id="objects"><tr><td colspan="5" class="p-5 text-slate-400">Choose a bucket and list its root.</td></tr></tbody></table></div>
+</section>
+
 <div class="mt-5 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900"><strong>Recovery boundary:</strong> database archives do not contain Storage object bytes or Auth passwords. Use <code>scripts/export-storage.mjs</code> and the GitHub database-backup workflow for independent, off-provider recovery copies.</div>
 </main>
 <script src="../assets/js/config.js"></script><script src="../assets/js/resilience.js"></script><script src="../assets/js/platform-management.js"></script><script src="../assets/js/data-portability.js"></script><script src="../assets/js/drive-sync.js"></script><script src="../assets/js/i18n.js"></script><script src="../assets/js/ui.js"></script><script src="../assets/js/auth.js"></script><script src="../assets/js/db.js"></script><script src="../assets/js/utils.js"></script><script src="../assets/js/layout.js"></script><script src="../assets/js/install.js"></script>
 <script src="../assets/js/page-guide.js"></script>
 <script src="../assets/js/assistant.js"></script>
-<script>(()=>{'use strict';const $=id=>document.getElementById(id);const esc=v=>UI.esc(v??'');const msg=e=>PlatformManagement.clean(e);const size=n=>{n=Number(n||0);if(n<1024)return `${n} B`;if(n<1048576)return `${(n/1024).toFixed(1)} KiB`;if(n<1073741824)return `${(n/1048576).toFixed(1)} MiB`;return `${(n/1073741824).toFixed(2)} GiB`;};const date=v=>v?new Date(v).toLocaleString():'—';
-function showError(error){$('storage-error').textContent=msg(error);$('storage-error').classList.remove('hidden');}
-function posture(percent,warn,critical){if(percent>=critical)return['Critical','text-red-600','#dc2626'];if(percent>=warn)return['Warning','text-amber-600','#d97706'];return['Healthy','text-emerald-700','#16a34a'];}
-async function load(){try{$('storage-error').classList.add('hidden');const [o,p,r]=await Promise.all([PlatformManagement.storageOverview(),PlatformManagement.retentionPreview(),PlatformManagement.getRetentionSettings()]);$('db-usage').textContent=`${size(o.databaseBytes)} / ${size(o.databaseQuotaBytes)}`;$('storage-usage').textContent=`${size(o.storageBytes)} / ${size(o.storageQuotaBytes)}`;$('db-meter').style.width=`${Math.min(100,Number(o.databasePercent||0))}%`;$('storage-meter').style.width=`${Math.min(100,Number(o.storagePercent||0))}%`;$('object-count').textContent=Number(o.storageObjects||0).toLocaleString();$('bucket-count').textContent=`${(o.buckets||[]).length} bucket(s) with objects`;const max=Math.max(Number(o.databasePercent||0),Number(o.storagePercent||0));const po=posture(max,o.warningPercent,o.criticalPercent);$('usage-posture').textContent=po[0];$('usage-posture').className=`text-2xl font-extrabold mt-2 ${po[1]}`;$('db-meter').style.background=posture(o.databasePercent,o.warningPercent,o.criticalPercent)[2];$('storage-meter').style.background=posture(o.storagePercent,o.warningPercent,o.criticalPercent)[2];Object.keys(r).forEach(k=>{if($(k))$(k).value=r[k];});renderRetention(p);}catch(e){showError(e);}}
-function renderRetention(data){const host=$('retention-list');host.innerHTML='';Object.entries(data||{}).forEach(([table,item])=>{const row=document.createElement('div');row.className='rounded-xl border p-3 flex flex-wrap justify-between items-center gap-3';row.innerHTML=`<div><p class="font-bold mono text-sm">${esc(table)}</p><p class="text-xs text-slate-500">${Number(item.rows||0).toLocaleString()} candidate row(s) before ${esc(date(item.before))}</p></div><button class="btn btn-danger btn-sm" ${Number(item.rows||0)===0?'disabled':''}>Guarded purge</button>`;row.querySelector('button').onclick=async()=>{const confirmation=prompt(`Permanent operation. Type PURGE ${table}`);if(confirmation!==`PURGE ${table}`)return;try{const out=await PlatformManagement.applyRetention({table,before:item.before,confirmation,sha256:$('purge-sha').value.trim()});UI.toast(`Purged ${out.deletedRows} row(s).`,'success');await load();}catch(e){UI.toast(msg(e),'error',8000);}};host.appendChild(row);});}
-async function listObjects(){const body=$('objects'),bucket=$('bucket').value;body.innerHTML='<tr><td colspan="5" class="p-5 text-slate-400">Loading…</td></tr>';try{const rows=await PlatformManagement.listStorage(bucket);body.innerHTML=rows.length?'':'<tr><td colspan="5" class="p-5 text-slate-400">No root objects.</td></tr>';rows.forEach(f=>{const folder=!f.id;const tr=document.createElement('tr');tr.className='border-t';tr.innerHTML=`<td class="p-3 font-bold mono text-xs">${esc(f.name)}</td><td class="p-3">${folder?'Folder':'Object'}</td><td class="p-3">${folder?'—':esc(size(f.metadata?.size))}</td><td class="p-3">${esc(date(f.updated_at||f.created_at))}</td><td class="p-3 text-right">${folder?'Open with Supabase dashboard':'<button class="btn btn-danger btn-sm">Delete</button>'}</td>`;const b=tr.querySelector('button');if(b)b.onclick=async()=>{if(prompt(`Type DELETE ${f.name}`)!==`DELETE ${f.name}`)return;try{await PlatformManagement.deleteStorageObject(bucket,f.name);UI.toast('Object deleted.','success');listObjects();load();}catch(e){UI.toast(msg(e),'error');}};body.appendChild(tr);});}catch(e){body.innerHTML=`<tr><td colspan="5" class="p-5 text-red-600">${esc(msg(e))}</td></tr>`;}}
-async function init(){const me=await Auth.requireAdmin();if(!me)return;Layout.renderSidebar('storage-manager',me);$('page-header').innerHTML=Layout.renderHeader('Storage Manager','Quota visibility, object inventory and backup-gated retention');Layout.setDate();Layout.loadSaaSBranding?.();Layout.registerPWA();$('refresh').onclick=load;$('load-objects').onclick=listObjects;$('policy').onsubmit=async e=>{e.preventDefault();const v={};['database_quota_mb','storage_quota_mb','warning_percent','critical_percent','activity_log_days','backup_run_days','heartbeat_days','login_audit_days'].forEach(k=>v[k]=$(k).value);try{await PlatformManagement.saveRetentionSettings(v);UI.toast('Storage policy saved.','success');load();}catch(x){UI.toast(msg(x),'error');}};load();}init();})();</script></body></html>
+<script>(() => {
+  'use strict';
+  const $ = id => document.getElementById(id) || { textContent: '', innerHTML: '', classList: { add() {}, remove() {} }, style: {}, value: '', options: [], add() {}, selectedOptions: [{ textContent: '' }] };
+  const esc = v => UI.esc(v ?? '');
+  const msg = e => PlatformManagement.clean(e);
+  const n = v => Number(v || 0).toLocaleString();
+  const size = v => { let b = Number(v || 0); const u = ['B', 'KiB', 'MiB', 'GiB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return `${b.toFixed(i ? 1 : 0)} ${u[i]}`; };
+  const date = v => v ? new Date(v).toLocaleString() : '—';
+  const BUCKET = 'dramaconnect-backups';
+  // Mirrors public.dc_archive_targets() so the browser exports the same column.
+  const TARGETS = { activity_log: 'created_at', dc_login_audit: 'created_at', attendance: 'marked_at', messages: 'created_at',
+    inbox: 'created_at', announcements: 'created_at', suggestions: 'created_at', event_rsvps: 'created_at',
+    poll_votes: 'created_at', dc_program_registrations: 'created_at', dc_backup_runs: 'started_at' };
+  const client = () => window.supabaseClient || window.sb;
+  const posture = (percent, warn, critical) => percent >= critical ? ['Critical', 'text-red-600', '#dc2626'] : percent >= warn ? ['Warning', 'text-amber-600', '#d97706'] : ['Healthy', 'text-emerald-700', '#16a34a'];
+  function showError(error) { $('storage-error').textContent = msg(error); $('storage-error').classList.remove('hidden'); }
+  let overview = null, tables = [], lastSha = '';
+
+  async function load() {
+    try {
+      $('storage-error').classList.add('hidden');
+      const [o, p, r] = await Promise.all([PlatformManagement.storageOverview(), PlatformManagement.retentionPreview(), PlatformManagement.getRetentionSettings()]);
+      overview = o;
+      $('db-usage').textContent = `${size(o.databaseBytes)} / ${size(o.databaseQuotaBytes)}`;
+      $('storage-usage').textContent = `${size(o.storageBytes)} / ${size(o.storageQuotaBytes)}`;
+      $('db-meter').style.width = `${Math.min(100, Number(o.databasePercent || 0))}%`;
+      $('storage-meter').style.width = `${Math.min(100, Number(o.storagePercent || 0))}%`;
+      $('object-count').textContent = n(o.storageObjects);
+      $('bucket-count').textContent = `${(o.buckets || []).length} bucket(s) with objects`;
+      const max = Math.max(Number(o.databasePercent || 0), Number(o.storagePercent || 0));
+      const po = posture(max, o.warningPercent, o.criticalPercent);
+      $('usage-posture').textContent = po[0];
+      $('usage-posture').className = `text-2xl font-extrabold mt-2 ${po[1]}`;
+      $('db-meter').style.background = posture(o.databasePercent, o.warningPercent, o.criticalPercent)[2];
+      $('storage-meter').style.background = posture(o.storagePercent, o.warningPercent, o.criticalPercent)[2];
+      $('bucket-bars').innerHTML = (o.buckets || []).length
+        ? o.buckets.map(b => `<div class="sm-hbar"><span class="mono text-xs">${esc(b.bucket)}</span><span class="t"><i style="width:${Math.min(100, (Number(b.bytes || 0) / Math.max(1, Number(o.storageBytes || 1))) * 100)}%"></i></span><span>${size(b.bytes)} · ${n(b.objects)}</span></div>`).join('')
+        : '<p class="text-slate-400">No objects in any bucket.</p>';
+      Object.keys(r).forEach(k => { if ($(k) && !$(k).dataset) $(k).value = r[k]; });
+      renderRetention(p);
+      advice();
+    } catch (e) { showError(e); }
+    try {
+      tables = (await PlatformManagement.tableSizes()) || [];
+      const top = [...tables].sort((a, b) => b.bytes - a.bytes).slice(0, 12);
+      const max = Math.max(1, ...top.map(t => Number(t.bytes || 0)));
+      $('sizes-list').innerHTML = top.length ? top.map(t => `<div class="sm-hbar"><span class="mono text-xs">${esc(t.table)}</span><span class="t"><i style="width:${(Number(t.bytes) / max) * 100}%"></i></span><span>${size(t.bytes)} · ${n(t.rows)} row(s)${t.oldest ? ` · oldest ${new Date(t.oldest).toLocaleDateString()}` : ''}</span></div>`).join('')
+        : '<p class="text-slate-400">No tables reported.</p>';
+      fillVaultTables();
+      // Re-run the analysis now the row counts are known: the "largest table"
+      // advice depends on them and used to stay empty until the button was pressed.
+      advice();
+    } catch (e) { $('sizes-list').innerHTML = `<p class="text-slate-400">Table sizes unavailable — run the latest complete-schema.sql (${esc(msg(e))}).</p>`; }
+  }
+
+  function advice() {
+    if (!overview) return;
+    const db = Number(overview.databasePercent || 0), st = Number(overview.storagePercent || 0);
+    const warn = Number(overview.warningPercent || 75), crit = Number(overview.criticalPercent || 90);
+    const tips = [];
+    if (db >= crit) tips.push(`🚨 The database is at ${db}% of the 500 MB free tier. Supabase will make it read-only when it fills — archive the oldest rows now (Archive Vault below) and empty the activity log if it is the biggest table.`);
+    else if (db >= warn) tips.push(`⚠ The database is at ${db}% of quota. Plan an archive of the oldest rows in the biggest table below.`);
+    else tips.push(`✅ The database is healthy at ${db}% of quota.`);
+    if (st >= crit) tips.push(`🚨 File storage is at ${st}%. Delete unused gallery/avatar objects, or raise the planning quota if you are on a paid plan.`);
+    else if (st >= warn) tips.push(`⚠ File storage is at ${st}% — review the bucket inventory.`);
+    else tips.push(`✅ File storage is healthy at ${st}%.`);
+    const biggest = [...tables].sort((a, b) => b.rows - a.rows)[0];
+    if (biggest && biggest.rows > 5000) tips.push(`ℹ The largest table is <span class="mono">${esc(biggest.table)}</span> with ${n(biggest.rows)} rows (${size(biggest.bytes)}) — a good first archive candidate${TARGETS[biggest.table] ? '' : ', but it is not an archive target; export it from Admin Data instead'}.`);
+    $('health-advice').innerHTML = tips.map(t => `<p class="mb-1">${t}</p>`).join('');
+  }
+
+  function renderRetention(data) {
+    const host = $('retention-list'); host.innerHTML = '';
+    Object.entries(data || {}).forEach(([table, item]) => {
+      const row = document.createElement('div');
+      row.className = 'rounded-xl border p-3 flex flex-wrap justify-between items-center gap-3';
+      row.innerHTML = `<div><p class="font-bold mono text-sm">${esc(table)}</p><p class="text-xs text-slate-500">${n(item.rows)} candidate row(s) before ${esc(date(item.before))}</p></div><button class="btn btn-danger btn-sm" ${Number(item.rows || 0) === 0 ? 'disabled' : ''}>Guarded purge</button>`;
+      row.querySelector('button').onclick = async () => {
+        const confirmation = prompt(`Permanent operation. Type PURGE ${table}`);
+        if (confirmation !== `PURGE ${table}`) return;
+        const sha = ($('purge-sha').value.trim() || lastSha);
+        try {
+          const out = await PlatformManagement.applyRetention({ table, before: item.before, confirmation, sha256: sha });
+          UI.toast(`Purged ${out.deletedRows} row(s).`, 'success');
+          await load();
+        } catch (e) { UI.toast(msg(e), 'error', 10000); await fillSha(); }
+      };
+      host.appendChild(row);
+    });
+  }
+  async function fillSha() {
+    try {
+      const h = await Resilience.getHealth();
+      const run = (h.runs || []).find(r => r.status === 'succeeded' && r.archive_sha256);
+      const sha = run?.archive_sha256 || h.settings?.last_archive_sha256 || '';
+      lastSha = sha;
+      $('purge-sha').value = sha;
+      return sha;
+    } catch (_) { return ''; }
+  }
+
+  /* ---------------- Archive Vault ---------------- */
+  function fillVaultTables() {
+    const sel = $('vault-table');
+    if (sel.options && sel.options.length) return;
+    Object.keys(TARGETS).forEach(t => sel.add(new Option(t, t)));
+  }
+  async function archiveNow() {
+    const table = $('vault-table').value;
+    const days = Math.max(1, Number($('vault-days').value || 365));
+    const col = TARGETS[table];
+    if (!col) { UI.toast('That table is not an archive target.', 'warning'); return; }
+    const before = new Date(Date.now() - days * 864e5);
+    const btn = $('vault-archive'); btn.disabled = true;
+    $('vault-result').textContent = 'Reading rows…';
+    try {
+      const { data, error } = await client().from(table).select('*').lt(col, before.toISOString()).limit(5000);
+      if (error) throw error;
+      const rows = data || [];
+      if (!rows.length) { $('vault-result').textContent = `Nothing to archive: no ${table} rows older than ${days} day(s).`; return; }
+      $('vault-result').textContent = `Preparing ${n(rows.length)} row(s)…`;
+      const payload = { kind: 'archive-vault', table, column: col, cutoff: before.toISOString(), exportedAt: new Date().toISOString(), rows };
+      const text = JSON.stringify(payload);
+      const sha = await DataPortability.sha256Text(text);
+      const path = `archive-vault/${table}/${table}-${before.toISOString().slice(0, 10)}-${Date.now()}.json`;
+      const up = await client().storage.from(BUCKET).upload(path, new Blob([text], { type: 'application/json' }), { contentType: 'application/json', upsert: false });
+      if (up.error) throw up.error;
+      $('vault-result').textContent = 'File uploaded. Verifying against the live row count…';
+      const out = await PlatformManagement.archivePurge({ table, before: before.toISOString(), path, sha256: sha, rows: rows.length, confirmation: `ARCHIVE ${table}` });
+      $('vault-result').textContent = `✅ Archived ${n(out.archivedRows)} row(s) of ${table} to ${out.path}. The database has been freed and the file is restorable from this table.`;
+      UI.toast('Archived and verified.', 'success', 9000);
+      await loadVault();
+      await load();
+    } catch (e) {
+      $('vault-result').textContent = `⚠ ${msg(e)}`;
+      UI.toast(msg(e), 'error', 11000);
+    } finally { btn.disabled = false; }
+  }
+  async function loadVault() {
+    const body = $('vault-body');
+    try {
+      const list = await PlatformManagement.listArchives();
+      body.innerHTML = list.length ? '' : '<tr><td colspan="7" class="text-slate-400 p-5">The vault is empty. Archive a table above to create the first batch.</td></tr>';
+      list.forEach(a => {
+        const tr = document.createElement('tr'); tr.className = 'border-t';
+        tr.innerHTML = `<td class="text-xs">${esc(date(a.created_at))}</td><td class="mono text-xs">${esc(a.table_name)}</td><td>${n(a.row_count)}</td>
+          <td class="text-xs">${esc(date(a.cutoff))}</td><td class="mono text-[11px] break-all">${esc(a.object_path)}</td>
+          <td>${a.restored_at ? `<span class="text-emerald-700 font-bold">${n(a.restored_rows)} row(s) ${esc(date(a.restored_at))}</span>` : '—'}</td>
+          <td class="no-print"><div class="flex gap-1"><button class="btn btn-secondary btn-sm" data-download="1">Download</button><button class="btn btn-primary btn-sm" data-restore="1">Restore</button></div></td>`;
+        const [dl, rs] = [tr.querySelector('[data-download]'), tr.querySelector('[data-restore]')];
+        if (dl) dl.onclick = async () => {
+          try {
+            const { data, error } = await client().storage.from(BUCKET).download(a.object_path);
+            if (error) throw error;
+            const url = URL.createObjectURL(data);
+            const link = document.createElement('a'); link.href = url; link.download = a.object_path.split('/').pop();
+            document.body.appendChild(link); link.click();
+            setTimeout(() => { URL.revokeObjectURL(url); link.remove(); }, 500);
+          } catch (e) { UI.toast(msg(e), 'error', 9000); }
+        };
+        if (rs) rs.onclick = async () => {
+          if (!confirm(`Restore ${n(a.row_count)} archived row(s) into ${a.table_name}?\n\nRows whose related records no longer exist are skipped, and nothing newer is overwritten.`)) return;
+          try {
+            const { data, error } = await client().storage.from(BUCKET).download(a.object_path);
+            if (error) throw error;
+            const parsed = JSON.parse(await data.text());
+            const out = await PlatformManagement.archiveRestore(a.id, parsed.rows || []);
+            UI.toast(`Restored ${out.restoredRows} of ${out.offered} row(s).`, 'success', 9000);
+            await loadVault(); await load();
+          } catch (e) { UI.toast(msg(e), 'error', 10000); }
+        };
+        body.appendChild(tr);
+      });
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="7" class="text-red-600 p-5">${esc(msg(e))}${/42P01|PGRST205|does not exist|schema cache/i.test(msg(e)) ? ' — run database/complete-schema.sql once to install the Archive Vault.' : ''}</td></tr>`;
+    }
+  }
+  // The guarded retention RPC only owns the four housekeeping tables; other
+  // tables are emptied through the Archive Vault (which keeps a restorable
+  // copy) or exported from Admin Data.
+  const RETENTION_TABLES = { activity_log: 'activity_log_days', dc_login_audit: 'login_audit_days', dc_backup_runs: 'backup_run_days', dc_heartbeat_sources: 'heartbeat_days' };
+  async function purgePlain() {
+    const table = $('vault-table').value, days = Math.max(1, Number($('vault-days').value || 365));
+    if (!RETENTION_TABLES[table]) {
+      UI.toast(`${table} is not a retention table. Use "Archive old rows" (which keeps a restorable copy of exactly what it deletes), or export it from Admin Data and delete rows there.`, 'warning', 12000);
+      return;
+    }
+    const confirmation = prompt(`Export-first purge of ${table}. Type PURGE ${table}`);
+    if (confirmation !== `PURGE ${table}`) return;
+    try {
+      const sha = $('purge-sha').value.trim() || (await fillSha());
+      const out = await PlatformManagement.applyRetention({ table, before: new Date(Date.now() - days * 864e5).toISOString(), confirmation, sha256: sha });
+      UI.toast(`Purged ${out.deletedRows} row(s).`, 'success');
+      await load();
+    } catch (e) { UI.toast(msg(e), 'error', 11000); }
+  }
+
+  /* ---------------- Buckets ---------------- */
+  async function listObjects() {
+    const body = $('objects'), bucket = $('bucket').value;
+    body.innerHTML = '<tr><td colspan="5" class="p-5 text-slate-400">Loading…</td></tr>';
+    try {
+      const rows = await PlatformManagement.listStorage(bucket);
+      body.innerHTML = rows.length ? '' : '<tr><td colspan="5" class="p-5 text-slate-400">No root objects.</td></tr>';
+      rows.forEach(f => {
+        const folder = !f.id;
+        const tr = document.createElement('tr'); tr.className = 'border-t';
+        tr.innerHTML = `<td class="p-3 font-bold mono text-xs">${esc(f.name)}</td><td class="p-3">${folder ? 'Folder' : 'Object'}</td><td class="p-3">${folder ? '—' : esc(size(f.metadata?.size))}</td><td class="p-3">${esc(date(f.updated_at || f.created_at))}</td><td class="p-3 text-right">${folder ? 'Open with Supabase dashboard' : '<button class="btn btn-danger btn-sm">Delete</button>'}</td>`;
+        const b = tr.querySelector('button');
+        if (b) b.onclick = async () => {
+          if (prompt(`Type DELETE ${f.name}`) !== `DELETE ${f.name}`) return;
+          try { await PlatformManagement.deleteStorageObject(bucket, f.name); UI.toast('Object deleted.', 'success'); listObjects(); load(); }
+          catch (e) { UI.toast(msg(e), 'error'); }
+        };
+        body.appendChild(tr);
+      });
+    } catch (e) { body.innerHTML = `<tr><td colspan="5" class="p-5 text-red-600">${esc(msg(e))}</td></tr>`; }
+  }
+
+  async function init() {
+    const me = await Auth.requireAdmin();
+    if (!me) return;
+    Layout.renderSidebar('storage-manager', me);
+    $('page-header').innerHTML = Layout.renderHeader('Storage Manager', 'Quota visibility, table sizes, retention, Archive Vault and bucket inventory');
+    Layout.setDate(); Layout.loadSaaSBranding?.(); Layout.registerPWA();
+    $('refresh').onclick = load;
+    $('analyse').onclick = () => { advice(); UI.toast('Health analysis refreshed.', 'success'); };
+    $('load-objects').onclick = listObjects;
+    $('fill-sha').onclick = async () => { const sha = await fillSha(); UI.toast(sha ? 'Verified backup digest filled in.' : 'No verified backup found — create one in Admin Data first.', sha ? 'success' : 'warning'); };
+    $('vault-archive').onclick = archiveNow;
+    $('vault-list').onclick = loadVault;
+    $('vault-purge-plain').onclick = purgePlain;
+    $('policy').onsubmit = async e => {
+      e.preventDefault();
+      const v = {};
+      ['database_quota_mb', 'storage_quota_mb', 'warning_percent', 'critical_percent', 'activity_log_days', 'backup_run_days', 'heartbeat_days', 'login_audit_days'].forEach(k => { v[k] = $(k).value; });
+      try { await PlatformManagement.saveRetentionSettings(v); UI.toast('Storage policy saved.', 'success'); load(); }
+      catch (x) { UI.toast(msg(x), 'error'); }
+    };
+    load();
+    fillSha();
+    loadVault();
+  }
+  init();
+})();</script></body></html>
