@@ -38,6 +38,73 @@
    * ---------------------------------------------------------------------- */
   const KB = [
     {
+      m: ['fleet', 'fleet console', 'hmg fleet', 'keep alive', 'keepalive', 'anti-pause', 'anti pause', 'pause', 'paused', 'supabase pausing', 'sc_keep_alive', 'sc_keepalive', 'last ping', 'heartbeat'],
+      t: 'Keep-alive and the HMG Fleet Console',
+      r: '**Platform Health → Keep-alive** shows where the last ping came from, the total pings, the pause countdown and all 14 layers (Reporting / Silent / Not set up) with the fix for each.\n\n' +
+         'This project also speaks the **HMG Fleet Console** contract, so one console can monitor and wake every client project you run:\n\n' +
+         '1. `POST /rest/v1/rpc/sc_keep_alive` with `{"src":"hmg-fleet-console"}` — the console ping, auto-pilot, wake-up and its GitHub workflow.\n' +
+         '2. `GET /rest/v1/sc_keepalive` — the heartbeat row the console reads.\n' +
+         '3. `POST /rest/v1/rpc/sc_license_status` — the licence verdict it shows.\n' +
+         '4. `/sw.js` — the deploy version it detects.\n\n' +
+         '**To register:** Platform Health → HMG Fleet Console → press *Copy project details*, then open hmgfleetconsole.vercel.app → Projects → Add project → Type **DramaConnect**, paste the Supabase URL + **anon** key and your site URL. Never paste a service_role key — the console rejects it on purpose.\n\n' +
+         'Press **Ping exactly as the Fleet Console does** on that section to prove it works before you register.',
+      p: 'platform-health', chips: ['Is my project safe from pausing?', 'How do I check the SQL packs?']
+    },
+    {
+      m: ['geofence', 'location check in', 'check in location', 'venue fence', 'gps', 'call time', 'late', 'punctuality', 'grace minutes',
+         'venue', 'at the venue', 'require members', 'location permission', 'self check-in location'],
+      t: 'Venue geofence, call time and punctuality',
+      r: '**Settings → Attendance & venue.**\n\n' +
+         'Set the **call time** and **late after (minutes)** — Analytics uses them to separate on-time arrivals from late ones.\n\n' +
+         'To require members to be physically at the venue when they check themselves in:\n' +
+         '1. Stand at the venue, press **Use this device\'s location** to capture the coordinates (or type them).\n' +
+         '2. Set the **allowed radius** (150 m is a good start) and the **maximum GPS error** you will accept.\n' +
+         '3. Tick **Require members to be at the venue to self check-in** and press Save.\n\n' +
+         'Members are then asked for location permission; check-in is refused if they are outside the radius or their location is too imprecise, with a message explaining why. This is enforced in the database, so an old browser cannot bypass it. Administrators can always mark attendance manually on the Attendance page.',
+      p: 'settings', chips: ['How do I open the Attendance page?', 'What is in the Activity Log?']
+    },
+    {
+      m: ['two-step', 'two step', '2fa', 'mfa', 'authenticator', 'authenticator app', 'google authenticator', 'totp', 'verification code', 'security code'],
+      t: 'Two-step verification (authenticator app)',
+      r: '**Settings → Security.** Two-step verification uses a free authenticator app — no SMS, no cost.\n\n' +
+         '1. Press **Set up two-step verification**.\n' +
+         '2. Scan the QR code with Google Authenticator, Microsoft Authenticator, Authy, 2FAS or any TOTP app (or type the secret by hand).\n' +
+         '3. Enter the 6-digit code and press **Turn on two-step verification**.\n\n' +
+         'From then on you are asked for a code when you sign in — including when you return to an old session. An administrator can tick **Ask administrators to turn on two-step verification** to remind every admin until they enrol; it is advisory and never blocks access, so nobody can lock the department out. Turn it off again from the same section.',
+      p: 'settings', chips: ['Where is the emergency lockdown?', 'Who signed in recently?']
+    },
+    {
+      m: ['analytics', 'insight', 'insights', 'trend', 'statistics', 'chart', 'kpi', 'at risk', 'at-risk', 'follow up list', 'who is drifting'],
+      t: 'Analytics — the insight centre',
+      r: '**Analytics** answers \"how are we doing?\" in five tabs.\n\n' +
+         '- **Overview**: attendance rate by month, membership growth, income vs expense (administrators) and programme registrations.\n' +
+         '- **Attendance**: punctuality against the call time and grace period, recent rehearsal sessions, and the per-member table with search and a rate filter.\n' +
+         '- **Members**: units, roles, gender, parishes and this month\'s birthdays.\n' +
+         '- **Participation**: top attendees and the **needs follow-up** list — press *Open care case* to start a follow-up with the member pre-selected.\n' +
+         '- **Programmes & events**: registrations, turnout, first-timers, feedback ratings and RSVP responses.\n\n' +
+         'Use the period selector (3–36 months), then **Export Excel**, **CSV** or **Print** to take it to a meeting.',
+      p: 'analytics', chips: ['How do I follow up with a member?', 'How do I share a programme link?']
+    },
+    {
+      m: ['archive', 'archive vault', 'free space', 'database space', 'storage full', 'quota', 'database full', 'read-only', 'read only',
+         'table size', 'table sizes', 'purge', 'clean up old rows', 'retention', 'reclaim', 'without losing data', 'how do i free'],
+      t: 'Archive Vault, retention and free-tier space',
+      r: '**Storage Manager** guards the free 500 MB database and 1 GB of file storage.\n\n' +
+         '**Archive Vault (safe deletion):** choose a table and a number of days, then press *Archive old rows*. It exports those rows to a JSON file, uploads it to the private `dramaconnect-backups` bucket, verifies the file exists and that the live row count still matches, and only then deletes. Everything stays restorable from *List archives*.\n\n' +
+         '**Retention horizons** say how many days each log keeps; the guarded purge requires a typed confirmation and the SHA-256 of a verified backup from the last 30 days (the page fills it in automatically).\n\n' +
+         '**Table sizes** shows exact row counts and bytes per table so you know what to archive first — usually the activity log.',
+      p: 'storage-manager', chips: ['How do I take a backup?', 'What is in the Activity Log?']
+    },
+    {
+      m: ['audit', 'audit log', 'activity log', 'who changed', 'trail', 'history of changes', 'purge log', 'signed in', 'sign-in', 'login audit', 'device'],
+      t: 'Audit trails — operations and sign-ins',
+      r: 'There are **two** trails, each with one owner page:\n\n' +
+         '1. **Activity Log** (operations): every create, update, delete, import and purge with actor, action and detail. Filter by period, action, person or free text, then export CSV or PDF. The retention card exports a log to portable JSON and then purges old entries through the guarded RPC.\n' +
+         '2. **Platform Health → Recent sign-in activity** (security): sign-ins, sign-outs, idle time-outs, denied access and security changes, with a device line (browser · operating system), summary KPIs and search.\n\n' +
+         'Nothing in either trail can be typed by hand — the system writes them, which is what makes them usable as evidence.',
+      p: 'activity', chips: ['How do I see who signed in?', 'How do I free database space?']
+    },
+    {
       m: ['programme', 'program', 'special program', 'registration link', 'register for', 'share link', 'social media', 'ticket', 'check-in desk', 'walk-in', 'insights'],
       t: 'Special programmes',
       r: '**Programmes live on one page: Programmes.** The public form is the Register page.\n\n' +
@@ -660,7 +727,15 @@
   window.Assistant = Assistant;
   window.DramaConnectAssistant = Assistant;
 
-  const boot = () => { try { Assistant.init(); } catch (e) { /* never break a page */ } };
+  // Settings → Assistant: an administrator can switch the helper off for the
+  // whole organisation (cached by PlatformManagement.orgSettings).
+  const assistantDisabled = () => {
+    try {
+      const org = JSON.parse(localStorage.getItem('dc-org-settings') || 'null');
+      return !!(org && org.data && org.data.assistant_enabled === false);
+    } catch (e) { return false; }
+  };
+  const boot = () => { try { if (!assistantDisabled()) Assistant.init(); } catch (e) { /* never break a page */ } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })();

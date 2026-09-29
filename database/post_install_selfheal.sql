@@ -178,6 +178,106 @@ GRANT EXECUTE ON FUNCTION public.is_gallery_manager() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.poll_results() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.event_rsvp_results() TO authenticated;
 
+-- ---------------------------------------------------------------------------
+-- 5. Schema Doctor — is every SQL pack installed?
+-- Probes the catalog for marker objects from each component of
+-- complete-schema.sql (and the optional pg_cron heartbeat) so Platform Health
+-- can say exactly which pack is missing or out of date. Read-only.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_schema_doctor()
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_packs JSONB := '[
+    {"id":"01","name":"Base schema & repair","file":"repair_and_upgrade.sql","required":true,
+     "objects":["t:profiles","t:rehearsals","t:attendance","t:finances","t:events","t:announcements","t:messages","t:inbox","t:tasks","t:polls","t:poll_votes","t:gallery","t:inventory","t:suggestions","t:activity_log","t:tenant_settings","f:handle_new_user"]},
+    {"id":"02","name":"RLS & server-authoritative security","file":"security_hardening.sql","required":true,
+     "objects":["f:is_approved_member","f:is_gallery_manager","f:self_check_in","f:cast_poll_vote","f:set_task_status","f:guard_profile_update","f:sync_profile_email_from_auth"]},
+    {"id":"03","name":"Resilience, anti-pause heartbeat & backup","file":"resilience_and_backup.sql","required":true,
+     "objects":["t:dc_heartbeat_sources","t:sc_keepalive","f:dc_keep_alive","f:sc_keep_alive","f:dc_heartbeat_health","t:dc_backup_runs","t:dc_backup_settings","f:dc_begin_backup_run","b:dramaconnect-backups"]},
+    {"id":"04","name":"Control plane, licensing, storage & analytics","file":"platform_management.sql","required":true,
+     "objects":["t:dc_platform_settings","t:dc_site_license","t:dc_login_audit","t:dc_retention_settings","t:dc_org_settings","t:dc_archive_vault","f:dc_access_state","f:sc_license_status","f:dc_apply_retention","f:dc_analytics_overview","f:dc_table_sizes","f:dc_login_audit_report","f:dc_archive_purge","f:dc_self_check_in_geo","f:dc_update_org_settings"]},
+    {"id":"05","name":"ID cards, programmes, roster & care","file":"identity_and_programs.sql","required":true,
+     "objects":["t:dc_card_settings","t:dc_member_cards","t:dc_programs","t:dc_program_registrations","t:dc_duty_roster","t:dc_care_cases","f:dc_my_card","f:dc_lookup_card","f:dc_program_checkin","f:dc_program_insights"]},
+    {"id":"06","name":"Post-install self-heal & views","file":"post_install_selfheal.sql","required":true,
+     "objects":["v:member_directory","v:rehearsal_schedule","f:poll_results","f:event_rsvp_results","b:avatars","b:gallery"]}
+  ]'::JSONB;
+  pk JSONB;
+  obj TEXT;
+  v_kind TEXT;
+  v_name TEXT;
+  v_ok BOOLEAN;
+  v_missing TEXT[];
+  v_present INTEGER;
+  v_total INTEGER;
+  v_result JSONB := '[]'::JSONB;
+  v_all_ok BOOLEAN := TRUE;
+  v_cron JSONB;
+  v_version TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+
+  FOR pk IN SELECT value FROM jsonb_array_elements(v_packs) LOOP
+    v_missing := '{}'; v_present := 0; v_total := 0;
+    FOR obj IN SELECT jsonb_array_elements_text(pk->'objects') LOOP
+      v_kind := split_part(obj, ':', 1); v_name := split_part(obj, ':', 2); v_total := v_total + 1;
+      v_ok := CASE v_kind
+        WHEN 't' THEN to_regclass('public.' || quote_ident(v_name)) IS NOT NULL
+        WHEN 'v' THEN to_regclass('public.' || quote_ident(v_name)) IS NOT NULL
+        WHEN 'f' THEN EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                              WHERE n.nspname = 'public' AND p.proname = v_name)
+        ELSE NULL END;
+      IF v_kind = 'b' THEN
+        v_ok := FALSE;
+        IF to_regclass('storage.buckets') IS NOT NULL THEN
+          EXECUTE 'SELECT EXISTS (SELECT 1 FROM storage.buckets WHERE id = $1)' INTO v_ok USING v_name;
+        END IF;
+      END IF;
+      IF v_ok THEN v_present := v_present + 1; ELSE v_missing := v_missing || obj; END IF;
+    END LOOP;
+    IF v_present < v_total THEN v_all_ok := FALSE; END IF;
+    v_result := v_result || jsonb_build_object(
+      'id', pk->>'id', 'name', pk->>'name', 'file', pk->>'file',
+      'installed', v_present = v_total, 'partial', v_present > 0 AND v_present < v_total,
+      'present', v_present, 'total', v_total, 'missing', to_jsonb(v_missing));
+  END LOOP;
+
+  -- Optional layer: in-database pg_cron heartbeat (Layer 4). Not required.
+  v_cron := jsonb_build_object('extension', EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'), 'job', FALSE);
+  IF to_regclass('cron.job') IS NOT NULL THEN
+    BEGIN
+      EXECUTE $q$SELECT EXISTS (SELECT 1 FROM cron.job WHERE jobname IN ('dramaconnect-internal-heartbeat','sc-keep-alive'))$q$
+        INTO v_ok;
+      v_cron := v_cron || jsonb_build_object('job', v_ok);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_cron := v_cron || jsonb_build_object('job', NULL, 'note', 'cron schema not readable');
+    END;
+  END IF;
+
+  BEGIN
+    EXECUTE 'SELECT schema_version FROM public.dc_platform_settings WHERE id = 1' INTO v_version;
+  EXCEPTION WHEN OTHERS THEN v_version := NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'ok', v_all_ok,
+    'checkedAt', NOW(),
+    'schemaVersion', v_version,
+    'postgres', current_setting('server_version'),
+    'packs', v_result,
+    'pgCron', v_cron,
+    'fix', CASE WHEN v_all_ok THEN NULL ELSE
+      'Run database/complete-schema.sql once in the Supabase SQL Editor. It is safe to re-run and repairs every missing pack.' END
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.dc_schema_doctor() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.dc_schema_doctor() TO authenticated;
+
 COMMIT;
 
 -- ---------------------------------------------------------------------------

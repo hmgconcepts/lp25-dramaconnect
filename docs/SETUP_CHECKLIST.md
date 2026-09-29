@@ -1,4 +1,4 @@
-# ✅ DramaConnect v14.1 — First-Time Setup Checklist
+# ✅ DramaConnect v14.2 — First-Time Setup Checklist
 
 Follow the mandatory sections in order. The core app can be launched quickly; production resilience, OAuth and verified recovery require additional provider setup and a rehearsal.
 
@@ -10,6 +10,18 @@ Follow the mandatory sections in order. The core app can be launched quickly; pr
 - [ ] **A4.** Create/sign up the first account, then promote that exact email to `admin` + `approved` once through the trusted SQL Editor (see `DEPLOYMENT.md`).
 - [ ] **A5.** Decide whether email confirmation remains ON. Turning it off does not bypass DramaConnect's administrator approval gate.
 - [ ] **A6.** Optional: enable `pg_cron`, rerun `database/complete-schema.sql` and confirm `dramaconnect-internal-heartbeat` exists. Do not treat an internal cron as a wake-up layer.
+
+## A2. v14.2 operations layer — recommended on every install
+
+- [ ] **A2.1.** Confirm **Platform Health → 🩺 Schema Doctor** shows all six packs *Installed*. Any red row names the missing objects; the fix is one re-run of `database/complete-schema.sql`.
+- [ ] **A2.2.** Open **Platform Health → 🫀 Keep-alive**: **Came from** must name a layer, and the pause countdown must be comfortable. Aim for two *automated* rows saying *Reporting*.
+- [ ] **A2.3.** Register the project in the **HMG Fleet Console** (Projects → Add project → Type *DramaConnect*, Supabase URL, **anon** key, site URL), then press *Ping exactly as the Fleet Console does* on Platform Health to prove the contract. Never paste a `service_role` key.
+- [ ] **A2.4.** Optional: add this project's keep-alive URL to the console repository's `FLEET_TARGETS` secret so GitHub protects the whole fleet every 2 days.
+- [ ] **A2.5.** **Settings → Attendance & venue**: set the call time and late-grace minutes (Analytics depends on them). Optionally capture the venue coordinates and enable the geofence.
+- [ ] **A2.6.** **Settings → Security**: enrol two-step verification on each administrator account, and decide whether to remind administrators to do so.
+- [ ] **A2.7.** **Settings → Module access**: hide any section members should not see (core administration sections cannot be hidden).
+- [ ] **A2.8.** **Storage Manager**: set the planning quotas and retention horizons for your actual plan, then press *Analyse health*.
+- [ ] **A2.9.** Admin Data → **Restore hub**: read the recovery map once, before you ever need it.
 
 ## B. Connect the static app — mandatory
 

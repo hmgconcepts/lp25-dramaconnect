@@ -131,7 +131,7 @@ restored.
 > The script is **cumulative and idempotent** — safe to re-run. If it is interrupted or errors partway, simply run it
 > again from the top.
 
-- [ ] **Verification** — run this; it must return **zero rows** (every one of the 31 archived tables exists). Any row it returns names a table the schema did not create — rerun `database/complete-schema.sql` from the top:
+- [ ] **Verification** — run this; it must return **zero rows** (every one of the 33 archived tables exists). Any row it returns names a table the schema did not create — rerun `database/complete-schema.sql` from the top:
 
 ```sql
 SELECT t AS missing_table FROM unnest(ARRAY[
@@ -140,7 +140,7 @@ SELECT t AS missing_table FROM unnest(ARRAY[
   'dc_platform_settings', 'dc_retention_settings', 'dc_site_license', 'activity_log', 'budgets', 'cast_list',
   'attendance', 'inbox', 'tasks', 'poll_votes', 'event_rsvps', 'gallery',
   'suggestions', 'dc_card_settings', 'dc_programs', 'dc_member_cards', 'dc_program_registrations', 'dc_duty_roster',
-  'dc_care_cases'
+  'dc_care_cases', 'dc_org_settings', 'dc_archive_vault'
 ]) AS t
 WHERE to_regclass('public.' || t) IS NULL;
 ```

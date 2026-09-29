@@ -386,12 +386,37 @@ const DB = {
     },
     /** Member self check-in. The SECURITY DEFINER RPC validates the caller, window and code. */
     async selfCheckIn(rehearsalId, _memberId, code) {
-        const { error } = await sb.rpc('self_check_in', {
+        const cleanCode = String(code || '').trim();
+        // Venue geofence (Settings -> Attendance). Read the org setting; when the
+        // table is not installed yet, fall back to the original RPC unchanged.
+        let org = null;
+        try { org = window.PlatformManagement ? await window.PlatformManagement.orgSettings(true) : null; }
+        catch (_) { org = null; }
+        if (!org) {
+            const { error } = await sb.rpc('self_check_in', { p_rehearsal_id: rehearsalId, p_code: cleanCode });
+            if (error) throw error;
+            return true;
+        }
+        let position = null;
+        if (org.geofence_enabled) {
+            if (!('geolocation' in navigator)) throw new Error('This device cannot share its location, which is required to check in at the venue. Ask an admin to mark you present.');
+            position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, (err) => {
+                    reject(new Error(err && err.code === 1
+                        ? 'Location permission was denied. Allow location for this site in your browser settings, then try again.'
+                        : 'Could not read your location. Turn on GPS/location services and try again.'));
+                }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+            });
+        }
+        const { data, error } = await sb.rpc('dc_self_check_in_geo', {
             p_rehearsal_id: rehearsalId,
-            p_code: String(code || '').trim()
+            p_code: cleanCode,
+            p_lat: position ? position.coords.latitude : null,
+            p_lng: position ? position.coords.longitude : null,
+            p_accuracy: position ? position.coords.accuracy : null
         });
         if (error) throw error;
-        return true;
+        return data || true;
     },
     async deleteRehearsal(id) {
         const { error } = await sb.from('rehearsals').delete().eq('id', id);

@@ -922,3 +922,137 @@ These bugs were found by testing in a real browser, not by reading the code:
 | `attendance.html` forced `display:block` on the flex admin toolbar | Toolbar buttons stacked vertically | The toolbar now keeps `display:flex`. |
 | Page-guide button was fixed at `left:18px` | It covered **Sign Out / Powered by** at the foot of the sidebar on tablets and desktops, and sat above the open mobile drawer | On screens 1024px and wider it now sits just right of the sidebar. It is hidden while the drawer is open and stays below the drawer's z-index. Guarded by `npm run smoke:tablet`. |
 | Sidebar stacked above the content on Android tablets (the reported screenshots) | The page looked empty until you scrolled | Every page with `#app-sidebar` now has `body.app-shell`. Guarded by `smoke:tablet`, 80 checks. |
+
+---
+
+## 61. v14.2 — Fleet-grade operations, analytics and the settings control plane
+
+This release turns six administration surfaces into complete, self-explaining consoles, and makes
+this deployment a first-class citizen of the **HMG Fleet Console**. Every item below is
+implemented, tested in a real browser and documented for the person who has to operate it.
+
+### 61.1 HMG Fleet Console integration — Layers 14 and 15
+
+| Console call | Answered by | Notes |
+|---|---|---|
+| `POST /rest/v1/rpc/sc_keep_alive` `{"src":"hmg-fleet-console"}` | `public.sc_keep_alive(text)` in `resilience_and_backup.sql` | Adapter over `dc_keep_alive`, so a Fleet ping lands in the same throttled, source-aware quorum as every other layer. POST-only (PostgREST refuses GET on a volatile function). |
+| `GET /rest/v1/sc_keepalive?select=pinged_at&limit=1` | `public.sc_keepalive` (one row, anon-readable) | Mirrored on **every** real heartbeat write, so the console always sees the true last ping. Holds a timestamp, a layer name and a count — nothing else. |
+| `POST /rest/v1/rpc/sc_license_status` | `public.sc_license_status()` in `platform_management.sql` | Returns `lifetime` / `active` / `grace` / `expired` / `suspended`, the model, plan, expiry and grace days. Deliberately leaks no licensee name, e-mail or URL to an anonymous caller. |
+| `GET /sw.js` → `const CACHE` | `sw.js` at the site root | The console's deploy detection. |
+| Anon key only | `assets/js/config.js` | The browser ships only the public anon key; the console rejects a `service_role` key on purpose. |
+
+**On the site:** `Platform Health → 🛰️ HMG Fleet Console` runs the whole contract as checks,
+prints the Supabase URL, a copy-ready JSON of the project details, the cron-job.org POST
+template, and the seven registration steps. A button performs the *exact* anon-key POST the
+console performs, so the integration can be proven before registering. Full instructions:
+`docs/SUPABASE_FREE_TIER_PROTECTION.md` → Layer 14 (console) and Layer 15 (the console
+repository's `FLEET_TARGETS` workflow that pings the whole fleet every two days).
+
+### 61.2 Keep-alive panel — "where did the last ping come from?"
+
+The protection matrix now answers the question an operator actually asks. It shows:
+
+- the **time of the last heartbeat and the layer that sent it**, by display name and by source string;
+- a highlighted **last ping** badge on that row in the matrix;
+- total pings recorded across every layer, and the pause countdown as days and a coloured meter;
+- the **Fleet-readable `sc_keepalive` row** with its own sender and count;
+- **all 14 layers**, including ones that have never run, each marked *Reporting*, *⚠ Silent* or
+  *Not set up*, with the precise repair instruction underneath;
+- the quorum banner, which still distinguishes "human traffic only" from "two unattended schedulers".
+
+### 61.3 Schema Doctor — "is every SQL pack installed?"
+
+`Platform Health → 🩺 Schema Doctor` calls `public.dc_schema_doctor()`, which probes the catalog
+for 63 marker objects (tables, functions, views and storage buckets) across all six SQL packs,
+reports `Installed / Partial / Missing` per pack, lists the exact missing objects, reports the
+pg_cron job state and the Postgres server version, and hands you a **Copy fix instructions**
+button. If the function itself is missing (a database installed before this release), the page
+falls back to probing tables from the browser and says so instead of failing.
+
+### 61.4 Analytics — five tabs, one authoritative RPC
+
+`public.dc_analytics_overview(months)` does the work in one round-trip; the page renders it as
+**Overview** (attendance rate by month, membership growth, income vs expense for administrators,
+programme registrations by month), **Attendance** (punctuality measured against the call time and
+grace minutes from Settings, recent rehearsal sessions, and the per-member table with search, a
+rate filter and the rule that a member is only "expected" at sessions held after they joined),
+**Members** (units, roles, gender, parishes, birthdays this month), **Participation** (top ten
+attendees, a *needs follow-up* list with one-click care cases, care/task/suggestion counts and
+registration sources) and **Programmes & events** (registrations, capacity, turnout, first-timers,
+average rating, upcoming RSVPs). Exports to Excel, CSV and print. Unit leaders get the same page
+without financial figures.
+
+### 61.5 Audit / Activity Log — the operational trail
+
+`public.dc_activity_feed(days, limit, action, search, actor)` filters in the database, so a large
+log stays fast, and returns a summary (entries in the period, today, last 7 days, purges recorded,
+oldest entry), the busiest actions, the most active people and the distinct action/actor lists
+that populate the filters. The page adds client-side search, CSV export and a print-ready PDF, and
+carries the reference two-step retention workflow: **① Export this log first** (portable JSON of
+the activity log *or* the sign-in audit) → **② Purge old entries** (1 week to 2 years, guarded by a
+typed confirmation and the SHA-256 of a verified backup from the last 30 days, which the page fills
+in automatically from the last successful run).
+
+### 61.6 Settings — one control plane for the whole platform
+
+Nine sections on one page: **Branding**, **Organisation** (device profile plus the department-wide
+language and time zone), **Appearance & accessibility**, **Attendance & venue**, **Security
+(two-step verification)**, **Module access**, **Assistant**, **Licence** and **System information**
+with a live control-plane table mapping each capability to its owner page.
+
+- **Accessibility**, per device: high contrast, larger text, reduced motion, dyslexia-friendly font,
+  always-underlined links, a strong focus outline and a text-size slider. Applied in `<head>` before
+  first paint, so there is no flash; high contrast can be made the organisation default.
+- **Venue geofence**: latitude, longitude, radius and accepted GPS error, with a *Use this device's
+  location* button. Enforcement is server-side in `dc_self_check_in_geo`: members must send a
+  location, the reading must be accurate enough, and the distance must be inside the radius plus the
+  reported error. The original `self_check_in(uuid,text)` refuses while the fence is on unless the
+  geo verifier has already run in the same transaction, so an old client cannot bypass it. Location is
+  never stored.
+- **Two-step verification**: authenticator TOTP through Supabase Auth MFA — enrol with a QR code and
+  a manual secret, verify with a 6-digit code, remove it again. `Auth.signIn` and `Auth.checkSession`
+  both demand the second factor when the account has one, and an advisory organisation policy reminds
+  administrators until they enrol without ever blocking a login.
+- **Module access**: switch off any optional sidebar section for members; core administration
+  sections are protected, a disabled module shows an "off" badge for administrators, and a member who
+  opens one is returned to their dashboard with an explanation.
+
+### 61.7 Storage Manager — Archive Vault and honest numbers
+
+`dc_table_sizes()` returns every public table with its exact row count, total/table/index bytes and
+the oldest dated row, so "what is actually big?" has a real answer. The Archive Vault runs a
+delete-safe sequence: read the rows older than the horizon → serialise them → **upload to the private
+`dramaconnect-backups` bucket** → call `dc_archive_purge`, which verifies the object exists in the
+vault *and* that the live row count still matches the export *and* the typed confirmation, then
+deletes and records the batch in `dc_archive_vault`. Batches can be downloaded or restored
+(additively: nothing newer is overwritten, and rows whose parents no longer exist are skipped) from
+the same page. The retention panel still supports the guarded purge for the four housekeeping
+tables and now fills the verified-backup digest automatically.
+
+### 61.8 Admin Data — table explorer, sample data and the restore hub
+
+Two new tabs keep **one owner per capability**: the **Table explorer** previews any supported table
+with its live row count, exports that table as CSV or JSON, deletes a single row behind a typed
+confirmation, and loads or removes **DEMO-labelled sample data** (productions, rehearsals, events,
+announcements, tasks and finance entries — no accounts are created, and everything is prefixed
+`DEMO —` so it can be removed in one click). The **Restore hub** is the incident-time map: every
+restorable source (verified local archive, Google Drive, private vault, Archive Vault batches, table
+exports, storage objects) with what it contains, the tool that restores it and a live list of
+Archive Vault batches that can be restored in place.
+
+### 61.9 Schema 14.2 and backup coverage
+
+`dc_org_settings` and `dc_archive_vault` join the portable archive, which now covers **33** tables.
+An archive produced by 14.0 or 14.1 still passes verification because the schema-version check
+accepts both as legacy versions; only the tables that existed in that version are required.
+
+### 61.10 Bugs found and fixed while building this release
+
+| Bug | Effect before the fix | Fix |
+|---|---|---|
+| Platform Health is the only page that had a real layer matrix, and its rows could not say *which* layer had pinged last | You could see "a heartbeat 3 h ago" but not "the Vercel cron is the only thing still working" | `dc_heartbeat_health()` now returns `lastSource`, `totalPings` and the `fleet` block; the panel names the source and badges the row |
+| Storage Manager's "largest table" advice depended on row counts that had not loaded yet | The advice was empty until *Analyse health* was pressed a second time | `advice()` is re-run after the table-size read resolves |
+| Analytics rendered nothing below the KPI row when the page made a single query to a non-existent element | One silently missing element aborted the entire render | The Analytics page uses a null-safe element lookup, so a markup change can never blank the page again |
+| The Advanced "purge by date" control on the Storage Manager accepted any table, but the retention RPC owns only four housekeeping tables | A confusing server error for an unsupported table | The control now names the supported tables and explains the Archive Vault alternative |
+| `?source=` was not honoured by `/api/keep-alive`, so every external monitor was labelled `vercel-cron` | cron-job.org, UptimeRobot and the Fleet Console all looked like the Vercel cron, making the matrix lie | The endpoint maps `?source=` onto the database's allow-list (with a safe fallback) and documents it in the protection guide |
+| The self-committing workflow proved nothing | L13 could only be inferred from git history | The workflow now records a `self-commit` heartbeat, so the layer shows *Reporting* with a date |

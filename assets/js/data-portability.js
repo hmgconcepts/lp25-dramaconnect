@@ -9,10 +9,10 @@
 
   const FORMAT = 'dramaconnect-portable-archive';
   const FORMAT_VERSION = 2;
-  const SCHEMA_VERSION = '14.1';
+  const SCHEMA_VERSION = '14.2';
   // Archives written by these earlier releases still verify and restore: tables
   // that did not exist yet (marked `since`) are simply absent from them.
-  const LEGACY_SCHEMA_VERSIONS = Object.freeze(['14.0']);
+  const LEGACY_SCHEMA_VERSIONS = Object.freeze(['14.0', '14.1']);
   const PAGE_SIZE = 500;
   const MAX_LOCAL_ARCHIVE_BYTES = 100 * 1024 * 1024;
   const MAX_VAULT_ARCHIVE_BYTES = 50 * 1024 * 1024;
@@ -53,7 +53,10 @@
     { name: 'dc_member_cards', key: 'member_id', identity: true, since: '14.1' },
     { name: 'dc_program_registrations', key: 'id', since: '14.1' },
     { name: 'dc_duty_roster', key: 'id', identity: true, since: '14.1' },
-    { name: 'dc_care_cases', key: 'id', identity: true, since: '14.1' }
+    { name: 'dc_care_cases', key: 'id', identity: true, since: '14.1' },
+    // v14.2 — organisation settings and the Archive Vault register.
+    { name: 'dc_org_settings', key: 'id', since: '14.2' },
+    { name: 'dc_archive_vault', key: 'id', since: '14.2' }
   ]);
 
   /** Table names an archive of `version` must contain, in archive order. */

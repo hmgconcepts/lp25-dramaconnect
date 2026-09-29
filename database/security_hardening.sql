@@ -341,9 +341,23 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   r public.rehearsals%ROWTYPE;
+  v_geo BOOLEAN := FALSE;
 BEGIN
   IF auth.uid() IS NULL OR NOT public.is_approved_member() THEN
     RAISE EXCEPTION 'An approved account is required' USING ERRCODE = '42501';
+  END IF;
+
+  -- Venue geofence (Settings -> Attendance). When enabled, check-in must go
+  -- through dc_self_check_in_geo, which verifies the device location and sets
+  -- dc.geo_verified for this transaction only. Read dynamically so this pack
+  -- still installs before platform_management.sql creates the table.
+  IF to_regclass('public.dc_org_settings') IS NOT NULL
+     AND COALESCE(current_setting('dc.geo_verified', true), '') <> 'on' THEN
+    EXECUTE 'SELECT COALESCE(geofence_enabled, false) FROM public.dc_org_settings WHERE id = 1' INTO v_geo;
+    IF COALESCE(v_geo, FALSE) THEN
+      RAISE EXCEPTION 'Location check required: update the app and allow location access to check in at the venue'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   SELECT * INTO r FROM public.rehearsals

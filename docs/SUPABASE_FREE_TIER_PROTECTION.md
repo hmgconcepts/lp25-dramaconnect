@@ -62,9 +62,9 @@ Press **Test heartbeat** ([Layer 9](#layer-9--manual-heartbeat-button)) once to 
 
 ---
 
-## 2. The 12-layer map — what you are building
+## 2. The 15-layer map — what you are building
 
-Think of it as **twelve independent clocks**. Each one pokes the database on its own schedule. Supabase only pauses the project if **all twelve** stop for 7 days straight.
+Think of it as **fifteen independent clocks**. Each one pokes the database on its own schedule. Supabase only pauses the project if **all fifteen** stop for 7 days straight. You do NOT have to arm all fifteen — but you must arm at least two that live *outside* Supabase.
 
 ```
                         ┌─────────────────────────────────────┐
@@ -85,7 +85,35 @@ Think of it as **twelve independent clocks**. Each one pokes the database on its
                         │  Layer 11  quorum + dead-scheduler  │  warns you BEFORE it happens
                         │  Layer 12  weekly encrypted dump    │  rebuilds from scratch if all else fails
                         └─────────────────────────────────────┘
+                        ┌─────────────────────────────────────┐
+   FLEET (HMG)          │  Layer 13  self-commit (explicit)   │  records the anti-freeze step as its own layer
+                        │  Layer 14  HMG Fleet Console ping   │  ✅ one-click / auto-pilot for every client project
+                        │  Layer 15  Fleet GitHub workflow    │  ✅ one secret pings the whole fleet every 2 days
+                        └─────────────────────────────────────┘
 ```
+
+### 2.1 Layer identity map — the string you will see on Platform Health
+
+Every heartbeat is stored with the name of the layer that sent it. This table is the contract between the database and the screens; if a row says "Not set up", the matching row here tells you exactly what to switch on. (Source names are the values in `dc_heartbeat_sources.source`.)
+
+| # | Source string | Shown on Platform Health as | Written by | Kind |
+|---|---|---|---|---|
+| 1 | `pg-cron` | L1 · pg_cron (in-database) | the scheduled SQL job inside the database | automated |
+| 2 | `site-visit` | L2 · Site visits | any member opening the site (`Resilience.ping`) | human |
+| 3 | `github-actions` | L3 · GitHub Actions (+ L4 anti-freeze) | `.github/workflows/keep-alive.yml` | automated |
+| 4 | `self-commit` | L13 · Self-committing workflow | the same workflow after it commits `.github/.keepalive` | automated |
+| 5 | `vercel-cron` | L5 · Vercel Cron | `/api/keep-alive` (Vercel Hobby runs it daily) | automated |
+| 6 | `apps-script` | L6 · Google Apps Script | a daily trigger on script.google.com | automated |
+| 7 | `cron-job-org` | L7 · cron-job.org | a free cron job (POST) | automated |
+| 8 | `edge-ping` | L8 · Edge Function + UptimeRobot | `supabase/functions/ping` + the UptimeRobot monitor | automated |
+| 9 | `manual-button` | L9 · Manual button | the **Test heartbeat** button on Platform Health | human |
+| 10 | `auto-restore` | L10 · Auto-restore watchdog | `.github/workflows/auto-restore.yml` | automated |
+| 11 | `database-backup` | L12 · Weekly backup workflow | `.github/workflows/database-backup.yml` | automated |
+| 12 | `fleet-console` | L14 · HMG Fleet Console | the Fleet Console ping / auto-pilot / wake-up, or its own browser session | human |
+| 13 | `fleet-actions` | L15 · HMG Fleet Console GitHub workflow | the Fleet Console repository's `FLEET_TARGETS` workflow | automated |
+| 14 | `external` | Other external callers | anything else that calls the RPC with an unknown name | human |
+
+The function accepts a fixed allow-list, so a stranger hitting your public endpoint can never create layer rows of their own: anything unrecognised is collapsed into `external`. Aliases are normalised — `hmg-fleet-console`, `fleet`, `fleet-probe`, `fleet-autopilot` and `fleet-wake` all become `fleet-console`; `github-actions-fleet` becomes `fleet-actions`; `uptimerobot` becomes `edge-ping`; `cron_job_org` becomes `cron-job-org`.
 
 > **The one rule that matters:** configure **at least two EXTERNAL layers**.
 > Internal `pg_cron` runs *inside* the database, so when the database is paused, `pg_cron` is paused too — it can never rescue you. External layers run on other people's servers and *can* reach a sleeping project.
@@ -709,6 +737,162 @@ An untested backup is not a backup. See `docs/BACKUP_AND_RECOVERY.md` for the re
 
 ---
 
+## Layer 13 — self-commit recorded as its own layer (0 minutes, already built in)
+
+Layer 4 already protects GitHub's scheduled workflows from the **60-day inactivity freeze**
+(GitHub disables schedules in a repository with no commits for 60 days, and a disabled
+schedule is a dead anti-pause layer). Layer 13 is the *evidence* half of that: when the
+workflow writes its preservation commit, it also records a heartbeat under the source
+`self-commit`, so Platform Health can prove the anti-freeze step actually ran instead of
+you having to infer it from `git log`.
+
+| | |
+|---|---|
+| **Where it runs** | GitHub Actions, inside `.github/workflows/keep-alive.yml`, after the preservation commit |
+| **Can it wake a paused project?** | ✅ Yes (it is an external HTTP call to Supabase) |
+| **Setup** | None. It ships armed. |
+| **Fires** | Only when the repository has had no commit for **30+ days**, so it is silent during normal work — that is correct, not broken |
+| **Proof it works** | Platform Health → Protection layers → **L13 · Self-committing workflow** shows *Reporting* with the date and count |
+| **If it says "Not set up"** | The repository has been committed to recently (the goal was already met) **or** the workflow's push permission is missing. Open GitHub → Settings → Actions → General → Workflow permissions → **Read and write**, then run the workflow once from the Actions tab |
+
+> **Do not "fix" a silent L13 by committing more often.** Silence means the repository is
+> already active. The layer exists for the year when nobody touches the repository at all.
+
+---
+
+## Layer 14 — HMG Fleet Console (one-click, auto-pilot and wake-up for every project)
+
+The **HMG Fleet Console** (`https://hmgfleetconsole.vercel.app`, repository
+`hmgconcepts/hmgfleetconsole`) is the operations console that watches **every** Supabase
+project you build for clients from one screen. This deployment speaks its contract natively,
+so registering it takes about two minutes and then one click — or the console's auto-pilot —
+keeps it awake alongside everything else you run.
+
+### What the console expects, and what this site already answers
+
+| Console call | Where it lives here | Status |
+|---|---|---|
+| `POST /rest/v1/rpc/sc_keep_alive` with `{"src":"hmg-fleet-console"}` | SQL pack 03 (`resilience_and_backup.sql`) — an adapter over `dc_keep_alive` | ✅ installed by `complete-schema.sql` |
+| `GET /rest/v1/sc_keepalive?select=pinged_at&limit=1` | the one-row heartbeat table, readable by the public anon key | ✅ installed and readable |
+| `POST /rest/v1/rpc/sc_license_status` | SQL pack 04 (`platform_management.sql`) — lifetime / active / grace / expired verdict | ✅ installed, anon-readable, leaks no names |
+| `GET /sw.js` → `const CACHE = '…'` | `sw.js` at the site root (deploy detection) | ✅ present |
+| Anon-key-only access (never `service_role`) | the browser only ever ships the public anon key | ✅ enforced |
+| Health probes: `/rest/v1/`, `/auth/v1/health`, `/storage/v1/status` | standard Supabase endpoints | ✅ available to any anon key |
+
+### Step A — Register the project in the console (~2 minutes)
+
+1. Open **https://hmgfleetconsole.vercel.app** and sign in.
+2. Go to **Projects → Add project**.
+3. Fill in:
+   - **Name:** anything meaningful to you, e.g. `<department> — DramaConnect`
+   - **Type:** **DramaConnect** (this unlocks the subscription verdict column)
+   - **Environment:** production
+   - **Supabase URL:** `https://<your-project-ref>.supabase.co` — the exact value is printed for you at **Platform Health → HMG Fleet Console → Supabase URL** (or Supabase → Project Settings → API)
+   - **Anon (public) key:** press **Copy project details for the console** on Platform Health and paste the JSON, or copy the `anon public` key from **Supabase → Project Settings → API**
+   - **Site URL:** your live site (`https://rccglp25-dramaconnect.vercel.app`) so the console can detect deploys from `sw.js`
+4. **Save.** The console immediately runs a health check and a keep-alive ping.
+5. Press **Ping** once. If the site is reachable you will see a green heartbeat.
+
+> ⚠️ **Never paste a `service_role` key.** The console rejects it on purpose, and so should
+> you: the anon key plus Row-Level Security is what keeps member and finance data
+> cryptographically out of reach while still allowing a heartbeat.
+
+### Step B — Prove it from this end (30 seconds)
+
+1. Open **Platform Health → 🫀 Keep-alive**.
+2. **Came from** should read **HMG Fleet Console** and the *HMG Fleet Console heartbeat* panel should show a fresh time and the sender `hmg-fleet-console`.
+3. **Platform Health → 🛰️ HMG Fleet Console** runs the contract checks itself:
+   `sc_keep_alive` installed, `sc_keepalive` readable, `sc_license_status` answering, deploy
+   version readable, anon-key-only — all green means the console will see this project.
+4. Press **Ping exactly as the Fleet Console does**. A success toast proves the exact
+   anon-key POST the console performs.
+
+### Step C — Auto-pilot (optional, one toggle in the console)
+
+In the console, **Settings → Auto-pilot** pings every un-paused project on a schedule while
+the console is open, and the console also pings any project whose heartbeat is older than
+5 days whenever someone opens it. Nothing to configure here.
+
+### What you get in the console for this project
+
+- Keep-alive state, heartbeat age and the pause-risk countdown
+- REST / Auth / Storage / live-site health and latency sparklines
+- The subscription verdict from `sc_license_status` (lifetime is reported as `lifetime`)
+- Deploy history read from `sw.js`
+- Incident journal, WhatsApp situation report, CSV export and wallboard tiles
+
+### If a check fails
+
+| Symptom | Meaning | Fix |
+|---|---|---|
+| `sc_keep_alive missing (HTTP 404)` | the SQL pack was never run, or was run before this release | Supabase → SQL Editor → run `database/complete-schema.sql` once (safe to re-run) |
+| `RPC missing — see Ops Toolkit` in the console | same as above | same fix |
+| Heartbeat readable but ping refused (`401`) | wrong key pasted (a `service_role` key, or the legacy JWT) | re-copy the **anon public** key |
+| Console shows *unreachable* | project paused, or the URL has a typo | restore/pause check at supabase.com, then re-run the ping |
+| Licence column says *no verdict RPC* | `sc_license_status` not installed | run `database/complete-schema.sql` |
+
+---
+
+## Layer 15 — Fleet Console GitHub workflow (one secret protects every project)
+
+Inside the Fleet Console repository, `.github/workflows/fleet-keepalive.yml` pings **every**
+project listed in one repository secret, every 2 days, from GitHub's servers — with no
+browser open and no laptop awake.
+
+1. In the console, open **Projects → 📋 per row** and copy the keep-alive URL for this
+   project (it looks like `https://YOUR-PROJECT.supabase.co/rest/v1/rpc/sc_keep_alive?apikey=eyJ…`).
+   The same URL is printed on **Platform Health → HMG Fleet Console → cron-job.org** section.
+2. In the **hmgfleetconsole** GitHub repository: **Settings → Secrets and variables →
+   Actions → New repository secret**.
+3. Name it **`FLEET_TARGETS`** and paste one URL per line — this project's line plus every
+   other client project.
+4. That is all. The workflow runs `17 4 */2 * *` (every two days at 04:17 UTC) and can also
+   be run on demand from **Actions → Fleet keep-alive → Run workflow**.
+5. Proof on this site: **Platform Health → Protection layers → L15 · HMG Fleet Console GitHub
+   workflow** shows *Reporting*, and the ping appears as `fleet-actions`.
+
+> **Privacy:** the secret holds only public anon-key URLs. They can bump a heartbeat row and
+> nothing else — Row-Level Security still keeps every member, finance and care record out of
+> reach.
+
+---
+
+## Reusing one endpoint for any other free scheduler
+
+`/api/keep-alive` accepts an optional `?source=` label so any free monitor can point at the
+same URL and still be identified correctly on Platform Health:
+
+```
+https://YOUR-SITE.vercel.app/api/keep-alive?source=cron-job-org      → L7
+https://YOUR-SITE.vercel.app/api/keep-alive?source=uptimerobot       → L8 (edge-ping)
+https://YOUR-SITE.vercel.app/api/keep-alive?source=fleet             → L14
+https://YOUR-SITE.vercel.app/api/keep-alive                          → L5 (vercel-cron)
+```
+
+`GET` and `POST` both work, `CRON_SECRET` stays optional, and an unknown label falls back to
+`vercel-cron` instead of creating a bogus layer.
+
+Don't forget to register the cron on the **monitor side** as well:
+
+| Monitor | URL to paste | Method | Schedule |
+|---|---|---|---|
+| UptimeRobot | `https://YOUR-SITE.vercel.app/api/keep-alive?source=uptimerobot` | HTTP(s), keyword `"ok":true` | every 5–30 min |
+| cron-job.org | `…/api/keep-alive?source=cron-job-org` | POST | every 2 days |
+| Google Apps Script | the `keep_alive` URL from Layer 6 | POST | daily trigger |
+
+---
+
+## Long holidays — the operational drill (do this before every break)
+
+1. Open **Platform Health → 🫀 Keep-alive** and confirm **Fleet** and **last ping** are green.
+2. Press **Test heartbeat** once (records `manual-button`) so you have a fresh timestamp.
+3. Confirm at least two **automated** rows say *Reporting* — the amber banner warns you if
+   only human traffic is keeping the project awake.
+4. Optionally take a verified backup: **Admin Data → Create & download**.
+5. While away, the console wallboard and UptimeRobot (if configured) are your eyes.
+
+---
+
 ## How to verify the whole system
 
 Work through this once after setup, then once a quarter.
@@ -739,7 +923,22 @@ The banner must read **Healthy** or **Only N of M layers are fresh** — never *
 | Supabase paused-project recovery watchdog | Every 12 hours |
 | Encrypted unattended database, Auth and Storage backup | Sun 02:53 UTC |
 
-### 6. The watchdog can see your project
+### 6. The Fleet Console can see your project
+
+Open **Platform Health → 🛰️ HMG Fleet Console**. All checks must be green:
+
+| Check | Must read |
+|---|---|
+| `sc_keep_alive(src) RPC installed` | Pass — otherwise run `database/complete-schema.sql` |
+| `sc_keepalive heartbeat readable` | Pass, with the last time and sender |
+| `sc_license_status() answers` | Pass, showing `lifetime` (or `active` / `grace`) |
+| `Deploy version in /sw.js` | Pass, showing the current cache name |
+| `Anon key only` | Pass |
+
+Then press **Ping exactly as the Fleet Console does**. A success toast means the console's
+own anon-key POST works from a browser, so its server-side pings will work too.
+
+### 7. The watchdog can see your project
 
 Its last run should say `Project is ACTIVE_HEALTHY. No action needed.`
 
@@ -829,12 +1028,20 @@ Give this to whoever runs the ministry website. Every box must be ticked.
 | 10 | Auto-Restore Watchdog | GitHub | ✅ Un-pauses | Heartbeat automatic; restore needs 1 secret (~3 min) | ☐ |
 | 11 | Quorum + dead-scheduler detection | Inside Supabase | ⚠️ Warns you | Automatic | ☐ |
 | 12 | Weekly encrypted dump | GitHub | ➖ Rebuilds | ~15 min | ☐ |
+| 13 | Self-committing workflow (recorded) | GitHub | ✅ Yes | Automatic | ☐ |
+| 14 | HMG Fleet Console (ping / auto-pilot / wake-up) | Vercel console | ✅ Yes | ~2 min | ☐ |
+| 15 | Fleet Console GitHub workflow (`FLEET_TARGETS`) | GitHub (console repo) | ✅ Yes | ~3 min | ☐ |
 
-**You do not need all twelve.** The recommended configuration is:
+**You do not need all fifteen.** The recommended configuration is:
 
 > **Layers 1, 2, 3, 4, 5, 9, 11 run with zero setup once deployed.** Spend ~10 minutes adding `SUPABASE_ACCESS_TOKEN` — it unlocks both **Layer 8** (deploy the ping function, then an UptimeRobot monitor that emails you) and **Layer 10** (automatic restore).
 
 That gives you two independent providers, a human override, early warning, and automatic un-pausing. Everything else is defence in depth.
+
+**If you look after many client projects**, add Layers 14 and 15 first: the console gives you
+one screen, one click and one wallboard for the whole fleet, and its GitHub workflow protects
+every project listed in a single secret — which is far less work than configuring Layers 6–8
+per project.
 
 ---
 
@@ -865,8 +1072,10 @@ Two printable companions exist:
 │    1. Run database/complete-schema.sql                       │
 │    2. Add SUPABASE_URL + SUPABASE_ANON_KEY to GitHub         │
 │    3. Add a Vercel Cron pointing at /api/keep-alive          │
-│    4. Open Platform Health and press  💓 Test heartbeat      │
-│    5. Confirm the quorum banner does NOT say                 │
+│    4. Register the project in the HMG Fleet Console          │
+│       (Type: DramaConnect, anon key, site URL)               │
+│    5. Open Platform Health and press  💓 Test heartbeat      │
+│    6. Confirm the quorum banner does NOT say                 │
 │       "Single point of failure"                              │
 │                                                              │
 │  Review once a quarter:                                      │
@@ -881,4 +1090,9 @@ Two printable companions exist:
 
 ---
 
-*Last reviewed for DramaConnect v14.1 · Supabase free tier · all tools used are free.*
+*Last reviewed for DramaConnect v14.2 · Supabase free tier · all tools used are free.*
+
+**Layer count: 15.** Every layer in this document is implemented in this repository — the
+SQL pack, the workflows, the Vercel endpoint, the Edge Function and the Platform Health
+console all ship in the same release, so "it works" is something you verify on one page
+rather than take on trust.

@@ -34,6 +34,28 @@ CREATE POLICY "Approved admins can read resilience heartbeats"
   ON public.dc_heartbeat_sources FOR SELECT TO authenticated
   USING (public.is_admin());
 
+-- HMG Fleet Console heartbeat row. Shape matches the console's own snippet
+-- (id int pk, pinged_at timestamptz, src text) so a project that already ran
+-- that snippet upgrades in place. It holds only a timestamp and a layer name.
+CREATE TABLE IF NOT EXISTS public.sc_keepalive (
+  id int PRIMARY KEY,
+  pinged_at timestamptz NOT NULL DEFAULT now(),
+  src text
+);
+ALTER TABLE public.sc_keepalive ADD COLUMN IF NOT EXISTS src text;
+ALTER TABLE public.sc_keepalive ADD COLUMN IF NOT EXISTS ping_count bigint NOT NULL DEFAULT 0;
+ALTER TABLE public.sc_keepalive ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.sc_keepalive FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.sc_keepalive TO anon, authenticated;
+DROP POLICY IF EXISTS "read" ON public.sc_keepalive;
+DROP POLICY IF EXISTS "sc_keepalive_read" ON public.sc_keepalive;
+DROP POLICY IF EXISTS "Anyone can read the fleet heartbeat" ON public.sc_keepalive;
+CREATE POLICY "Anyone can read the fleet heartbeat"
+  ON public.sc_keepalive FOR SELECT TO anon, authenticated USING (true);
+INSERT INTO public.sc_keepalive (id, pinged_at, src, ping_count)
+VALUES (1, now(), 'install', 0)
+ON CONFLICT (id) DO NOTHING;
+
 CREATE OR REPLACE FUNCTION public.dc_keep_alive(p_source text DEFAULT 'external')
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -47,11 +69,26 @@ DECLARE
 BEGIN
   -- A fixed allow-list prevents an unauthenticated caller from creating
   -- unbounded source rows. Unknown values collapse into one external bucket.
-  v_source := lower(trim(coalesce(p_source, 'external')));
+  -- Normalise first: 'pg_cron', 'PG Cron' and 'pg-cron' are the same layer.
+  v_source := pg_catalog.regexp_replace(lower(trim(coalesce(p_source, 'external'))), '[^a-z0-9]+', '-', 'g');
+  v_source := pg_catalog.btrim(v_source, '-');
+  -- HMG Fleet Console aliases (Item 21). The console's browser ping, probe and
+  -- GitHub workflow each get their own bucket so the dashboard can say which
+  -- one last woke the project.
+  IF v_source IN ('hmg-fleet-console', 'fleet', 'fleet-probe', 'fleet-console', 'fleet-autopilot', 'fleet-wake') THEN
+    v_source := 'fleet-console';
+  ELSIF v_source IN ('github-actions-fleet', 'fleet-actions', 'fleet-github') THEN
+    v_source := 'fleet-actions';
+  ELSIF v_source IN ('uptimerobot', 'uptime-robot', 'ping', 'edge-function') THEN
+    v_source := 'edge-ping';
+  ELSIF v_source IN ('cron-job', 'cronjob-org', 'cron-job-org-sc') THEN
+    v_source := 'cron-job-org';
+  END IF;
   IF v_source NOT IN (
     'site-visit', 'github-actions', 'edge-ping', 'pg-cron',
     'manual-button', 'vercel-cron', 'apps-script', 'cron-job-org',
-    'auto-restore', 'database-backup', 'external'
+    'auto-restore', 'database-backup', 'fleet-console', 'fleet-actions',
+    'self-commit', 'external'
   ) THEN
     v_source := 'external';
   END IF;
@@ -69,6 +106,14 @@ BEGIN
   RETURNING * INTO v_row;
 
   IF FOUND THEN
+    -- Mirror into the HMG Fleet Console contract row (anon-readable, one row).
+    INSERT INTO public.sc_keepalive (id, pinged_at, src, ping_count)
+    VALUES (1, v_now, v_source, 1)
+    ON CONFLICT (id) DO UPDATE
+      SET pinged_at = EXCLUDED.pinged_at,
+          src = EXCLUDED.src,
+          ping_count = coalesce(public.sc_keepalive.ping_count, 0) + 1;
+
     RETURN pg_catalog.jsonb_build_object(
       'ok', true,
       'status', 'written',
@@ -96,6 +141,45 @@ $$;
 
 REVOKE ALL ON FUNCTION public.dc_keep_alive(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.dc_keep_alive(text) TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 1b. HMG Fleet Console compatibility (Item 21)
+--
+-- The Fleet Console (hmgfleetconsole.vercel.app) monitors many client projects
+-- with ONLY each project's anon key. It calls:
+--   POST /rest/v1/rpc/sc_keep_alive      body {"src":"hmg-fleet-console"}
+--   GET  /rest/v1/sc_keepalive?select=pinged_at&limit=1
+--   POST /rest/v1/rpc/sc_license_status  body {}   (defined in platform_management.sql)
+-- sc_keep_alive is a thin adapter over dc_keep_alive, so Fleet pings land in
+-- the same throttled, source-aware quorum as every other anti-pause layer.
+--
+-- Dropped first on purpose: the Fleet snippet may already have created a SQL
+-- version with a different body/parameter default, and CREATE OR REPLACE cannot
+-- change a parameter name or return type. Nothing depends on it.
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.sc_keep_alive();
+DROP FUNCTION IF EXISTS public.sc_keep_alive(text);
+
+CREATE FUNCTION public.sc_keep_alive(src text DEFAULT 'fleet-console')
+RETURNS timestamptz
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.dc_keep_alive(coalesce(nullif(trim(src), ''), 'fleet-console'));
+  RETURN coalesce((v_result->>'at')::timestamptz, pg_catalog.now());
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.sc_keep_alive(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sc_keep_alive(text) TO anon, authenticated;
+
+COMMENT ON FUNCTION public.sc_keep_alive(text) IS
+  'HMG Fleet Console keep-alive adapter. POST only (volatile). Maps fleet sources to fleet-console/fleet-actions and delegates to dc_keep_alive.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Shared administrator configuration and immutable-ish run history
@@ -601,11 +685,11 @@ BEGIN
     'automatedSourcesFresh', (
       SELECT count(*) FROM pg_catalog.jsonb_array_elements(v_sources) AS e
        WHERE (e.value ->> 'fresh') = 'true'
-         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external')),
+         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external', 'fleet-console')),
     'automatedQuorum', ((
       SELECT count(*) FROM pg_catalog.jsonb_array_elements(v_sources) AS e
        WHERE (e.value ->> 'fresh') = 'true'
-         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external')) >= 2),
+         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external', 'fleet-console')) >= 2),
     'neverReported', (
       SELECT COALESCE(pg_catalog.jsonb_agg(x ORDER BY x), '[]'::jsonb)
       FROM pg_catalog.unnest(ARRAY['github-actions','vercel-cron','pg-cron','auto-restore','edge-ping','cron-job-org','apps-script']) AS x
@@ -615,6 +699,13 @@ BEGIN
       FROM pg_catalog.jsonb_array_elements(v_sources) AS e
       WHERE (e.value ->> 'fresh') = 'false'
     ), '[]'::jsonb),
+    -- "Where did the last ping come from?" — answered directly so every
+    -- dashboard (Platform Health, Settings, the assistant) says the same thing.
+    'lastSource', (SELECT e.value ->> 'source' FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+                    ORDER BY (e.value ->> 'lastPingAt')::timestamptz DESC LIMIT 1),
+    'totalPings', (SELECT coalesce(sum((e.value ->> 'pingCount')::bigint), 0) FROM pg_catalog.jsonb_array_elements(v_sources) AS e),
+    'fleet', (SELECT pg_catalog.jsonb_build_object('pingedAt', k.pinged_at, 'src', k.src, 'count', k.ping_count)
+                FROM public.sc_keepalive k WHERE k.id = 1),
     'sources', v_sources
   );
 END;

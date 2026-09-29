@@ -222,6 +222,74 @@
       const { data, error } = await requireClient().storage.from(bucket).remove([safePath]);
       if (error) throw new Error(clean(error));
       return data;
+    },
+
+    /* ---- Item 21: organisation settings, analytics, audit, doctor, vault ---- */
+    async orgSettings(force = false) {
+      const cacheKey = 'dc-org-settings';
+      if (!force) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.data;
+        } catch (_) { /* ignore */ }
+      }
+      const { data, error } = await requireClient().from('dc_org_settings').select('*').eq('id', 1).maybeSingle();
+      if (error) {
+        // 42P01/PGRST205 = pack 04 not yet re-run; callers fall back to defaults.
+        if (/42P01|PGRST205|does not exist|schema cache/i.test(`${error.code} ${error.message}`)) return null;
+        throw new Error(clean(error));
+      }
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data }));
+        localStorage.setItem('dc-modules-off', JSON.stringify(data?.disabled_modules || []));
+      } catch (_) { /* storage full or disabled */ }
+      return data;
+    },
+    async updateOrgSettings(values) {
+      const data = await unwrapRpc('dc_update_org_settings', { p_settings: values || {} });
+      try {
+        localStorage.setItem('dc-org-settings', JSON.stringify({ at: Date.now(), data }));
+        localStorage.setItem('dc-modules-off', JSON.stringify(data?.disabled_modules || []));
+      } catch (_) { /* ignore */ }
+      return data;
+    },
+    analytics: (months = 12) => unwrapRpc('dc_analytics_overview', { p_months: Number(months) || 12 }),
+    tableSizes: () => unwrapRpc('dc_table_sizes'),
+    schemaDoctor: () => unwrapRpc('dc_schema_doctor'),
+    heartbeatHealth: () => unwrapRpc('dc_heartbeat_health'),
+    licenseProbe: () => unwrapRpc('sc_license_status'),
+    loginAuditReport(days = 30, limit = 200, event = null) {
+      return unwrapRpc('dc_login_audit_report', { p_days: Number(days) || 30, p_limit: Number(limit) || 200, p_event: event || null });
+    },
+    activityFeed(options = {}) {
+      return unwrapRpc('dc_activity_feed', {
+        p_days: Number(options.days) || 90, p_limit: Number(options.limit) || 300,
+        p_action: options.action || null, p_search: options.search || null, p_actor: options.actor || null
+      });
+    },
+    archivePurge(values) {
+      return unwrapRpc('dc_archive_purge', {
+        p_table: values.table, p_before: values.before, p_object_path: values.path,
+        p_sha256: values.sha256, p_row_count: Number(values.rows), p_confirmation: values.confirmation
+      });
+    },
+    archiveRestore: (archiveId, rows) => unwrapRpc('dc_archive_restore', { p_archive_id: archiveId, p_rows: rows }),
+    async listArchives() {
+      const { data, error } = await requireClient().from('dc_archive_vault')
+        .select('id,table_name,object_path,sha256,row_count,cutoff,created_at,restored_at,restored_rows')
+        .order('created_at', { ascending: false }).limit(200);
+      if (error) throw new Error(clean(error));
+      return data || [];
+    },
+    /** Client-side fallback for Schema Doctor: HEAD-probe tables with limit 0. */
+    async probeTables(tables) {
+      const out = {};
+      await Promise.all((tables || []).map(async (table) => {
+        const { error } = await requireClient().from(table).select('*', { head: true, count: 'exact' }).limit(0);
+        out[table] = !error ? 'present'
+          : (/42P01|PGRST205|does not exist|schema cache/i.test(`${error.code} ${error.message}`) ? 'missing' : 'restricted');
+      }));
+      return out;
     }
   };
 

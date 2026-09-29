@@ -274,20 +274,32 @@ const PAGE_GUIDE = {
 
   analytics: {
     icon: "fa-chart-line", group: "Core Management", roles: "Administrators and unit leaders",
-    summary: "Participation rates and trends — attendance analytics over time, per member and per production.",
-    purpose: "Turn raw attendance marks into decisions.",
-    does: "Charts attendance rate over time, ranks members by participation, breaks attendance down by production and unit, and highlights members whose attendance is falling.",
-    who: "Administrators and unit leaders.",
+    summary: "The insight centre — attendance, membership, participation and programme analytics for the whole department in five tabs, with exports.",
+    purpose: "Turn everyday records into decisions: who is drifting away, when attendance dips, which programme actually worked, and how the money is moving.",
+    does: "Reads one database call (dc_analytics_overview) and renders Overview (12-month attendance rate, membership growth, income vs expense, registrations by month), Attendance (punctuality against the call time and grace period set in Settings, recent rehearsal sessions, per-member breakdown with search and rate filter), Members (units, roles, gender, parishes, birthdays this month), Participation (top attendees, members needing follow-up with a one-click care case, open care cases, tasks, registration sources) and Programmes & events (registrations, turnout, first-timers, feedback rating, RSVP responses). Exports the member table to Excel or CSV.",
+    who: "Administrators see every section including money. Unit leaders see the same analytics without the finance charts and can open care cases from the follow-up list.",
     steps: [
-      "Open Attendance Analytics.",
-      "Choose the date range and, optionally, a production or unit.",
-      "Read the trend and the member ranking.",
-      "Export the underlying numbers from Reports if you need them elsewhere."
+      "Open Analytics from the sidebar.",
+      "Choose the period (3 to 36 months) — every chart and KPI follows it.",
+      "Work through the tabs: Overview, Attendance, Members, Participation, Programmes.",
+      "In Attendance, search a member or filter to everyone below 50% to build a follow-up list.",
+      "In Participation, press Open care case on anyone flagged, then work the case on Care & Follow-up.",
+      "Use Export Excel / CSV or Print to take the numbers to a meeting."
     ],
-    advantages: ["Trends, not just totals", "Falling attendance is flagged before it becomes a casting problem", "Every chart can be scoped to a unit"],
-    benefit: "Intervene early with the members who are drifting away.",
-    tips: ["Check this monthly; a slow decline is invisible day to day but obvious on a chart."],
-    related: ["attendance", "reports", "dashboard"]
+    advantages: [
+      "One authoritative RPC instead of a dozen ad-hoc queries, so every number agrees with every other page",
+      "'Expected' attendance only counts sessions held after a member joined, so newcomers are not shown as absentees",
+      "Punctuality compares self check-in times with the call time and grace minutes configured in Settings",
+      "Follow-up is one click — the at-risk list links straight into Care & Follow-up with the member pre-selected",
+      "Works on the free tier: pure CSS charts, no chart service and no AI API"
+    ],
+    benefit: "You can see who needs help, which events were worth running and how attendance is trending — before the term ends, not after.",
+    tips: [
+      "Unit leaders get the same page without financial figures; that is deliberate.",
+      "The Membership growth bars show new members with the running total printed under each month.",
+      "If every panel says \"basic mode\", run database/complete-schema.sql once — the analytics pack is not installed yet."
+    ],
+    related: ["attendance", "care", "programs", "reports", "members"]
   },
 
   myunit: {
@@ -568,117 +580,150 @@ const PAGE_GUIDE = {
 
   activity: {
     icon: "fa-clock-rotate-left", group: "Administration", roles: "Administrators only",
-    summary: "The audit trail — every create, update, delete, import and login, recorded automatically.",
-    purpose: "Be able to answer \"who did that, and when?\".",
-    does: "Shows a read-only, filterable log of administrative actions with actor, action, target and timestamp. Nothing can be typed in by hand. Retention and purging are owned by the Storage Manager.",
-    who: "Administrators only.",
+    summary: "The operational audit trail — every create, update, delete, import and purge, with filters, search, CSV/PDF export and a guarded retention purge.",
+    purpose: "Be able to answer \"who did that, and when?\" — and keep the log from quietly filling the free database.",
+    does: "Reads the server-side feed (dc_activity_feed) and shows summary KPIs (entries in the period, today, last 7 days, purges recorded, oldest entry), the busiest actions, the most active people, and the full trail with period/action/person/search filters. Exports the filtered slice to CSV or a print-ready PDF. The retention card exports either log (activity log or sign-in audit) as portable JSON and then purges entries older than 1 week to 2 years through the guarded RPC, which requires a recent verified backup and a typed confirmation.",
+    who: "Administrators only. The page is read-only apart from the retention tools — nothing can be typed into the trail by hand.",
     steps: [
       "Open Activity Log.",
-      "Filter by actor, action type or date range.",
-      "Investigate an incident, then export the slice you need."
+      "Pick a period (default 90 days), an action, a person, or type in the search box.",
+      "Export CSV or PDF for evidence, or read the summary to see what changed most.",
+      "Before a purge: press ① Export this log first, keep the JSON file, then press ② Purge old entries and confirm.",
+      "Check Platform Health → Recent sign-in activity for the separate security trail."
     ],
     advantages: [
-      "Fully automatic — nobody has to remember to write it down",
-      "Read-only: an administrator cannot quietly rewrite history",
-      "Exportable for a church or diocesan enquiry"
+      "Filtering and searching happen in the database, so a large log stays fast",
+      "The purge is two-step by design: export first, then delete with a typed confirmation",
+      "Purges are themselves written into the trail, so the history of the history is complete",
+      "Two trails, two owners: operations here, sign-ins on Platform Health"
     ],
-    benefit: "Real accountability, and evidence if something ever goes wrong.",
-    tips: ["Retention and purging of this log is controlled on the Storage Manager — this page is deliberately read-only."],
-    related: ["storage-manager", "platform-health", "roles-status"]
+    benefit: "Real accountability plus a log that cannot quietly eat your free database.",
+    tips: [
+      "The guarded purge needs a verified backup within 30 days — press \"Use last verified backup\" on the Storage Manager, or create one in Admin Data.",
+      "Retention horizons (how many days each log keeps) are set on the Storage Manager."
+    ],
+    related: ["storage-manager", "platform-health", "admin-data", "roles-status"]
   },
 
   settings: {
     icon: "fa-gear", group: "Administration", roles: "Administrators only",
-    summary: "Branding, appearance and compatibility — the department's identity, plus the launchpad into every administrative workspace.",
-    purpose: "Own everything about how the platform looks, and route to everything that operates it.",
-    does: "Sets the application name, logo, organisation name, province and primary theme colour; stores the device profile and appearance preferences; shows system information; and hosts the Administration control plane — live status tiles with deep links into every high-risk workspace.",
+    summary: "The one-page control plane — branding, organisation, accessibility, attendance policy and venue fence, two-step verification, module access, the assistant and system information.",
+    purpose: "Everything that changes how the platform looks and behaves for everybody, on one page, with clear ownership notes for everything that lives elsewhere.",
+    does: "Branding (app name, organisation, logo, theme colour written to tenant_settings). Organisation (device profile, default language and time zone for the whole department). Accessibility (high contrast, larger text, reduced motion, dyslexia-friendly font, underlined links, strong focus outline and a text-size slider, saved per device; high contrast can be made the organisation default). Attendance (call time, late grace minutes, venue name and an optional venue geofence with latitude, longitude, radius and accepted GPS error, plus a 'use this device's location' button). Security (set up or remove authenticator-app two-step verification, and ask administrators to enrol). Module access (hide any optional sidebar section from members; core administration pages can never be hidden). Assistant (show/hide the offline helper). Licence summary, and system information with a live control-plane table.",
     who: "Administrators only.",
     steps: [
-      "Open Settings.",
-      "Branding: set name, logo, organisation, province and theme colour, then Apply Branding.",
-      "Device Profile: set appearance defaults for this device.",
-      "Use the control-plane tiles to jump into Admin Data, Storage Manager, Platform Health, Roles & Status or Site License."
+      "Open Settings and work down the sections, or use the section chips at the top.",
+      "Branding: set name, logo, organisation and colour, then Apply Branding.",
+      "Accessibility: tick what you need — it applies instantly and is remembered on this device.",
+      "Attendance: set the call time and grace, then (optionally) stand at the venue, press 'Use this device's location', set a radius and tick the geofence.",
+      "Security: press Set up two-step verification, scan the code with your authenticator app and enter the 6 digits.",
+      "Module access: untick anything members should not see, then Save.",
+      "Use the control-plane table for the live status of Admin Data, Platform Health, Storage Manager, Roles & Status, Site Licence and the Activity Log."
     ],
     advantages: [
-      "Every operational function lives on exactly one page — Settings routes to it, never duplicates it",
-      "Control-plane tiles show live status so you know where to go before you click",
-      "Branding changes apply across the whole platform immediately"
+      "One page, one owner per capability — no duplicated or conflicting controls",
+      "Accessibility preferences are per device, so a shared computer can suit whoever is using it",
+      "Geofenced self check-in is proven server-side; an old client cannot bypass it",
+      "Two-step verification is free authenticator TOTP — no SMS provider, no cost",
+      "Hiding a module can never lock you out: administration sections are protected"
     ],
-    benefit: "One obvious front door for configuration, and no confusion about which page owns which control.",
-    tips: ["Looking for backups, heartbeats, storage, approvals or licensing? Use the control-plane tiles — the real controls live on their own pages."],
-    related: ["admin-data", "platform-health", "storage-manager", "roles-status", "site-license"]
+    benefit: "Any administrator can configure the whole platform in one visit, without hunting through tabs, and without a risk of locking themselves out.",
+    tips: [
+      "Allow location only on the device you are configuring the venue with — members are asked when they check in.",
+      "If the venue changes, update the coordinates and press Save; the old fence stops working immediately.",
+      "Print this page as the platform's configuration record."
+    ],
+    related: ["admin-data", "platform-health", "storage-manager", "roles-status", "site-license", "activity"]
   },
 
   "admin-data": {
     icon: "fa-database", group: "Administration", roles: "Administrators only",
-    summary: "The data-sovereignty centre — verified archives, Google Drive sync, private vault and recovery history.",
-    purpose: "Own your data: back it up, prove it is intact, and restore it anywhere.",
-    does: "Exports sealed archives of all 31 tables (SHA-256 verified), backs them up to your own Google Drive on a schedule, keeps a private Supabase vault copy, lists every backup, verifies any archive before restoring it, and runs the 🚑 disaster-recovery wizard onto a fresh database. It also shows the recent backup/restore run history and holds the re-link manifest tools.",
+    summary: "The data-sovereignty centre — verified archives, Google Drive sync, private vault, run history, a table explorer with sample data, and a restore hub for every recovery source.",
+    purpose: "Own your data: back it up, prove it is intact, and restore it anywhere — with one place that says where everything restorable lives.",
+    does: "Local archive: build a sealed archive of every supported table (33, SHA-256 per table and for the whole archive), verify or restore one. Google Drive: connect with least-privilege drive.file scope, set the schedule/interval/retention and run a verified backup now. Supabase vault: keep a private copy inside Storage. Run history: every coordinated backup and restore with rows, size and digest. Table explorer: preview any table with its exact row count, export CSV or JSON, delete a single row with a typed confirmation, and load or remove clearly-labelled DEMO sample data for training. Restore hub: a map of every restorable source (local archives, Drive, private vault, Archive Vault batches, table exports, storage objects) with the owner tool and live Archive Vault batches you can restore in one click.",
     who: "Administrators only.",
     steps: [
       "Local tab: export a verified archive, or verify/restore one you already have.",
       "Drive tab: paste your Google OAuth Client ID, Connect, then Backup now.",
       "Vault tab: keep a private copy inside Supabase Storage.",
+      "Table explorer tab: preview a table before you touch it, export CSV/JSON, or load DEMO sample data for training and remove it again.",
+      "Restore hub tab: when something goes wrong, read the map to find the right restore path, then restore the batch you need.",
       "After any restore, use the re-link manifest to rebuild member links."
     ],
     advantages: [
       "SHA-256 seal verified before upload, after upload, and before every restore — a corrupt archive can never overwrite good data",
       "Least-privilege Google Drive scope: the app can touch only the files it created",
-      "Disaster-recovery mode keeps every operational row and defers only member links, which are then rebuilt by email"
+      "Disaster-recovery mode keeps every operational row and defers only member links, which are then rebuilt by email",
+      "The restore hub removes the \"where do I even start?\" problem during an incident",
+      "Sample data is labelled DEMO — so it can be removed in one click without touching real records"
     ],
-    benefit: "A backup you can actually trust, restore yourself, in minutes, for free.",
+    benefit: "A backup you can actually trust, restore yourself, in minutes, for free — and a single map of every way back.",
     tips: [
       "Verify a backup once a quarter — an unverified backup is not a backup.",
-      "Set the interval to 7 days and keep 12 archives for about three months of history."
+      "Set the interval to 7 days and keep 12 archives for about three months of history.",
+      "Load sample data to train new administrators, then delete it before a real event."
     ],
     related: ["storage-manager", "platform-health", "help", "settings"]
   },
 
   "storage-manager": {
     icon: "fa-hard-drive", group: "Administration", roles: "Administrators only",
-    summary: "Quota visibility, object inventory and retention — the guardian of your free-tier storage.",
-    purpose: "See exactly what is using your storage, and clean it up safely.",
-    does: "Shows database and file-storage usage against your quota with warning and critical thresholds, lists stored objects so you can find and remove them, and owns the retention policy — how long activity-log entries, backup runs, heartbeats and login-audit rows are kept before purging.",
+    summary: "Free-tier storage guardian — exact table sizes, quota posture, retention horizons, the Archive Vault and the bucket inventory.",
+    purpose: "Keep a 500 MB database and 1 GB of file storage from ever running out, and free space without ever losing a row.",
+    does: "Measures the database and file storage against configurable quotas with warning/critical thresholds; lists every public table with its exact row count, total size and oldest dated row; analyses health and names the largest archive candidate; previews how many rows each retention horizon would remove; fills the verified-backup SHA-256 automatically; runs the Archive Vault (export the oldest rows to a JSON file, upload it to the private dramaconnect-backups bucket, verify it against the live row count and SHA-256, then delete); lists, downloads and restores archived batches; and browses/deletes files per bucket.",
     who: "Administrators only.",
     steps: [
-      "Open Storage Manager and read the usage meters.",
-      "Load the object inventory to find large files.",
-      "Set the retention policy (activity log days, backup run days, heartbeat days, login audit days).",
-      "Save the policy — purging is backup-gated, so unprotected data is never silently removed."
+      "Open Storage Manager and read the four tiles: database usage, storage usage, objects and posture.",
+      "Press Analyse health for a plain-language verdict and the largest archive candidate.",
+      "Set the quotas and retention horizons, then Save planning policy.",
+      "To reclaim space safely: choose a table and a number of days under Archive Vault, then press Archive old rows.",
+      "Watch the result — it reports how many rows were archived and where the file lives.",
+      "Press List archives at any time to download or restore a batch."
     ],
     advantages: [
-      "Purge is backup-gated: the platform refuses to purge what has no fresh backup",
-      "Retention is set in days, with safe minimums enforced",
-      "Usage meters warn you long before you hit the ceiling"
+      "Exact row counts and sizes per table instead of a single guess",
+      "The Archive Vault is delete-safe: the file must exist and the row count must still match before anything is removed",
+      "Every archive is restorable from this page, in the same session, by the same administrator",
+      "Guarded purge requires a verified backup, a typed confirmation and a fresh backup digest",
+      "Does not depend on the paid plan: quotas are planning inputs you set yourself"
     ],
-    benefit: "Years of operation on the free tier, without ever losing something you needed.",
-    tips: ["Check the meters monthly. Photos and videos are almost always the fastest-growing item."],
-    related: ["admin-data", "platform-health", "activity", "gallery"]
+    benefit: "You reclaim database space in minutes without risking a single row, and you can prove to anyone what was archived and when.",
+    tips: [
+      "Archive activity_log first on a busy site — it grows fastest and is the least painful to trim.",
+      "Restoring an archive is additive: nothing newer is overwritten and rows whose parents no longer exist are skipped.",
+      "Database archives do not include Storage object bytes or Auth passwords — export those separately."
+    ],
+    related: ["admin-data", "platform-health", "activity", "settings"]
   },
 
   "platform-health": {
     icon: "fa-heart-pulse", group: "Administration", roles: "Administrators only",
-    summary: "Database, resilience, backup, licence and security evidence — the owner cockpit.",
-    purpose: "One page that proves the platform is healthy, or tells you exactly what is not.",
-    does: "Shows the keep-alive heartbeat (with a manual 💓 button), the quorum banner that detects a silently-dead scheduler, database and storage health, backup freshness, licence state, security controls (idle auto-lock and emergency lockdown) and the recent sign-in audit. Every external anti-pause layer is listed with its last accepted ping.",
+    summary: "The owner cockpit — keep-alive evidence (including where the last ping came from), the Schema Doctor, space, backups, licence, security, the HMG Fleet Console contract and the sign-in audit.",
+    purpose: "Answer three questions in one place: is the project alive, is every SQL pack installed, and who has been signing in?",
+    does: "Keep-alive: shows the last heartbeat and its source by name, total pings, the pause countdown, the Fleet-readable sc_keepalive row, and a matrix of all 14 layers with Reporting/Silent/Not-set-up plus the fix for each. Schema Doctor: probes every SQL pack for its tables, functions, views and storage buckets and names exactly what is missing. Space: database and file usage with the largest tables. Backup & archives: last verified backup, Drive schedule and Archive Vault batches. Licence: model, status, expiry and the public sc_license_status verdict. Security: lockdown, idle sign-out and the administrator two-step policy. HMG Fleet Console: runs the console's contract checks, prints the Supabase URL, anon-key JSON, cron-job.org POST example and registration steps, and can ping exactly as the console does. Login audit: sign-in summary KPIs (24 h, 7 days, unique people, denied, idle time-outs, security changes, never signed in) with period/event filters, search and CSV.",
     who: "Administrators only.",
     steps: [
-      "Open Platform Health and read the quorum banner first.",
-      "Press 💓 Test heartbeat to send a ping right now.",
-      "Check that at least two external sources are fresh — one is a single point of failure.",
-      "Review security controls and the sign-in audit."
+      "Open Platform Health — everything loads automatically.",
+      "Read the six snapshot tiles, then work down the numbered sections.",
+      "Keep-alive: check Came from and the quorum banner, then press Test heartbeat if you want a fresh one.",
+      "Schema Doctor: press Re-check; any red row lists the exact objects to install and the fixed instruction to copy.",
+      "HMG Fleet Console: read the contract checks, press Ping exactly as the Fleet Console does, then register the project.",
+      "Sign-in activity: filter by period or event, search a person, and export CSV."
     ],
     advantages: [
-      "Quorum detection names the scheduler that has gone quiet, instead of lulling you with a green database",
-      "Manual heartbeat button for holidays",
-      "Everything is evidence, not assertion — you can see the last ping per source"
+      "Says where the last ping came from, not just when — so a dead scheduler cannot hide behind a live one",
+      "Lists every layer even when it has never run, and gives the specific fix for the missing ones",
+      "The Schema Doctor turns \"the fix did not work\" into \"this pack was never run\"",
+      "Proves the HMG Fleet Console contract from inside the app, before you register the project",
+      "Login audit is separate from the operational trail, so each answers its own question"
     ],
-    benefit: "You find out that protection has failed while you can still fix it, not after the project pauses.",
+    benefit: "You can prove the project is protected, the database is complete and the security trail is intact, in about thirty seconds, from one page.",
     tips: [
-      "If the banner says \"single point of failure\", add a second external scheduler today.",
-      "Changing security controls? That is done here; changing retention? That is the Storage Manager."
+      "Export the JSON health report before a handover — it is a dated snapshot of everything above.",
+      "A silent layer is not an emergency if another layer is fresh, but repair it before the holidays.",
+      "If the Fleet checks fail on sc_keep_alive, run database/complete-schema.sql once."
     ],
-    related: ["admin-data", "storage-manager", "site-license", "settings"]
+    related: ["admin-data", "storage-manager", "activity", "settings", "site-license"]
   },
 
   "roles-status": {

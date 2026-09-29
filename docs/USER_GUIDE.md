@@ -169,3 +169,34 @@ Admins see **add / edit / delete** controls across the app:
 Contact your department administrator for account matters. For technical/build
 matters, the system was architected by **Adewale Samson Adeagbo (HMG Concepts)** —
 see the **Developer Bio** page inside the app.
+
+---
+
+## What's new (v14.2) — in plain language
+
+- **Analytics** now shows you the whole department in five tabs: how attendance is trending month by
+  month, who is turning up, which units are strongest, whose birthday is this month, who has stopped
+  coming (with a button to start a follow-up), and how your special programmes performed. You can
+  export or print any of it.
+- **Activity Log** keeps a record of every change, and now lets you filter it, search it, export it —
+  and safely delete very old entries after exporting them first.
+- **Settings** is now the one page for everything about how the app looks and behaves: the department
+  name and logo, the language and time zone, accessibility options (bigger text, high contrast,
+  reduced motion, a dyslexia-friendly font), the rehearsal call time, an optional location check at
+  self check-in, and two-step verification for administrators.
+- **Two-step verification**: administrators can now protect their accounts with an authenticator app
+  (like Google Authenticator). You are asked for a 6-digit code when you sign in.
+- **Check-in at the venue**: if your administrator has switched this on, checking yourself in needs
+  your location — you must be at the rehearsal venue. If your phone cannot share a location, ask an
+  administrator to mark you present.
+- **Storage Manager** can now archive old rows safely: it saves them to a file first, checks the file
+  is really there, and only then removes them. You can put any archived batch back.
+- **Admin Data** has a table viewer (look inside any table before touching it), sample data you can
+  load for training and delete in one click, and a single page that tells you where every backup
+  lives.
+- **Platform Health** tells you where the last "keep-alive" ping came from, whether every part of the
+  database is installed correctly, how much space is left, and who signed in recently.
+- **HMG Fleet Console**: the department's site now works with the HMG monitoring console, so one
+  click from that console can keep this project awake alongside every other project.
+
+---

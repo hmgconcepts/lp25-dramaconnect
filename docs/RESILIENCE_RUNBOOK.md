@@ -1,6 +1,18 @@
-# DramaConnect Resilience and Incident Runbook
+# DramaConnect Resilience and Incident Runbook (v14.2)
 
 Use this runbook for Supabase pause/outage, stale protection layers, backup failure, corrupt archives, credential exposure, data loss or failed recovery. Keep an offline copy and fill in the organization-specific contacts below.
+
+## Quick triage (v14.2 additions)
+
+| Symptom | First place to look | Then |
+|---|---|---|
+| The HMG Fleet Console shows this project *unreachable* or *no-rpc* | Platform Health → 🛰️ HMG Fleet Console | A failing `sc_keep_alive` check means the SQL pack needs one re-run of `database/complete-schema.sql`. A key rejection means the wrong key was pasted (must be the **anon** key) |
+| Platform Health says a layer is **⚠ Silent** while another keeps the project awake | Platform Health → 🫀 Keep-alive matrix | Repair the named layer using the instruction printed under its row. One fresh unattended layer is survivable; zero is not |
+| Only *human* layers are reporting | the quorum banner | Arm GitHub Actions and Vercel Cron (both need no secrets) before a holiday period |
+| The database is near quota, or Supabase has gone read-only | Storage Manager → Analyse health | Archive the largest table with the **Archive Vault** (keeps a restorable copy), then re-check. Never purge without archiving or exporting first |
+| A member insists they were at the rehearsal but could not check in | Platform Health → 🕵️ Recent sign-in activity, then Attendance | Check the geofence radius and the venue coordinates in Settings; mark attendance manually if the record is right |
+| An administrator cannot sign in | Settings → Security (from another admin) | Authenticator codes need the phone clock set to automatic. A lost device is removed by turning that factor off from a second administrator account |
+| "The fix I deployed did nothing" | Platform Health → 🩺 Schema Doctor | A red pack row means the SQL was never run. Re-run `database/complete-schema.sql` once; it is idempotent |
 
 ## Ownership and contacts
 

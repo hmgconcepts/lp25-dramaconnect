@@ -20,11 +20,11 @@
 --
 -- COMPONENT MANIFEST (the builder verifies these source digests):
 -- 01 database/repair_and_upgrade.sql  sha256:ff81eda256cc670de00d24f93b059676a457a0e25559b256b59c6796620e3be0
--- 02 database/security_hardening.sql  sha256:8dbd18438c93351a2ad07d625c83026539bf107db974ff382bd89d8cb9174d60
--- 03 database/resilience_and_backup.sql  sha256:1ef7b4c528f4adab47bbaf5494fb5b5e56e0602ed4669e2c1115ea0740dc1e18
--- 04 database/platform_management.sql  sha256:497696497ab594ba3337b22ac5b45caabb6e3654276d1d88bcec04d71ce9ff29
+-- 02 database/security_hardening.sql  sha256:c2b8981fb70e5ba80d0dec1283c262bc66953caa54ebcb931fcb76a44af4ac43
+-- 03 database/resilience_and_backup.sql  sha256:266da609456fe063c1ab91ece1c53284e17c47a2e4f22a72a69120a5d6bc3191
+-- 04 database/platform_management.sql  sha256:95ce186c44b3a1316835fb80c688f366e41f798e69759188e4b0b7ceb46a801a
 -- 05 database/identity_and_programs.sql  sha256:52290735763425e2be73ebf0286113618077b6550478a78c1d548ee16a18c273
--- 06 database/post_install_selfheal.sql  sha256:dc0f41e0bfc17332db078952142345b3c65a18fcd646f6c834ec819894432f53
+-- 06 database/post_install_selfheal.sql  sha256:7e7830f27f7aa8fe325c564d52456acfe938df8cb155dd299b93d7e79ac7a8f0
 -- ============================================================================
 
 -- ============================================================================
@@ -971,9 +971,23 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   r public.rehearsals%ROWTYPE;
+  v_geo BOOLEAN := FALSE;
 BEGIN
   IF auth.uid() IS NULL OR NOT public.is_approved_member() THEN
     RAISE EXCEPTION 'An approved account is required' USING ERRCODE = '42501';
+  END IF;
+
+  -- Venue geofence (Settings -> Attendance). When enabled, check-in must go
+  -- through dc_self_check_in_geo, which verifies the device location and sets
+  -- dc.geo_verified for this transaction only. Read dynamically so this pack
+  -- still installs before platform_management.sql creates the table.
+  IF to_regclass('public.dc_org_settings') IS NOT NULL
+     AND COALESCE(current_setting('dc.geo_verified', true), '') <> 'on' THEN
+    EXECUTE 'SELECT COALESCE(geofence_enabled, false) FROM public.dc_org_settings WHERE id = 1' INTO v_geo;
+    IF COALESCE(v_geo, FALSE) THEN
+      RAISE EXCEPTION 'Location check required: update the app and allow location access to check in at the venue'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   SELECT * INTO r FROM public.rehearsals
@@ -1518,6 +1532,28 @@ CREATE POLICY "Approved admins can read resilience heartbeats"
   ON public.dc_heartbeat_sources FOR SELECT TO authenticated
   USING (public.is_admin());
 
+-- HMG Fleet Console heartbeat row. Shape matches the console's own snippet
+-- (id int pk, pinged_at timestamptz, src text) so a project that already ran
+-- that snippet upgrades in place. It holds only a timestamp and a layer name.
+CREATE TABLE IF NOT EXISTS public.sc_keepalive (
+  id int PRIMARY KEY,
+  pinged_at timestamptz NOT NULL DEFAULT now(),
+  src text
+);
+ALTER TABLE public.sc_keepalive ADD COLUMN IF NOT EXISTS src text;
+ALTER TABLE public.sc_keepalive ADD COLUMN IF NOT EXISTS ping_count bigint NOT NULL DEFAULT 0;
+ALTER TABLE public.sc_keepalive ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.sc_keepalive FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.sc_keepalive TO anon, authenticated;
+DROP POLICY IF EXISTS "read" ON public.sc_keepalive;
+DROP POLICY IF EXISTS "sc_keepalive_read" ON public.sc_keepalive;
+DROP POLICY IF EXISTS "Anyone can read the fleet heartbeat" ON public.sc_keepalive;
+CREATE POLICY "Anyone can read the fleet heartbeat"
+  ON public.sc_keepalive FOR SELECT TO anon, authenticated USING (true);
+INSERT INTO public.sc_keepalive (id, pinged_at, src, ping_count)
+VALUES (1, now(), 'install', 0)
+ON CONFLICT (id) DO NOTHING;
+
 CREATE OR REPLACE FUNCTION public.dc_keep_alive(p_source text DEFAULT 'external')
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1531,11 +1567,26 @@ DECLARE
 BEGIN
   -- A fixed allow-list prevents an unauthenticated caller from creating
   -- unbounded source rows. Unknown values collapse into one external bucket.
-  v_source := lower(trim(coalesce(p_source, 'external')));
+  -- Normalise first: 'pg_cron', 'PG Cron' and 'pg-cron' are the same layer.
+  v_source := pg_catalog.regexp_replace(lower(trim(coalesce(p_source, 'external'))), '[^a-z0-9]+', '-', 'g');
+  v_source := pg_catalog.btrim(v_source, '-');
+  -- HMG Fleet Console aliases (Item 21). The console's browser ping, probe and
+  -- GitHub workflow each get their own bucket so the dashboard can say which
+  -- one last woke the project.
+  IF v_source IN ('hmg-fleet-console', 'fleet', 'fleet-probe', 'fleet-console', 'fleet-autopilot', 'fleet-wake') THEN
+    v_source := 'fleet-console';
+  ELSIF v_source IN ('github-actions-fleet', 'fleet-actions', 'fleet-github') THEN
+    v_source := 'fleet-actions';
+  ELSIF v_source IN ('uptimerobot', 'uptime-robot', 'ping', 'edge-function') THEN
+    v_source := 'edge-ping';
+  ELSIF v_source IN ('cron-job', 'cronjob-org', 'cron-job-org-sc') THEN
+    v_source := 'cron-job-org';
+  END IF;
   IF v_source NOT IN (
     'site-visit', 'github-actions', 'edge-ping', 'pg-cron',
     'manual-button', 'vercel-cron', 'apps-script', 'cron-job-org',
-    'auto-restore', 'database-backup', 'external'
+    'auto-restore', 'database-backup', 'fleet-console', 'fleet-actions',
+    'self-commit', 'external'
   ) THEN
     v_source := 'external';
   END IF;
@@ -1553,6 +1604,14 @@ BEGIN
   RETURNING * INTO v_row;
 
   IF FOUND THEN
+    -- Mirror into the HMG Fleet Console contract row (anon-readable, one row).
+    INSERT INTO public.sc_keepalive (id, pinged_at, src, ping_count)
+    VALUES (1, v_now, v_source, 1)
+    ON CONFLICT (id) DO UPDATE
+      SET pinged_at = EXCLUDED.pinged_at,
+          src = EXCLUDED.src,
+          ping_count = coalesce(public.sc_keepalive.ping_count, 0) + 1;
+
     RETURN pg_catalog.jsonb_build_object(
       'ok', true,
       'status', 'written',
@@ -1580,6 +1639,45 @@ $$;
 
 REVOKE ALL ON FUNCTION public.dc_keep_alive(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.dc_keep_alive(text) TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 1b. HMG Fleet Console compatibility (Item 21)
+--
+-- The Fleet Console (hmgfleetconsole.vercel.app) monitors many client projects
+-- with ONLY each project's anon key. It calls:
+--   POST /rest/v1/rpc/sc_keep_alive      body {"src":"hmg-fleet-console"}
+--   GET  /rest/v1/sc_keepalive?select=pinged_at&limit=1
+--   POST /rest/v1/rpc/sc_license_status  body {}   (defined in platform_management.sql)
+-- sc_keep_alive is a thin adapter over dc_keep_alive, so Fleet pings land in
+-- the same throttled, source-aware quorum as every other anti-pause layer.
+--
+-- Dropped first on purpose: the Fleet snippet may already have created a SQL
+-- version with a different body/parameter default, and CREATE OR REPLACE cannot
+-- change a parameter name or return type. Nothing depends on it.
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.sc_keep_alive();
+DROP FUNCTION IF EXISTS public.sc_keep_alive(text);
+
+CREATE FUNCTION public.sc_keep_alive(src text DEFAULT 'fleet-console')
+RETURNS timestamptz
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.dc_keep_alive(coalesce(nullif(trim(src), ''), 'fleet-console'));
+  RETURN coalesce((v_result->>'at')::timestamptz, pg_catalog.now());
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.sc_keep_alive(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sc_keep_alive(text) TO anon, authenticated;
+
+COMMENT ON FUNCTION public.sc_keep_alive(text) IS
+  'HMG Fleet Console keep-alive adapter. POST only (volatile). Maps fleet sources to fleet-console/fleet-actions and delegates to dc_keep_alive.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Shared administrator configuration and immutable-ish run history
@@ -2085,11 +2183,11 @@ BEGIN
     'automatedSourcesFresh', (
       SELECT count(*) FROM pg_catalog.jsonb_array_elements(v_sources) AS e
        WHERE (e.value ->> 'fresh') = 'true'
-         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external')),
+         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external', 'fleet-console')),
     'automatedQuorum', ((
       SELECT count(*) FROM pg_catalog.jsonb_array_elements(v_sources) AS e
        WHERE (e.value ->> 'fresh') = 'true'
-         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external')) >= 2),
+         AND (e.value ->> 'source') NOT IN ('site-visit', 'manual-button', 'external', 'fleet-console')) >= 2),
     'neverReported', (
       SELECT COALESCE(pg_catalog.jsonb_agg(x ORDER BY x), '[]'::jsonb)
       FROM pg_catalog.unnest(ARRAY['github-actions','vercel-cron','pg-cron','auto-restore','edge-ping','cron-job-org','apps-script']) AS x
@@ -2099,6 +2197,13 @@ BEGIN
       FROM pg_catalog.jsonb_array_elements(v_sources) AS e
       WHERE (e.value ->> 'fresh') = 'false'
     ), '[]'::jsonb),
+    -- "Where did the last ping come from?" — answered directly so every
+    -- dashboard (Platform Health, Settings, the assistant) says the same thing.
+    'lastSource', (SELECT e.value ->> 'source' FROM pg_catalog.jsonb_array_elements(v_sources) AS e
+                    ORDER BY (e.value ->> 'lastPingAt')::timestamptz DESC LIMIT 1),
+    'totalPings', (SELECT coalesce(sum((e.value ->> 'pingCount')::bigint), 0) FROM pg_catalog.jsonb_array_elements(v_sources) AS e),
+    'fleet', (SELECT pg_catalog.jsonb_build_object('pingedAt', k.pinged_at, 'src', k.src, 'count', k.ping_count)
+                FROM public.sc_keepalive k WHERE k.id = 1),
     'sources', v_sources
   );
 END;
@@ -2143,6 +2248,10 @@ CREATE TABLE IF NOT EXISTS public.dc_platform_settings (
 INSERT INTO public.dc_platform_settings (id)
 VALUES (1)
 ON CONFLICT (id) DO NOTHING;
+-- Record the schema the application expects, so Platform Health, the Schema
+-- Doctor and the Fleet Console all report the same number.
+UPDATE public.dc_platform_settings SET schema_version = '14.2', updated_at = NOW()
+ WHERE id = 1 AND schema_version <> '14.2';
 
 CREATE TABLE IF NOT EXISTS public.dc_retention_settings (
   id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -2700,7 +2809,7 @@ BEGIN
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
   INSERT INTO public.activity_log (actor_name, action, detail)
-  SELECT COALESCE(full_name, email, 'Administrator'), 'retention_purge',
+  SELECT COALESCE(NULLIF(btrim(full_name), ''), email, 'Administrator'), 'retention_purge',
     format('Purged %s row(s) from %s before %s after verified backup %s', v_deleted, p_table_name, p_before, p_verified_backup_sha256)
   FROM public.profiles WHERE id = auth.uid();
 
@@ -2787,6 +2896,755 @@ GRANT EXECUTE ON FUNCTION public.dc_storage_overview() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.dc_retention_preview() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.dc_apply_retention(TEXT, TIMESTAMPTZ, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.dc_platform_health() TO authenticated;
+
+-- ============================================================================
+-- ITEM 21 — Organisation settings, venue geofence, HMG Fleet Console licence
+-- endpoint, department analytics, table sizes, login-audit report and the
+-- Archive Vault (export -> verify upload -> purge -> restore).
+-- Every object here is idempotent and safe to re-run.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- A. Organisation-wide settings (single row). Read by every approved member
+--    because attendance (call time, geofence), the sidebar (module access) and
+--    the assistant honour them. Written only through dc_update_org_settings.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.dc_org_settings (
+  id                      INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  default_language        TEXT NOT NULL DEFAULT 'en',
+  timezone                TEXT NOT NULL DEFAULT 'Africa/Lagos',
+  call_time               TIME NOT NULL DEFAULT '16:00',
+  late_after_minutes      INTEGER NOT NULL DEFAULT 15,
+  geofence_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
+  geofence_lat            DOUBLE PRECISION,
+  geofence_lng            DOUBLE PRECISION,
+  geofence_radius_m       INTEGER NOT NULL DEFAULT 150,
+  geofence_max_accuracy_m INTEGER NOT NULL DEFAULT 200,
+  venue_name              TEXT,
+  disabled_modules        TEXT[] NOT NULL DEFAULT '{}'::TEXT[],
+  require_admin_mfa       BOOLEAN NOT NULL DEFAULT FALSE,
+  assistant_enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  high_contrast_default   BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by              UUID REFERENCES public.profiles(id) ON DELETE SET NULL
+);
+-- Columns added after first release are declared again so older installs heal.
+ALTER TABLE public.dc_org_settings ADD COLUMN IF NOT EXISTS venue_name TEXT;
+ALTER TABLE public.dc_org_settings ADD COLUMN IF NOT EXISTS high_contrast_default BOOLEAN NOT NULL DEFAULT FALSE;
+
+DO $$ BEGIN
+  ALTER TABLE public.dc_org_settings ADD CONSTRAINT dc_org_settings_language
+    CHECK (default_language IN ('en','yo','ig','ha','pcm','fr'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE public.dc_org_settings ADD CONSTRAINT dc_org_settings_ranges CHECK (
+    late_after_minutes BETWEEN 0 AND 240
+    AND geofence_radius_m BETWEEN 20 AND 5000
+    AND geofence_max_accuracy_m BETWEEN 10 AND 5000
+    AND (geofence_lat IS NULL OR geofence_lat BETWEEN -90 AND 90)
+    AND (geofence_lng IS NULL OR geofence_lng BETWEEN -180 AND 180)
+    AND (NOT geofence_enabled OR (geofence_lat IS NOT NULL AND geofence_lng IS NOT NULL))
+    AND (venue_name IS NULL OR char_length(venue_name) <= 120)
+    AND cardinality(disabled_modules) <= 60
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+INSERT INTO public.dc_org_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE public.dc_org_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.dc_org_settings FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.dc_org_settings TO authenticated;
+DROP POLICY IF EXISTS "Approved members read organisation settings" ON public.dc_org_settings;
+CREATE POLICY "Approved members read organisation settings"
+  ON public.dc_org_settings FOR SELECT TO authenticated
+  USING (public.is_approved_member());
+
+CREATE OR REPLACE FUNCTION public.dc_update_org_settings(p_settings JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_old public.dc_org_settings%ROWTYPE;
+  v_new public.dc_org_settings%ROWTYPE;
+  v_modules TEXT[];
+  v_protected CONSTANT TEXT[] := ARRAY['home','profile','help','settings','admin-data','storage-manager',
+    'platform-health','roles-status','site-license','activity'];
+  v_actor TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+  IF p_settings IS NULL OR jsonb_typeof(p_settings) <> 'object' THEN RAISE EXCEPTION 'Settings must be a JSON object'; END IF;
+
+  SELECT * INTO v_old FROM public.dc_org_settings WHERE id = 1 FOR UPDATE;
+  v_new := v_old;
+
+  IF p_settings ? 'default_language' THEN v_new.default_language := p_settings->>'default_language'; END IF;
+  IF p_settings ? 'timezone' THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = p_settings->>'timezone') THEN
+      RAISE EXCEPTION 'Unknown time zone: %', p_settings->>'timezone' USING ERRCODE = '22023';
+    END IF;
+    v_new.timezone := p_settings->>'timezone';
+  END IF;
+  IF p_settings ? 'call_time' THEN v_new.call_time := (p_settings->>'call_time')::TIME; END IF;
+  IF p_settings ? 'late_after_minutes' THEN v_new.late_after_minutes := (p_settings->>'late_after_minutes')::INTEGER; END IF;
+  IF p_settings ? 'geofence_enabled' THEN v_new.geofence_enabled := (p_settings->>'geofence_enabled')::BOOLEAN; END IF;
+  IF p_settings ? 'geofence_lat' THEN v_new.geofence_lat := nullif(p_settings->>'geofence_lat', '')::DOUBLE PRECISION; END IF;
+  IF p_settings ? 'geofence_lng' THEN v_new.geofence_lng := nullif(p_settings->>'geofence_lng', '')::DOUBLE PRECISION; END IF;
+  IF p_settings ? 'geofence_radius_m' THEN v_new.geofence_radius_m := (p_settings->>'geofence_radius_m')::INTEGER; END IF;
+  IF p_settings ? 'geofence_max_accuracy_m' THEN v_new.geofence_max_accuracy_m := (p_settings->>'geofence_max_accuracy_m')::INTEGER; END IF;
+  IF p_settings ? 'venue_name' THEN v_new.venue_name := nullif(btrim(p_settings->>'venue_name'), ''); END IF;
+  IF p_settings ? 'require_admin_mfa' THEN v_new.require_admin_mfa := (p_settings->>'require_admin_mfa')::BOOLEAN; END IF;
+  IF p_settings ? 'assistant_enabled' THEN v_new.assistant_enabled := (p_settings->>'assistant_enabled')::BOOLEAN; END IF;
+  IF p_settings ? 'high_contrast_default' THEN v_new.high_contrast_default := (p_settings->>'high_contrast_default')::BOOLEAN; END IF;
+  IF p_settings ? 'disabled_modules' THEN
+    IF jsonb_typeof(p_settings->'disabled_modules') <> 'array' THEN RAISE EXCEPTION 'disabled_modules must be an array'; END IF;
+    SELECT COALESCE(array_agg(DISTINCT m ORDER BY m), '{}'::TEXT[]) INTO v_modules
+    FROM jsonb_array_elements_text(p_settings->'disabled_modules') AS m;
+    IF EXISTS (SELECT 1 FROM unnest(v_modules) m WHERE m !~ '^[a-z0-9-]{2,30}$') THEN
+      RAISE EXCEPTION 'Invalid module identifier' USING ERRCODE = '22023';
+    END IF;
+    IF v_modules && v_protected THEN
+      RAISE EXCEPTION 'Core administration modules cannot be disabled' USING ERRCODE = '22023';
+    END IF;
+    v_new.disabled_modules := v_modules;
+  END IF;
+
+  UPDATE public.dc_org_settings SET
+    default_language = v_new.default_language, timezone = v_new.timezone,
+    call_time = v_new.call_time, late_after_minutes = v_new.late_after_minutes,
+    geofence_enabled = v_new.geofence_enabled, geofence_lat = v_new.geofence_lat,
+    geofence_lng = v_new.geofence_lng, geofence_radius_m = v_new.geofence_radius_m,
+    geofence_max_accuracy_m = v_new.geofence_max_accuracy_m, venue_name = v_new.venue_name,
+    disabled_modules = v_new.disabled_modules, require_admin_mfa = v_new.require_admin_mfa,
+    assistant_enabled = v_new.assistant_enabled, high_contrast_default = v_new.high_contrast_default,
+    updated_at = NOW(), updated_by = auth.uid()
+  WHERE id = 1
+  RETURNING * INTO v_new;
+
+  SELECT COALESCE(NULLIF(btrim(full_name), ''), email, 'Administrator') INTO v_actor FROM public.profiles WHERE id = auth.uid();
+  INSERT INTO public.activity_log (actor_name, action, detail)
+  VALUES (v_actor, 'org_settings_updated', left(p_settings::TEXT, 900));
+
+  IF v_new.require_admin_mfa IS DISTINCT FROM v_old.require_admin_mfa
+     OR v_new.geofence_enabled IS DISTINCT FROM v_old.geofence_enabled
+     OR v_new.disabled_modules IS DISTINCT FROM v_old.disabled_modules THEN
+    INSERT INTO public.dc_login_audit (user_id, email, event_type, metadata)
+    SELECT id, email, 'security_changed', jsonb_build_object(
+      'requireAdminMfa', v_new.require_admin_mfa, 'geofence', v_new.geofence_enabled,
+      'disabledModules', to_jsonb(v_new.disabled_modules))
+    FROM public.profiles WHERE id = auth.uid();
+  END IF;
+
+  RETURN to_jsonb(v_new);
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- B. Venue geofence for self check-in. The original self_check_in(uuid,text)
+--    refuses when the geofence is on unless this verifier has run first in the
+--    same transaction, so an old client cannot bypass the fence.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_distance_m(
+  p_lat1 DOUBLE PRECISION, p_lng1 DOUBLE PRECISION,
+  p_lat2 DOUBLE PRECISION, p_lng2 DOUBLE PRECISION
+)
+RETURNS DOUBLE PRECISION
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT 2 * 6371008.8 * asin(least(1, sqrt(
+    power(sin(radians(p_lat2 - p_lat1) / 2), 2)
+    + cos(radians(p_lat1)) * cos(radians(p_lat2)) * power(sin(radians(p_lng2 - p_lng1) / 2), 2)
+  )));
+$$;
+
+CREATE OR REPLACE FUNCTION public.dc_self_check_in_geo(
+  p_rehearsal_id UUID,
+  p_code TEXT,
+  p_lat DOUBLE PRECISION DEFAULT NULL,
+  p_lng DOUBLE PRECISION DEFAULT NULL,
+  p_accuracy DOUBLE PRECISION DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  s public.dc_org_settings%ROWTYPE;
+  v_distance DOUBLE PRECISION;
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_approved_member() THEN
+    RAISE EXCEPTION 'An approved account is required' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO s FROM public.dc_org_settings WHERE id = 1;
+
+  IF COALESCE(s.geofence_enabled, FALSE) THEN
+    IF p_lat IS NULL OR p_lng IS NULL THEN
+      RAISE EXCEPTION 'Location is required: allow location access to check in at the venue' USING ERRCODE = '22023';
+    END IF;
+    IF p_accuracy IS NOT NULL AND p_accuracy > s.geofence_max_accuracy_m THEN
+      RAISE EXCEPTION 'Your location is too imprecise (±% m). Move near a window or enable GPS, then retry', round(p_accuracy::numeric)
+        USING ERRCODE = '22023';
+    END IF;
+    v_distance := public.dc_distance_m(p_lat, p_lng, s.geofence_lat, s.geofence_lng);
+    -- Tolerate the reported GPS error, capped at the radius itself.
+    IF v_distance > s.geofence_radius_m + least(COALESCE(p_accuracy, 0), s.geofence_radius_m) THEN
+      RAISE EXCEPTION 'You appear to be % m from %. Self check-in works within % m of the venue',
+        round(v_distance::numeric), COALESCE(s.venue_name, 'the rehearsal venue'), s.geofence_radius_m
+        USING ERRCODE = '22023';
+    END IF;
+    PERFORM set_config('dc.geo_verified', 'on', true);
+  END IF;
+
+  PERFORM public.self_check_in(p_rehearsal_id, p_code);
+  PERFORM set_config('dc.geo_verified', '', true);
+
+  RETURN jsonb_build_object('ok', TRUE, 'geofence', COALESCE(s.geofence_enabled, FALSE),
+    'distanceM', CASE WHEN v_distance IS NULL THEN NULL ELSE round(v_distance::numeric) END);
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- C. HMG Fleet Console licence endpoint (anon). Same effective-status logic as
+--    dc_access_state; exposes no names, emails or URLs.
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.sc_license_status();
+CREATE FUNCTION public.sc_license_status()
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  l public.dc_site_license%ROWTYPE;
+  v_status TEXT;
+BEGIN
+  SELECT * INTO l FROM public.dc_site_license WHERE id = 1;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('state', 'unknown', 'status', 'unknown', 'product', 'dramaconnect');
+  END IF;
+  IF l.license_model = 'lifetime' THEN
+    v_status := CASE WHEN l.license_status = 'active' THEN 'lifetime' ELSE l.license_status END;
+  ELSE
+    v_status := CASE
+      WHEN l.license_status IN ('suspended', 'expired') THEN l.license_status
+      WHEN CURRENT_DATE <= l.expires_on THEN 'active'
+      WHEN CURRENT_DATE <= (l.expires_on + l.grace_days) THEN 'grace'
+      ELSE 'expired'
+    END;
+  END IF;
+  RETURN jsonb_build_object(
+    'state', v_status,
+    'status', v_status,
+    'product', 'dramaconnect',
+    'model', l.license_model,
+    'plan', l.plan_name,
+    'expires_on', l.expires_on,
+    'grace_days', l.grace_days,
+    'days_left', CASE WHEN l.expires_on IS NULL THEN NULL ELSE (l.expires_on - CURRENT_DATE) END,
+    'checked_at', NOW()
+  );
+END;
+$$;
+COMMENT ON FUNCTION public.sc_license_status() IS
+  'HMG Fleet Console licence probe (anon). state: lifetime|active|grace|expired|suspended|past_due.';
+
+-- ---------------------------------------------------------------------------
+-- D. Department analytics. One round-trip; admins and unit leaders receive the
+--    member-level lists; finance is included for administrators only.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_analytics_overview(p_months INTEGER DEFAULT 12)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_admin BOOLEAN := public.is_admin();
+  v_manager BOOLEAN := public.is_gallery_manager();
+  v_months INTEGER := greatest(3, least(COALESCE(p_months, 12), 36));
+  v_tz TEXT;
+  v_call TIME;
+  v_late INTEGER;
+  v_from DATE;
+  v_out JSONB;
+BEGIN
+  IF NOT v_manager THEN RAISE EXCEPTION 'Administrator or unit-leader access required' USING ERRCODE = '42501'; END IF;
+  SELECT timezone, call_time, late_after_minutes INTO v_tz, v_call, v_late FROM public.dc_org_settings WHERE id = 1;
+  v_tz := COALESCE(v_tz, 'Africa/Lagos'); v_call := COALESCE(v_call, '16:00'); v_late := COALESCE(v_late, 15);
+  v_from := (date_trunc('month', CURRENT_DATE) - make_interval(months => v_months - 1))::DATE;
+
+  WITH approved AS (
+    SELECT p.* FROM public.profiles p WHERE p.status = 'approved'
+  ),
+  sess AS (
+    SELECT r.id, r.rehearsal_date FROM public.rehearsals r WHERE r.rehearsal_date <= CURRENT_DATE
+  ),
+  -- Expected attendance counts only sessions held after a member joined.
+  member_stats AS (
+    SELECT a.id, COALESCE(NULLIF(btrim(a.full_name), ''), a.email, 'Member') AS name, a.unit, a.gender, a.role,
+      (SELECT count(*) FROM sess s WHERE s.rehearsal_date >= a.created_at::DATE) AS expected,
+      (SELECT count(*) FROM public.attendance t JOIN sess s ON s.id = t.rehearsal_id
+        WHERE t.member_id = a.id AND t.status = 'present') AS present,
+      (SELECT count(*) FROM public.attendance t JOIN sess s ON s.id = t.rehearsal_id
+        WHERE t.member_id = a.id AND t.status = 'excused') AS excused,
+      (SELECT max(s.rehearsal_date) FROM public.attendance t JOIN sess s ON s.id = t.rehearsal_id
+        WHERE t.member_id = a.id AND t.status = 'present') AS last_present,
+      -- consecutive most-recent sessions missed (not present, not excused)
+      (SELECT count(*) FROM sess s
+        WHERE s.rehearsal_date >= a.created_at::DATE
+          AND s.rehearsal_date > COALESCE((SELECT max(s2.rehearsal_date) FROM public.attendance t2
+                JOIN sess s2 ON s2.id = t2.rehearsal_id
+                WHERE t2.member_id = a.id AND t2.status IN ('present','excused')), '-infinity'::DATE)) AS missed_streak
+    FROM approved a
+  ),
+  months AS (
+    SELECT generate_series(v_from, date_trunc('month', CURRENT_DATE)::DATE, interval '1 month')::DATE AS m
+  )
+  SELECT jsonb_build_object(
+    'generatedAt', NOW(),
+    'months', v_months,
+    'isAdmin', v_admin,
+    'settings', jsonb_build_object('timezone', v_tz, 'callTime', v_call, 'lateAfterMinutes', v_late),
+    'kpis', jsonb_build_object(
+      'membersApproved', (SELECT count(*) FROM approved),
+      'membersPending', (SELECT count(*) FROM public.profiles WHERE status = 'pending'),
+      'admins', (SELECT count(*) FROM approved WHERE role = 'admin'),
+      'unitLeaders', (SELECT count(*) FROM approved WHERE is_unit_leader IS TRUE),
+      'newMembers30d', (SELECT count(*) FROM public.profiles WHERE created_at >= NOW() - interval '30 days'),
+      'rehearsalsTotal', (SELECT count(*) FROM sess),
+      'rehearsals30d', (SELECT count(*) FROM sess WHERE rehearsal_date >= CURRENT_DATE - 30),
+      'rehearsalsUpcoming', (SELECT count(*) FROM public.rehearsals WHERE rehearsal_date > CURRENT_DATE),
+      'attendanceRate30d', (SELECT round(100.0 * count(*) FILTER (WHERE t.status = 'present')
+                              / NULLIF((SELECT sum(1) FROM sess s2 CROSS JOIN approved a2
+                                        WHERE s2.rehearsal_date >= CURRENT_DATE - 30 AND s2.rehearsal_date >= a2.created_at::DATE), 0), 1)
+                            FROM public.attendance t JOIN sess s ON s.id = t.rehearsal_id
+                            JOIN approved a ON a.id = t.member_id
+                            WHERE s.rehearsal_date >= CURRENT_DATE - 30),
+      'attendanceRateAll', (SELECT round(100.0 * sum(present) / NULLIF(sum(expected), 0), 1) FROM member_stats),
+      'eventsUpcoming', (SELECT count(*) FROM public.events WHERE event_date >= NOW()),
+      'productionsUpcoming', (SELECT count(*) FROM public.productions WHERE performance_date >= CURRENT_DATE),
+      'programmesOpen', (SELECT count(*) FROM public.dc_programs WHERE status = 'open'),
+      'registrations', (SELECT count(*) FROM public.dc_program_registrations WHERE status <> 'cancelled'),
+      'checkedIn', (SELECT count(*) FROM public.dc_program_registrations WHERE checked_in_at IS NOT NULL),
+      'tasksOpen', (SELECT count(*) FROM public.tasks WHERE COALESCE(status, 'open') <> 'done'),
+      'tasksOverdue', (SELECT count(*) FROM public.tasks WHERE COALESCE(status, 'open') <> 'done' AND due_date < CURRENT_DATE),
+      'careOpen', (SELECT count(*) FROM public.dc_care_cases WHERE status <> 'resolved'),
+      'cardsActive', (SELECT count(*) FROM public.dc_member_cards WHERE revoked_at IS NULL AND expires_at > NOW()),
+      'suggestionsNew', (SELECT count(*) FROM public.suggestions WHERE COALESCE(status, 'new') = 'new'),
+      'birthdaysThisMonth', (SELECT count(*) FROM approved WHERE birth_month = extract(month FROM CURRENT_DATE)::INT),
+      'income', CASE WHEN v_admin THEN (SELECT COALESCE(sum(amount), 0) FROM public.finances WHERE type = 'income' AND date >= v_from) END,
+      'expense', CASE WHEN v_admin THEN (SELECT COALESCE(sum(amount), 0) FROM public.finances WHERE type = 'expense' AND date >= v_from) END
+    ),
+    'monthly', (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'month', to_char(mo.m, 'YYYY-MM'),
+        'newMembers', (SELECT count(*) FROM public.profiles p WHERE date_trunc('month', p.created_at)::DATE = mo.m),
+        'totalMembers', (SELECT count(*) FROM approved a WHERE a.created_at < (mo.m + interval '1 month')),
+        'rehearsals', (SELECT count(*) FROM sess s WHERE date_trunc('month', s.rehearsal_date)::DATE = mo.m),
+        'present', (SELECT count(*) FROM public.attendance t JOIN sess s ON s.id = t.rehearsal_id
+                    WHERE t.status = 'present' AND date_trunc('month', s.rehearsal_date)::DATE = mo.m),
+        'expected', (SELECT count(*) FROM sess s CROSS JOIN approved a
+                     WHERE date_trunc('month', s.rehearsal_date)::DATE = mo.m AND s.rehearsal_date >= a.created_at::DATE),
+        'registrations', (SELECT count(*) FROM public.dc_program_registrations g
+                          WHERE g.status <> 'cancelled' AND date_trunc('month', g.created_at)::DATE = mo.m),
+        'income', CASE WHEN v_admin THEN (SELECT COALESCE(sum(amount), 0) FROM public.finances f
+                          WHERE f.type = 'income' AND date_trunc('month', f.date)::DATE = mo.m) END,
+        'expense', CASE WHEN v_admin THEN (SELECT COALESCE(sum(amount), 0) FROM public.finances f
+                          WHERE f.type = 'expense' AND date_trunc('month', f.date)::DATE = mo.m) END
+      ) ORDER BY mo.m), '[]'::JSONB) FROM months mo),
+    'recentRehearsals', (SELECT COALESCE(jsonb_agg(x ORDER BY x->>'date' DESC), '[]'::JSONB) FROM (
+        SELECT jsonb_build_object(
+          'date', s.rehearsal_date,
+          'present', count(*) FILTER (WHERE t.status = 'present'),
+          'excused', count(*) FILTER (WHERE t.status = 'excused'),
+          'absent', count(*) FILTER (WHERE t.status = 'absent'),
+          'eligible', (SELECT count(*) FROM approved a WHERE a.created_at::DATE <= s.rehearsal_date)
+        ) AS x
+        FROM sess s LEFT JOIN public.attendance t ON t.rehearsal_id = s.id
+        GROUP BY s.id, s.rehearsal_date ORDER BY s.rehearsal_date DESC LIMIT 12) q),
+    'byUnit', (SELECT COALESCE(jsonb_agg(jsonb_build_object('unit', u, 'members', n,
+                 'rate', CASE WHEN e > 0 THEN round(100.0 * pr / e, 1) END) ORDER BY n DESC), '[]'::JSONB)
+               FROM (SELECT COALESCE(NULLIF(btrim(unit), ''), 'Unassigned') AS u, count(*) n,
+                            sum(present) pr, sum(expected) e FROM member_stats GROUP BY 1) q),
+    'byRole', jsonb_build_object(
+      'admin', (SELECT count(*) FROM approved WHERE role = 'admin'),
+      'unitLeader', (SELECT count(*) FROM approved WHERE role <> 'admin' AND is_unit_leader IS TRUE),
+      'member', (SELECT count(*) FROM approved WHERE role <> 'admin' AND is_unit_leader IS NOT TRUE)),
+    'gender', (SELECT COALESCE(jsonb_object_agg(g, n), '{}'::JSONB) FROM (
+        SELECT COALESCE(NULLIF(lower(btrim(gender)), ''), 'unspecified') g, count(*) n FROM approved GROUP BY 1) q),
+    'parishes', (SELECT COALESCE(jsonb_agg(jsonb_build_object('parish', p, 'members', n) ORDER BY n DESC), '[]'::JSONB)
+                 FROM (SELECT COALESCE(NULLIF(btrim(parish), ''), 'Not set') p, count(*) n FROM approved GROUP BY 1 ORDER BY 2 DESC LIMIT 10) q),
+    'birthdays', (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', COALESCE(NULLIF(btrim(full_name), ''), 'Member'), 'day', birth_day, 'unit', unit)
+                   ORDER BY birth_day), '[]'::JSONB)
+                  FROM approved WHERE birth_month = extract(month FROM CURRENT_DATE)::INT),
+    -- Punctuality: self check-in timestamps on the rehearsal's local day vs call time.
+    'punctuality', (SELECT jsonb_build_object(
+        'measured', count(*),
+        'onTime', count(*) FILTER (WHERE (t.marked_at AT TIME ZONE v_tz)::TIME <= v_call + make_interval(mins => v_late)),
+        'late', count(*) FILTER (WHERE (t.marked_at AT TIME ZONE v_tz)::TIME > v_call + make_interval(mins => v_late)),
+        'byHour', (SELECT COALESCE(jsonb_object_agg(h, n), '{}'::JSONB) FROM (
+            SELECT extract(hour FROM t2.marked_at AT TIME ZONE v_tz)::INT h, count(*) n
+            FROM public.attendance t2 JOIN sess s2 ON s2.id = t2.rehearsal_id
+            WHERE t2.status = 'present' AND (t2.marked_at AT TIME ZONE v_tz)::DATE = s2.rehearsal_date
+              AND s2.rehearsal_date >= v_from GROUP BY 1) hq))
+      FROM public.attendance t JOIN sess s ON s.id = t.rehearsal_id
+      WHERE t.status = 'present' AND (t.marked_at AT TIME ZONE v_tz)::DATE = s.rehearsal_date AND s.rehearsal_date >= v_from),
+    -- Full per-member breakdown (the Attendance tab table). Managers only, so
+    -- it is safe here; the browser never sees it as a bare table read.
+    'members', (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'unit', unit,
+                     'present', present, 'excused', excused, 'expected', expected,
+                     'rate', round(100.0 * present / NULLIF(expected, 0), 1)) ORDER BY name), '[]'::JSONB)
+                 FROM member_stats),
+    'topMembers', (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', name, 'unit', unit, 'present', present,
+                     'expected', expected, 'rate', round(100.0 * present / expected, 1)) ORDER BY 100.0 * present / expected DESC, present DESC), '[]'::JSONB)
+                   FROM (SELECT * FROM member_stats WHERE expected >= 3 ORDER BY 100.0 * present / expected DESC, present DESC LIMIT 10) q),
+    'atRisk', (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'unit', unit, 'present', present,
+                 'expected', expected, 'rate', round(100.0 * present / NULLIF(expected, 0), 1),
+                 'missedStreak', missed_streak, 'lastPresent', last_present) ORDER BY missed_streak DESC, present), '[]'::JSONB)
+               FROM (SELECT * FROM member_stats WHERE expected >= 3
+                       AND (missed_streak >= 3 OR 100.0 * present / NULLIF(expected, 0) < 50)
+                     ORDER BY missed_streak DESC, present LIMIT 15) q),
+    'programmes', (SELECT COALESCE(jsonb_agg(jsonb_build_object('title', title, 'status', status, 'startsAt', starts_at,
+                     'capacity', capacity, 'registered', reg, 'checkedIn', chk, 'firstTimers', ft, 'rating', rating) ORDER BY starts_at DESC), '[]'::JSONB)
+                   FROM (SELECT pr.title, pr.status, pr.starts_at, pr.capacity,
+                           count(g.*) FILTER (WHERE g.status <> 'cancelled') reg,
+                           count(g.*) FILTER (WHERE g.checked_in_at IS NOT NULL) chk,
+                           count(g.*) FILTER (WHERE g.is_first_timer) ft,
+                           round(avg(g.feedback_rating), 2) rating
+                         FROM public.dc_programs pr LEFT JOIN public.dc_program_registrations g ON g.program_id = pr.id
+                         GROUP BY pr.id ORDER BY pr.starts_at DESC LIMIT 10) q),
+    'registrationSources', (SELECT COALESCE(jsonb_object_agg(source, n), '{}'::JSONB) FROM (
+        SELECT source, count(*) n FROM public.dc_program_registrations WHERE status <> 'cancelled' GROUP BY 1) q),
+    'care', (SELECT COALESCE(jsonb_object_agg(status, n), '{}'::JSONB) FROM (
+        SELECT status, count(*) n FROM public.dc_care_cases GROUP BY 1) q),
+    'tasks', (SELECT COALESCE(jsonb_object_agg(st, n), '{}'::JSONB) FROM (
+        SELECT COALESCE(status, 'open') st, count(*) n FROM public.tasks GROUP BY 1) q),
+    'eventRsvps', (SELECT COALESCE(jsonb_object_agg(r, n), '{}'::JSONB) FROM (
+        SELECT COALESCE(v.response, 'going') r, count(*) n FROM public.event_rsvps v
+        JOIN public.events e ON e.id = v.event_id WHERE e.event_date >= NOW() GROUP BY 1) q)
+  ) INTO v_out;
+
+  RETURN v_out;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- E. Table sizes (Storage Manager) — exact row counts for every public table.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_table_sizes()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  r RECORD;
+  v_rows BIGINT;
+  v_oldest TIMESTAMPTZ;
+  v_col TEXT;
+  v_out JSONB := '[]'::JSONB;
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+  FOR r IN
+    SELECT c.oid, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') ORDER BY c.relname
+  LOOP
+    EXECUTE format('SELECT count(*) FROM public.%I', r.relname) INTO v_rows;
+    SELECT a.attname INTO v_col FROM pg_attribute a
+     WHERE a.attrelid = r.oid AND NOT a.attisdropped
+       AND a.attname IN ('created_at', 'marked_at', 'started_at', 'last_ping_at', 'pinged_at')
+     ORDER BY array_position(ARRAY['created_at','marked_at','started_at','last_ping_at','pinged_at']::NAME[], a.attname) LIMIT 1;
+    v_oldest := NULL;
+    IF v_col IS NOT NULL THEN
+      EXECUTE format('SELECT min(%I)::timestamptz FROM public.%I', v_col, r.relname) INTO v_oldest;
+    END IF;
+    v_out := v_out || jsonb_build_object(
+      'table', r.relname, 'rows', v_rows,
+      'bytes', pg_total_relation_size(r.oid),
+      'tableBytes', pg_relation_size(r.oid),
+      'indexBytes', pg_indexes_size(r.oid),
+      'dateColumn', v_col, 'oldest', v_oldest);
+  END LOOP;
+  RETURN v_out;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- F. Login audit report — who signed in, from which device, with summary.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_login_audit_report(
+  p_days INTEGER DEFAULT 30,
+  p_limit INTEGER DEFAULT 200,
+  p_event TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_since TIMESTAMPTZ := NOW() - make_interval(days => greatest(1, least(COALESCE(p_days, 30), 730)));
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+  RETURN jsonb_build_object(
+    'since', v_since,
+    'summary', jsonb_build_object(
+      'signIns24h', (SELECT count(*) FROM public.dc_login_audit WHERE event_type = 'sign_in' AND created_at >= NOW() - interval '24 hours'),
+      'signIns7d', (SELECT count(*) FROM public.dc_login_audit WHERE event_type = 'sign_in' AND created_at >= NOW() - interval '7 days'),
+      'uniqueUsers7d', (SELECT count(DISTINCT user_id) FROM public.dc_login_audit WHERE event_type = 'sign_in' AND created_at >= NOW() - interval '7 days'),
+      'denied', (SELECT count(*) FROM public.dc_login_audit WHERE event_type IN ('lockdown_denied','license_denied') AND created_at >= v_since),
+      'idleTimeouts', (SELECT count(*) FROM public.dc_login_audit WHERE event_type = 'idle_timeout' AND created_at >= v_since),
+      'securityChanges', (SELECT count(*) FROM public.dc_login_audit WHERE event_type IN ('security_changed','access_changed') AND created_at >= v_since),
+      'byEvent', (SELECT COALESCE(jsonb_object_agg(event_type, n), '{}'::JSONB) FROM (
+          SELECT event_type, count(*) n FROM public.dc_login_audit WHERE created_at >= v_since GROUP BY 1) q)
+    ),
+    'neverSignedIn', (SELECT count(*) FROM public.profiles p WHERE p.status = 'approved'
+                       AND NOT EXISTS (SELECT 1 FROM public.dc_login_audit l WHERE l.user_id = p.id AND l.event_type = 'sign_in')),
+    'rows', (SELECT COALESCE(jsonb_agg(x ORDER BY x->>'createdAt' DESC), '[]'::JSONB) FROM (
+        SELECT jsonb_build_object(
+          'id', l.id, 'createdAt', l.created_at, 'event', l.event_type,
+          'email', l.email, 'name', COALESCE(NULLIF(btrim(p.full_name), ''), l.email, 'Unknown'),
+          'role', p.role, 'unit', p.unit, 'userAgent', l.user_agent, 'metadata', l.metadata) AS x
+        FROM public.dc_login_audit l LEFT JOIN public.profiles p ON p.id = l.user_id
+        WHERE l.created_at >= v_since AND (p_event IS NULL OR p_event = '' OR l.event_type = p_event)
+        ORDER BY l.created_at DESC
+        LIMIT greatest(1, least(COALESCE(p_limit, 200), 1000))) q)
+  );
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- F. Activity feed — the operational audit trail with server-side filtering,
+--    a summary and the distinct action list used by the Activity Log page.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_activity_feed(
+  p_days INTEGER DEFAULT 90,
+  p_limit INTEGER DEFAULT 300,
+  p_action TEXT DEFAULT NULL,
+  p_search TEXT DEFAULT NULL,
+  p_actor TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_days INTEGER := greatest(1, least(COALESCE(p_days, 90), 3650));
+  v_limit INTEGER := greatest(1, least(COALESCE(p_limit, 300), 1000));
+  v_since TIMESTAMPTZ := NOW() - make_interval(days => v_days);
+  v_search TEXT := nullif(btrim(COALESCE(p_search, '')), '');
+  v_action TEXT := nullif(btrim(COALESCE(p_action, '')), '');
+  v_actor TEXT := nullif(btrim(COALESCE(p_actor, '')), '');
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+
+  RETURN jsonb_build_object(
+    'since', v_since,
+    'days', v_days,
+    'summary', jsonb_build_object(
+      'total', (SELECT count(*) FROM public.activity_log WHERE created_at >= v_since),
+      'today', (SELECT count(*) FROM public.activity_log WHERE created_at >= date_trunc('day', NOW())),
+      'week', (SELECT count(*) FROM public.activity_log WHERE created_at >= NOW() - interval '7 days'),
+      'purges', (SELECT count(*) FROM public.activity_log WHERE action IN ('retention_purge','archive_vault_purge') AND created_at >= v_since),
+      'oldest', (SELECT min(created_at) FROM public.activity_log),
+      'byAction', (SELECT COALESCE(jsonb_object_agg(action, n), '{}'::JSONB) FROM (
+          SELECT COALESCE(NULLIF(btrim(action), ''), 'unknown') AS action, count(*) AS n
+          FROM public.activity_log WHERE created_at >= v_since GROUP BY 1 ORDER BY 2 DESC LIMIT 40) q),
+      'topActors', (SELECT COALESCE(jsonb_agg(jsonb_build_object('actor', actor, 'entries', n) ORDER BY n DESC), '[]'::JSONB) FROM (
+          SELECT COALESCE(NULLIF(btrim(actor_name), ''), 'system') AS actor, count(*) AS n
+          FROM public.activity_log WHERE created_at >= v_since GROUP BY 1 ORDER BY 2 DESC LIMIT 10) q)
+    ),
+    'actions', (SELECT COALESCE(jsonb_agg(action ORDER BY action), '[]'::JSONB) FROM (
+        SELECT DISTINCT COALESCE(NULLIF(btrim(action), ''), 'unknown') AS action FROM public.activity_log) q),
+    'actors', (SELECT COALESCE(jsonb_agg(actor ORDER BY actor), '[]'::JSONB) FROM (
+        SELECT DISTINCT COALESCE(NULLIF(btrim(actor_name), ''), 'system') AS actor FROM public.activity_log) q),
+    'rows', (SELECT COALESCE(jsonb_agg(x ORDER BY x->>'createdAt' DESC), '[]'::JSONB) FROM (
+        SELECT jsonb_build_object('id', l.id, 'createdAt', l.created_at,
+          'actor', COALESCE(NULLIF(btrim(l.actor_name), ''), 'system'),
+          'action', COALESCE(NULLIF(btrim(l.action), ''), 'unknown'),
+          'detail', l.detail) AS x
+        FROM public.activity_log l
+        WHERE l.created_at >= v_since
+          AND (v_action IS NULL OR COALESCE(l.action, 'unknown') = v_action)
+          AND (v_actor IS NULL OR COALESCE(NULLIF(btrim(l.actor_name), ''), 'system') = v_actor)
+          AND (v_search IS NULL OR COALESCE(l.action, '') ILIKE '%' || v_search || '%'
+               OR COALESCE(l.detail, '') ILIKE '%' || v_search || '%'
+               OR COALESCE(l.actor_name, '') ILIKE '%' || v_search || '%')
+        ORDER BY l.created_at DESC LIMIT v_limit) q)
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.dc_activity_feed(INTEGER, INTEGER, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.dc_activity_feed(INTEGER, INTEGER, TEXT, TEXT, TEXT) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- G. Archive Vault. Old rows are exported by the browser to the PRIVATE
+--    dramaconnect-backups bucket (archive-vault/<table>/...json), then this RPC
+--    verifies the object exists, that the row count still matches, and only
+--    then deletes. Restores re-insert rows without overwriting newer ones.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.dc_archive_vault (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  table_name   TEXT NOT NULL,
+  object_path  TEXT NOT NULL UNIQUE,
+  sha256       TEXT NOT NULL CHECK (sha256 ~ '^[a-f0-9]{64}$'),
+  row_count    INTEGER NOT NULL CHECK (row_count >= 0),
+  cutoff       TIMESTAMPTZ NOT NULL,
+  created_by   UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  restored_at  TIMESTAMPTZ,
+  restored_by  UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  restored_rows INTEGER
+);
+ALTER TABLE public.dc_archive_vault ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.dc_archive_vault FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.dc_archive_vault TO authenticated;
+DROP POLICY IF EXISTS "Admins read the archive vault" ON public.dc_archive_vault;
+CREATE POLICY "Admins read the archive vault" ON public.dc_archive_vault
+  FOR SELECT TO authenticated USING (public.is_admin());
+
+CREATE OR REPLACE FUNCTION public.dc_archive_targets()
+RETURNS JSONB
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT '{"activity_log":"created_at","dc_login_audit":"created_at","attendance":"marked_at",
+           "messages":"created_at","inbox":"created_at","announcements":"created_at",
+           "suggestions":"created_at","event_rsvps":"created_at","poll_votes":"created_at",
+           "dc_program_registrations":"created_at","dc_backup_runs":"started_at"}'::jsonb;
+$$;
+
+CREATE OR REPLACE FUNCTION public.dc_archive_purge(
+  p_table TEXT,
+  p_before TIMESTAMPTZ,
+  p_object_path TEXT,
+  p_sha256 TEXT,
+  p_row_count INTEGER,
+  p_confirmation TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_col TEXT := public.dc_archive_targets() ->> p_table;
+  v_count BIGINT;
+  v_exists BOOLEAN := FALSE;
+  v_deleted BIGINT;
+  v_actor TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+  IF v_col IS NULL THEN RAISE EXCEPTION 'Table % is not an archive target', p_table USING ERRCODE = '22023'; END IF;
+  IF p_confirmation IS DISTINCT FROM 'ARCHIVE ' || p_table THEN RAISE EXCEPTION 'Typed confirmation does not match'; END IF;
+  IF p_before IS NULL OR p_before > NOW() - interval '24 hours' THEN RAISE EXCEPTION 'Cutoff must be at least 24 hours old'; END IF;
+  IF p_sha256 !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'A lowercase SHA-256 of the exported file is required'; END IF;
+  IF p_object_path !~ ('^archive-vault/' || p_table || '/[A-Za-z0-9._-]+\.json$') THEN
+    RAISE EXCEPTION 'Archive path must be archive-vault/%/<file>.json', p_table;
+  END IF;
+
+  IF to_regclass('storage.objects') IS NOT NULL THEN
+    EXECUTE $q$SELECT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'dramaconnect-backups' AND name = $1
+              AND COALESCE((metadata->>'size')::BIGINT, 1) > 0)$q$ INTO v_exists USING p_object_path;
+  END IF;
+  IF NOT v_exists THEN RAISE EXCEPTION 'The exported archive was not found in the private vault; nothing was deleted'; END IF;
+
+  EXECUTE format('SELECT count(*) FROM public.%I WHERE %I < $1', p_table, v_col) INTO v_count USING p_before;
+  IF v_count <> p_row_count THEN
+    RAISE EXCEPTION 'Rows changed since export (% now vs % exported). Export again; nothing was deleted', v_count, p_row_count;
+  END IF;
+
+  EXECUTE format('DELETE FROM public.%I WHERE %I < $1', p_table, v_col) USING p_before;
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  INSERT INTO public.dc_archive_vault (table_name, object_path, sha256, row_count, cutoff, created_by)
+  VALUES (p_table, p_object_path, p_sha256, v_deleted, p_before, auth.uid())
+  ON CONFLICT (object_path) DO NOTHING;
+
+  SELECT COALESCE(NULLIF(btrim(full_name), ''), email, 'Administrator') INTO v_actor FROM public.profiles WHERE id = auth.uid();
+  INSERT INTO public.activity_log (actor_name, action, detail)
+  VALUES (v_actor, 'archive_vault_purge', format('Archived %s row(s) of %s before %s to %s (sha256 %s)',
+    v_deleted, p_table, p_before, p_object_path, p_sha256));
+
+  RETURN jsonb_build_object('ok', TRUE, 'table', p_table, 'archivedRows', v_deleted, 'path', p_object_path);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.dc_archive_restore(p_archive_id UUID, p_rows JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v public.dc_archive_vault%ROWTYPE;
+  v_inserted BIGINT;
+  v_actor TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+  SELECT * INTO v FROM public.dc_archive_vault WHERE id = p_archive_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Archive not found'; END IF;
+  IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN RAISE EXCEPTION 'Rows must be a JSON array'; END IF;
+  IF public.dc_archive_targets() ->> v.table_name IS NULL THEN RAISE EXCEPTION 'Unsupported table'; END IF;
+
+  -- Rows whose foreign keys no longer exist (e.g. a deleted member) are skipped
+  -- one by one instead of failing the whole restore.
+  v_inserted := 0;
+  DECLARE
+    r JSONB;
+    n BIGINT;
+  BEGIN
+    FOR r IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+      BEGIN
+        EXECUTE format('INSERT INTO public.%I SELECT * FROM jsonb_populate_record(NULL::public.%I, $1) ON CONFLICT DO NOTHING',
+          v.table_name, v.table_name) USING r;
+        GET DIAGNOSTICS n = ROW_COUNT;
+        v_inserted := v_inserted + n;
+      EXCEPTION WHEN foreign_key_violation OR check_violation OR not_null_violation THEN
+        NULL;
+      END;
+    END LOOP;
+  END;
+
+  UPDATE public.dc_archive_vault SET restored_at = NOW(), restored_by = auth.uid(), restored_rows = v_inserted WHERE id = v.id;
+  SELECT COALESCE(NULLIF(btrim(full_name), ''), email, 'Administrator') INTO v_actor FROM public.profiles WHERE id = auth.uid();
+  INSERT INTO public.activity_log (actor_name, action, detail)
+  VALUES (v_actor, 'archive_vault_restore', format('Restored %s of %s row(s) into %s from %s',
+    v_inserted, jsonb_array_length(p_rows), v.table_name, v.object_path));
+  RETURN jsonb_build_object('ok', TRUE, 'table', v.table_name, 'restoredRows', v_inserted, 'offered', jsonb_array_length(p_rows));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.dc_update_org_settings(JSONB) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.dc_distance_m(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.dc_self_check_in_geo(UUID, TEXT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.sc_license_status() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.dc_analytics_overview(INTEGER) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.dc_table_sizes() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.dc_login_audit_report(INTEGER, INTEGER, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.dc_archive_targets() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.dc_archive_purge(TEXT, TIMESTAMPTZ, TEXT, TEXT, INTEGER, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.dc_archive_restore(UUID, JSONB) FROM PUBLIC, anon;
+
+GRANT EXECUTE ON FUNCTION public.dc_update_org_settings(JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_distance_m(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_self_check_in_geo(UUID, TEXT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sc_license_status() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_analytics_overview(INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_table_sizes() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_login_audit_report(INTEGER, INTEGER, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_archive_targets() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_archive_purge(TEXT, TIMESTAMPTZ, TEXT, TEXT, INTEGER, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dc_archive_restore(UUID, JSONB) TO authenticated;
 
 COMMIT;
 
@@ -4371,6 +5229,106 @@ GRANT EXECUTE ON FUNCTION public.is_approved_member() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_gallery_manager() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.poll_results() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.event_rsvp_results() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. Schema Doctor — is every SQL pack installed?
+-- Probes the catalog for marker objects from each component of
+-- complete-schema.sql (and the optional pg_cron heartbeat) so Platform Health
+-- can say exactly which pack is missing or out of date. Read-only.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.dc_schema_doctor()
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_packs JSONB := '[
+    {"id":"01","name":"Base schema & repair","file":"repair_and_upgrade.sql","required":true,
+     "objects":["t:profiles","t:rehearsals","t:attendance","t:finances","t:events","t:announcements","t:messages","t:inbox","t:tasks","t:polls","t:poll_votes","t:gallery","t:inventory","t:suggestions","t:activity_log","t:tenant_settings","f:handle_new_user"]},
+    {"id":"02","name":"RLS & server-authoritative security","file":"security_hardening.sql","required":true,
+     "objects":["f:is_approved_member","f:is_gallery_manager","f:self_check_in","f:cast_poll_vote","f:set_task_status","f:guard_profile_update","f:sync_profile_email_from_auth"]},
+    {"id":"03","name":"Resilience, anti-pause heartbeat & backup","file":"resilience_and_backup.sql","required":true,
+     "objects":["t:dc_heartbeat_sources","t:sc_keepalive","f:dc_keep_alive","f:sc_keep_alive","f:dc_heartbeat_health","t:dc_backup_runs","t:dc_backup_settings","f:dc_begin_backup_run","b:dramaconnect-backups"]},
+    {"id":"04","name":"Control plane, licensing, storage & analytics","file":"platform_management.sql","required":true,
+     "objects":["t:dc_platform_settings","t:dc_site_license","t:dc_login_audit","t:dc_retention_settings","t:dc_org_settings","t:dc_archive_vault","f:dc_access_state","f:sc_license_status","f:dc_apply_retention","f:dc_analytics_overview","f:dc_table_sizes","f:dc_login_audit_report","f:dc_archive_purge","f:dc_self_check_in_geo","f:dc_update_org_settings"]},
+    {"id":"05","name":"ID cards, programmes, roster & care","file":"identity_and_programs.sql","required":true,
+     "objects":["t:dc_card_settings","t:dc_member_cards","t:dc_programs","t:dc_program_registrations","t:dc_duty_roster","t:dc_care_cases","f:dc_my_card","f:dc_lookup_card","f:dc_program_checkin","f:dc_program_insights"]},
+    {"id":"06","name":"Post-install self-heal & views","file":"post_install_selfheal.sql","required":true,
+     "objects":["v:member_directory","v:rehearsal_schedule","f:poll_results","f:event_rsvp_results","b:avatars","b:gallery"]}
+  ]'::JSONB;
+  pk JSONB;
+  obj TEXT;
+  v_kind TEXT;
+  v_name TEXT;
+  v_ok BOOLEAN;
+  v_missing TEXT[];
+  v_present INTEGER;
+  v_total INTEGER;
+  v_result JSONB := '[]'::JSONB;
+  v_all_ok BOOLEAN := TRUE;
+  v_cron JSONB;
+  v_version TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator access required' USING ERRCODE = '42501'; END IF;
+
+  FOR pk IN SELECT value FROM jsonb_array_elements(v_packs) LOOP
+    v_missing := '{}'; v_present := 0; v_total := 0;
+    FOR obj IN SELECT jsonb_array_elements_text(pk->'objects') LOOP
+      v_kind := split_part(obj, ':', 1); v_name := split_part(obj, ':', 2); v_total := v_total + 1;
+      v_ok := CASE v_kind
+        WHEN 't' THEN to_regclass('public.' || quote_ident(v_name)) IS NOT NULL
+        WHEN 'v' THEN to_regclass('public.' || quote_ident(v_name)) IS NOT NULL
+        WHEN 'f' THEN EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                              WHERE n.nspname = 'public' AND p.proname = v_name)
+        ELSE NULL END;
+      IF v_kind = 'b' THEN
+        v_ok := FALSE;
+        IF to_regclass('storage.buckets') IS NOT NULL THEN
+          EXECUTE 'SELECT EXISTS (SELECT 1 FROM storage.buckets WHERE id = $1)' INTO v_ok USING v_name;
+        END IF;
+      END IF;
+      IF v_ok THEN v_present := v_present + 1; ELSE v_missing := v_missing || obj; END IF;
+    END LOOP;
+    IF v_present < v_total THEN v_all_ok := FALSE; END IF;
+    v_result := v_result || jsonb_build_object(
+      'id', pk->>'id', 'name', pk->>'name', 'file', pk->>'file',
+      'installed', v_present = v_total, 'partial', v_present > 0 AND v_present < v_total,
+      'present', v_present, 'total', v_total, 'missing', to_jsonb(v_missing));
+  END LOOP;
+
+  -- Optional layer: in-database pg_cron heartbeat (Layer 4). Not required.
+  v_cron := jsonb_build_object('extension', EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'), 'job', FALSE);
+  IF to_regclass('cron.job') IS NOT NULL THEN
+    BEGIN
+      EXECUTE $q$SELECT EXISTS (SELECT 1 FROM cron.job WHERE jobname IN ('dramaconnect-internal-heartbeat','sc-keep-alive'))$q$
+        INTO v_ok;
+      v_cron := v_cron || jsonb_build_object('job', v_ok);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_cron := v_cron || jsonb_build_object('job', NULL, 'note', 'cron schema not readable');
+    END;
+  END IF;
+
+  BEGIN
+    EXECUTE 'SELECT schema_version FROM public.dc_platform_settings WHERE id = 1' INTO v_version;
+  EXCEPTION WHEN OTHERS THEN v_version := NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'ok', v_all_ok,
+    'checkedAt', NOW(),
+    'schemaVersion', v_version,
+    'postgres', current_setting('server_version'),
+    'packs', v_result,
+    'pgCron', v_cron,
+    'fix', CASE WHEN v_all_ok THEN NULL ELSE
+      'Run database/complete-schema.sql once in the Supabase SQL Editor. It is safe to re-run and repairs every missing pack.' END
+  );
+END;
+$$;
+REVOKE ALL ON FUNCTION public.dc_schema_doctor() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.dc_schema_doctor() TO authenticated;
 
 COMMIT;
 

@@ -62,3 +62,42 @@
         window.addEventListener('load', function () { setTimeout(applyFallback, 1500); });
     }
 })();
+
+/* Accessibility preferences (Settings → Accessibility). Applied in <head>
+ * before first paint so there is no flash. Stored per device in `dc-a11y`;
+ * the organisation's high-contrast default applies until a user chooses. */
+(function () {
+    var CLASSES = { highContrast: 'dc-hc', largeText: 'dc-large-text', reduceMotion: 'dc-reduce-motion',
+        dyslexia: 'dc-dyslexia', underlineLinks: 'dc-underline-links', focusRing: 'dc-focus-ring' };
+    function read() {
+        var prefs = null;
+        try { prefs = JSON.parse(localStorage.getItem('dc-a11y') || 'null'); } catch (e) { prefs = null; }
+        if (!prefs) {
+            prefs = {};
+            try {
+                var org = JSON.parse(localStorage.getItem('dc-org-settings') || 'null');
+                if (org && org.data && org.data.high_contrast_default) prefs.highContrast = true;
+            } catch (e) { /* ignore */ }
+        }
+        return prefs;
+    }
+    function apply(prefs) {
+        var root = document.documentElement;
+        Object.keys(CLASSES).forEach(function (key) { root.classList.toggle(CLASSES[key], !!(prefs && prefs[key])); });
+        if (prefs && prefs.textScale) root.style.setProperty('--dc-text-scale', String(prefs.textScale));
+        else root.style.removeProperty('--dc-text-scale');
+    }
+    window.DCA11y = {
+        read: read,
+        apply: apply,
+        save: function (prefs) {
+            try { localStorage.setItem('dc-a11y', JSON.stringify(prefs || {})); } catch (e) { /* storage blocked */ }
+            apply(prefs || {});
+        },
+        reset: function () {
+            try { localStorage.removeItem('dc-a11y'); } catch (e) { /* ignore */ }
+            apply(read());
+        }
+    };
+    apply(read());
+})();

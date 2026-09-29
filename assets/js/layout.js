@@ -19,7 +19,7 @@ const Layout = {
             { id: 'casting',       href: 'casting.html',       icon: 'fa-masks-theater',  label: 'Casting' },
             { id: 'rehearsals',    href: 'rehearsals.html',    icon: 'fa-calendar-check', label: 'Rehearsals' },
             { id: 'attendance',    href: 'attendance.html',    icon: 'fa-user-check',     label: 'Attendance' },
-            { id: 'analytics',     href: 'analytics.html',     icon: 'fa-chart-line',     label: 'Attendance Analytics' },
+            { id: 'analytics',     href: 'analytics.html',     icon: 'fa-chart-line',     label: 'Analytics' },
             { id: 'myunit',        href: 'myunit.html',        icon: 'fa-people-group',   label: 'My Unit', leaderOnly: true },
             { id: 'care',          href: 'care.html',          icon: 'fa-hand-holding-heart', label: 'Care & Follow-up', leaderOnly: true },
             { id: 'roster',        href: 'roster.html',        icon: 'fa-clipboard-user', label: 'Duty Roster' },
@@ -64,7 +64,9 @@ const Layout = {
         const safeToken = value => /^[a-z0-9_-]+$/i.test(String(value || '')) ? String(value) : '';
         const safePage = value => /^[a-z0-9_-]+\.html$/i.test(String(value || '')) ? String(value) : 'home.html';
         return this.nav.map(g => {
-            const items = g.items.filter(i => (!i.adminOnly || isAdmin) && (!i.leaderOnly || isLeader || isAdmin));
+            const off = this.disabledModules();
+            const items = g.items.filter(i => (!i.adminOnly || isAdmin) && (!i.leaderOnly || isLeader || isAdmin)
+                && (isAdmin || !off.includes(i.id)));
             if (!items.length) return '';
             return `
             <div class="pt-1">
@@ -73,11 +75,31 @@ const Layout = {
                     const id = safeToken(i.id), icon = safeToken(i.icon), href = safePage(i.href);
                     return `
                     <a href="${href}" class="sidebar-link ${id === active ? 'active' : ''} ${i.accent ? 'accent' : ''}">
-                        <i class="fas ${icon} w-5 text-center"></i> ${UI.esc(i.label)}
+                        <i class="fas ${icon} w-5 text-center"></i> ${UI.esc(i.label)}${off.includes(i.id) ? ' <span class="dc-module-off" title="Hidden from members (Settings → Module access)">off</span>' : ''}
                     </a>`;
                 }).join('')}
             </div>`;
         }).join('');
+    },
+
+    /** Modules switched off in Settings → Module access (cached locally). */
+    PROTECTED_MODULES: ['home', 'profile', 'help', 'settings', 'admin-data', 'storage-manager', 'platform-health', 'roles-status', 'site-license', 'activity'],
+    disabledModules() {
+        try {
+            const list = JSON.parse(localStorage.getItem('dc-modules-off') || '[]');
+            return Array.isArray(list) ? list.filter(id => !this.PROTECTED_MODULES.includes(id)) : [];
+        } catch (_) { return []; }
+    },
+    /** Non-admins who open a disabled module are told why and sent home. */
+    _enforceModule(active, isAdmin) {
+        if (isAdmin || !active || !this.disabledModules().includes(active)) return;
+        const main = document.querySelector('main') || document.body;
+        const note = document.createElement('div');
+        note.className = 'dc-module-notice';
+        note.setAttribute('role', 'alert');
+        note.textContent = 'This section has been switched off by your administrator. Taking you to your dashboard…';
+        main.prepend(note);
+        setTimeout(() => { window.location.href = 'home.html'; }, 2500);
     },
 
     renderSidebar(active, user) {
@@ -103,8 +125,7 @@ const Layout = {
             <nav class="flex-1 p-4 space-y-1 overflow-y-auto">${navHtml}</nav>
             <div class="p-4 border-t border-slate-800 space-y-2">
                 <select id="lang-sel" class="w-full px-3 py-2 rounded-xl bg-slate-800 text-slate-200 text-sm border-none outline-none">
-                    <option value="en">🌐 English</option>
-                    <option value="yo">🌐 Yorùbá</option>
+                    ${((window.I18n && I18n.LANGS) || [['en', 'English'], ['yo', 'Yorùbá']]).map(([code, name]) => `<option value="${UI.esc(code)}">🌐 ${UI.esc(name)}</option>`).join('')}
                 </select>
                 <button id="theme-btn" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition text-sm">
                     <i class="fas fa-moon w-5 text-center"></i> <span id="theme-label">Dark Mode</span>
@@ -160,6 +181,16 @@ const Layout = {
                 };
             });
             I18n.apply();
+        }
+
+        this._enforceModule(active, isAdmin);
+        // Refresh module access in the background; re-render only if it changed.
+        if (window.PlatformManagement && PlatformManagement.orgSettings && !this._orgRefreshed) {
+            this._orgRefreshed = true;
+            const before = JSON.stringify(this.disabledModules());
+            PlatformManagement.orgSettings(true).then(() => {
+                if (JSON.stringify(this.disabledModules()) !== before) this.renderSidebar(active, user);
+            }).catch(() => {});
         }
 
         const overlay = document.getElementById('drawer-overlay');
