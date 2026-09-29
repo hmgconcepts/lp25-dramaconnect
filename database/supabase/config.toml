@@ -1,0 +1,20 @@
+# Supabase CLI project settings used by `supabase functions deploy` and by
+# .github/workflows/deploy-edge-functions.yml. Only function settings are
+# declared here; nothing in this file changes your database.
+
+[functions.ping]
+# Public monitor endpoint for UptimeRobot / cron-job.org (Layers 8 and 7).
+verify_jwt = false
+
+[functions.birthday-bot]
+# Called by schedulers with the X-Cron-Secret header, not a user JWT.
+verify_jwt = false
+
+[functions.run-reminders]
+verify_jwt = false
+
+[functions.notify-approval]
+# Invoked by a database webhook with its own shared secret.
+verify_jwt = false
+
+# admin-create-member keeps the default verify_jwt = true (admin session required).

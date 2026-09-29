@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DramaConnect Enterprise | Theatre Management Software by HMG Concepts</title>
+    
+    <!-- SEO & Search Engine Tags -->
+    <meta name="description" content="DramaConnect Enterprise — A comprehensive theatre management software for drama departments, actors, and stage crews. Built and optimized by the HMG Concepts Ecosystem.">
+    <meta name="keywords" content="theatre management software, drama department software, acting platform, church drama app, HMG Concepts Ecosystem, cast management, backstage inventory, drama connect, rccg lp25 drama">
+    <meta name="author" content="HMG Concepts">
+    <meta name="robots" content="index, follow">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:title" content="DramaConnect Enterprise | Theatre Management">
+    <meta property="og:description" content="Streamline casting, inventory, attendance, and member profiling for your drama department.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://dramaconnect.vercel.app">
+    <meta property="og:image" content="https://dramaconnect.vercel.app/assets/icons/icon-512.png">
+    
+    <meta name="theme-color" content="#003399">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/fallback.css">
+    <script src="assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden animate-fade-in">
+        <div class="rccg-blue p-10 text-white text-center relative">
+            <div class="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+                <svg width="100%" height="100%"><pattern id="pattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="2" fill="white"/></pattern><rect width="100%" height="100%" fill="url(#pattern)"/></svg>
+            </div>
+            <img src="assets/img/rccg_logo.png" alt="RCCG Logo" class="h-24 w-24 mx-auto mb-4 bg-white rounded-full p-2 shadow-lg">
+            <h1 class="text-3xl font-extrabold tracking-tight">DramaConnect <span class="text-blue-300">Enterprise</span></h1>
+            <p class="text-blue-100 mt-2 opacity-90">RCCG LP 25 Drama Department</p>
+        </div>
+
+        <div class="p-8">
+            <!-- LOGIN -->
+            <div id="login-section">
+                <h2 class="text-2xl font-bold text-slate-800 mb-6 text-center">Institutional Sign In</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Email Address</label>
+                        <input type="email" id="email" class="dc-input" placeholder="email@rccg.org">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Password</label>
+                        <input type="password" id="password" class="dc-input" placeholder="••••••••">
+                    </div>
+                    <div class="text-right">
+                        <a href="#" id="go-forgot" class="text-xs text-blue-600 font-bold hover:underline">Forgot password?</a>
+                    </div>
+                    <button id="login-btn" class="w-full py-4 rccg-blue text-white rounded-xl font-bold shadow-lg hover:bg-blue-800 transition transform active:scale-95 flex items-center justify-center gap-2">
+                        <span>Access Portal</span> <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+                <div class="mt-8 text-center">
+                    <p class="text-sm text-gray-500">New member? <a href="#" id="go-signup" class="text-blue-600 font-bold hover:underline">Request Access</a></p>
+                </div>
+            </div>
+
+            <!-- SIGNUP -->
+            <div id="signup-section" class="hidden">
+                <h2 class="text-2xl font-bold text-slate-800 mb-6 text-center">Member Registration</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Full Name</label>
+                        <input type="text" id="sig-name" class="dc-input" placeholder="Enter full name">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Email</label>
+                        <input type="email" id="sig-email" class="dc-input" placeholder="email@rccg.org">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Password</label>
+                        <input type="password" id="sig-password" class="dc-input" placeholder="Minimum 6 characters">
+                    </div>
+                    <button id="signup-btn" class="w-full py-4 rccg-blue text-white rounded-xl font-bold shadow-lg hover:bg-blue-800 transition transform active:scale-95">
+                        Submit Application
+                    </button>
+                </div>
+                <div class="mt-8 text-center">
+                    <p class="text-sm text-gray-500">Already have an account? <a href="#" id="go-login" class="text-blue-600 font-bold hover:underline">Sign In</a></p>
+                </div>
+            </div>
+
+            <!-- FORGOT PASSWORD -->
+            <div id="forgot-section" class="hidden">
+                <h2 class="text-2xl font-bold text-slate-800 mb-6 text-center">Reset Password</h2>
+                <p class="text-sm text-slate-500 text-center mb-4">Enter your email and we'll send a secure reset link.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-1 ml-1">Email</label>
+                        <input type="email" id="forgot-email" class="dc-input" placeholder="email@rccg.org">
+                    </div>
+                    <button id="forgot-btn" class="w-full py-4 rccg-blue text-white rounded-xl font-bold shadow-lg hover:bg-blue-800 transition">Send Reset Link</button>
+                </div>
+                <div class="mt-8 text-center">
+                    <p class="text-sm text-gray-500"><a href="#" id="go-login2" class="text-blue-600 font-bold hover:underline">Back to Sign In</a></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-blue-50 p-6 text-center border-t border-blue-100">
+            <p class="text-[11px] text-slate-500 uppercase tracking-widest font-bold mb-3">Architected by</p>
+            <div class="flex flex-col items-center gap-2">
+                <a href="https://cssadewale.pages.dev" target="_blank" rel="noopener" class="text-blue-700 font-extrabold text-lg hover:text-blue-900 transition">Adewale Samson Adeagbo</a>
+                <div class="flex gap-3 text-[10px] font-bold text-slate-400 uppercase">
+                    <span>DataTech</span><span>&bull;</span><span>EdTech</span><span>&bull;</span><span>FaithTech</span>
+                </div>
+                <a href="https://hmgconcepts.pages.dev" target="_blank" rel="noopener" class="mt-2 px-4 py-1 bg-white text-blue-600 border border-blue-200 rounded-full text-[10px] font-bold hover:bg-blue-600 hover:text-white transition shadow-sm">Explore HMG CONCEPTS Ecosystem &rarr;</a>
+                <p class="text-[10px] text-slate-500 mt-2 max-w-[250px]">Looking for custom Theatre Management Software or a Digital Platform? Let's connect.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Strict PWA Install Overlay Container -->
+    <div id="pwa-strict-overlay" class="hidden fixed inset-0 z-[10000] bg-blue-900 flex flex-col items-center justify-center p-6 text-center text-white">
+        <img src="assets/icons/icon-192.png" alt="Icon" class="w-24 h-24 mb-6 rounded-2xl shadow-2xl">
+        <h2 class="text-3xl font-extrabold mb-3">Install DramaConnect</h2>
+        <p class="text-blue-200 mb-8 max-w-sm">Install the app for quicker access and an app-like experience, or continue securely in your browser.</p>
+        
+        <button id="pwa-force-install-btn" class="bg-white text-blue-900 px-8 py-4 rounded-full font-bold text-lg shadow-xl hover:bg-blue-50 transition w-full max-w-xs mb-4">
+            <i class="fas fa-download mr-2"></i> Install App Now
+        </button>
+        
+        <div id="pwa-ios-instructions" class="hidden max-w-xs bg-blue-800/50 p-4 rounded-xl border border-blue-700">
+            <p class="text-sm font-bold mb-2">iOS / Safari Users:</p>
+            <p class="text-xs text-blue-200">1. Tap the <i class="fas fa-arrow-up-from-bracket mx-1"></i> Share button below.<br>2. Scroll down and tap <strong>"Add to Home Screen"</strong>.<br>3. Open the app from your home screen.</p>
+        </div>
+        
+        <!-- Bug Fix: Fallback for desktops or incompatible browsers to prevent locking out users entirely -->
+        <button id="pwa-bypass-btn" class="mt-6 text-[11px] text-blue-300 hover:text-white underline decoration-blue-400/50 transition">
+            Continue in Browser
+        </button>
+    </div>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/resilience.js"></script>
+    <script src="assets/js/platform-management.js"></script>
+    <script src="assets/js/data-portability.js"></script>
+    <script src="assets/js/drive-sync.js"></script>
+    <script src="assets/js/i18n.js"></script>
+    <script src="assets/js/ui.js"></script>
+    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/install.js"></script>
+    <script>
+        const show = id => {
+            ['login-section', 'signup-section', 'forgot-section'].forEach(s =>
+                document.getElementById(s).classList.toggle('hidden', s !== id));
+        };
+        document.getElementById('go-signup').onclick = e => { e.preventDefault(); show('signup-section'); };
+        document.getElementById('go-login').onclick = e => { e.preventDefault(); show('login-section'); };
+        document.getElementById('go-login2').onclick = e => { e.preventDefault(); show('login-section'); };
+        document.getElementById('go-forgot').onclick = e => { e.preventDefault(); show('forgot-section'); };
+
+        // Redirect if already signed in AND approved.
+        (async () => {
+            try {
+                const u = await Auth.getCurrentUser();
+                if (Auth.isApproved(u)) {
+                    window.location.href = 'pages/home.html';
+                } else if (u) {
+                    await sb.auth.signOut();
+                }
+            } catch (e) {
+                // Fail closed when a signed-in account cannot be tied to a readable profile.
+                try { await sb.auth.signOut(); } catch (_e) {}
+            }
+        })();
+        // Show a message if the user was bounced for being pending.
+        try { if (sessionStorage.getItem('dc-pending')) { sessionStorage.removeItem('dc-pending'); UI.toast('Your account is awaiting admin approval.', 'warning', 8000); } } catch (e) {}
+
+        document.getElementById('login-btn').onclick = async () => {
+            const email = document.getElementById('email').value.trim();
+            const pass = document.getElementById('password').value;
+            if (!email || !pass) { UI.toast('Enter email and password.', 'warning'); return; }
+            UI.showLoader('Signing in…');
+            try {
+                await Auth.signIn(email, pass);
+                // Approval gate — block users an admin has not yet approved.
+                const u = await Auth.getCurrentUser();
+                if (!Auth.isApproved(u)) {
+                    await sb.auth.signOut();
+                    UI.hideLoader();
+                    UI.toast('Your account is awaiting admin approval. Please try again once approved.', 'warning', 8000);
+                    return;
+                }
+                window.location.href = 'pages/home.html';
+            } catch (e) {
+                try { await sb.auth.signOut(); } catch (_e) {}
+                UI.hideLoader();
+                UI.toast(e.message, 'error');
+            }
+        };
+
+        document.getElementById('signup-btn').onclick = async () => {
+            const name = document.getElementById('sig-name').value.trim();
+            const email = document.getElementById('sig-email').value.trim();
+            const pass = document.getElementById('sig-password').value;
+            if (!name || !email || pass.length < 6) { UI.toast('Provide name, email, and a 6+ char password.', 'warning'); return; }
+            UI.showLoader('Submitting application…');
+            try {
+                await Auth.signUp(email, pass, name);
+                UI.hideLoader();
+                UI.toast('Application submitted! An admin must approve your account before you can sign in.', 'success', 8000);
+                show('login-section');
+            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+        };
+
+        document.getElementById('forgot-btn').onclick = async () => {
+            const email = document.getElementById('forgot-email').value.trim();
+            if (!email) { UI.toast('Enter your email.', 'warning'); return; }
+            UI.showLoader('Sending reset link…');
+            try {
+                await Auth.resetPassword(email);
+                UI.hideLoader();
+                UI.toast('If that email exists, a reset link has been sent.', 'success', 7000);
+                show('login-section');
+            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+        };
+
+        // PWA registration
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    </script>
+</body>
+</html>

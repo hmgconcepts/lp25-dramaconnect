@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Ticket tokens travel in the URL: never leak them to CDNs via the Referer header. -->
+    <meta name="referrer" content="no-referrer">
+    <meta name="description" content="Register online for a special programme.">
+    <meta property="og:title" content="Register for our programme">
+    <meta property="og:description" content="Free online registration — get your QR ticket instantly.">
+    <meta property="og:type" content="website">
+    <title>Programme Registration | DramaConnect</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+        .qr-box svg { width: 100%; height: auto; display: block; }
+        .star { font-size: 2rem; color: #cbd5e1; cursor: pointer; background: none; border: 0; }
+        .star.on { color: #f59e0b; }
+        .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+        @media print { .no-print { display: none !important; } body { background: #fff !important; } }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-start justify-center p-4 sm:py-10">
+    <div class="max-w-xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden animate-fade-in">
+        <div class="rccg-blue p-6 text-white text-center">
+            <img id="org-logo" src="../assets/img/rccg_logo.png" alt="" class="h-14 w-14 mx-auto mb-2 bg-white rounded-full p-1 object-contain">
+            <p id="org-name" class="text-xs uppercase tracking-widest opacity-90">Programme registration</p>
+        </div>
+        <div id="view" class="p-6" aria-live="polite">
+            <div class="text-center text-slate-400 py-10"><i class="fas fa-circle-notch fa-spin text-2xl"></i><p class="mt-2 text-sm">Loading…</p></div>
+        </div>
+        <p class="text-center text-[11px] text-slate-400 pb-5 no-print">Your details are used only to plan and run this programme. <a href="../index.html" class="underline">Member sign in</a></p>
+    </div>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/vendor/qrcode-generator.js"></script>
+    <script src="../assets/js/dc-codes.js"></script>
+    <script>
+        const esc = (v) => UI.esc(v == null ? '' : v);
+        const view = document.getElementById('view');
+        const params = new URLSearchParams(location.search);
+        const STORE = 'dc_my_tickets';
+        const fmtDT = (d) => d ? new Date(d).toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const HOW_HEARD = ['WhatsApp', 'Facebook', 'Instagram', 'X / Twitter', 'TikTok', 'YouTube', 'Church announcement', 'Friend or family', 'Flyer / poster', 'Other'];
+        const PHASE_MSG = {
+            not_yet_open: ['fa-hourglass-start', 'Registration opens soon', 'Come back when registration opens'],
+            closed: ['fa-lock', 'Registration is closed', 'Registration for this programme has closed.'],
+            ended: ['fa-flag-checkered', 'This programme has ended', 'Thank you for your interest. Watch out for our next programme!']
+        };
+        let program = null, countdownTimer = null;
+
+        function saveTicket(t) {
+            try {
+                const list = JSON.parse(localStorage.getItem(STORE) || '[]').filter(x => x.token !== t.ticket_token);
+                list.unshift({ token: t.ticket_token, title: t.title, starts_at: t.starts_at });
+                localStorage.setItem(STORE, JSON.stringify(list.slice(0, 20)));
+            } catch (e) { /* private mode */ }
+        }
+        function savedTickets() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { return []; } }
+        function fail(title, note, icon) {
+            view.innerHTML = `<div class="text-center py-8"><i class="fas ${icon || 'fa-triangle-exclamation'} text-4xl text-slate-300"></i>
+                <h1 class="text-xl font-extrabold text-slate-800 mt-3">${esc(title)}</h1><p class="text-sm text-slate-500 mt-1">${esc(note)}</p></div>` + ticketsList();
+        }
+        function ticketsList() {
+            const t = savedTickets(); if (!t.length) return '';
+            return `<div class="mt-6 bg-slate-50 rounded-xl p-4 no-print"><p class="text-xs font-bold text-slate-500 uppercase mb-2">Tickets saved on this device</p>
+                ${t.map(x => `<a class="block text-sm py-1 underline text-slate-700" href="?t=${encodeURIComponent(x.token)}">${esc(x.title)} — ${esc(new Date(x.starts_at).toLocaleDateString())}</a>`).join('')}</div>`;
+        }
+        function icsFor(p, url) {
+            const d = (x) => new Date(x).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+            const end = p.ends_at || new Date(new Date(p.starts_at).getTime() + 3 * 3600e3).toISOString();
+            const clean = (s) => String(s || '').replace(/[\\,;]/g, (m) => '\\' + m).replace(/\r?\n/g, '\\n');
+            const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//DramaConnect//Programmes//EN', 'BEGIN:VEVENT',
+                'UID:' + (p.ticket_token || p.slug) + '@dramaconnect', 'DTSTAMP:' + d(new Date()), 'DTSTART:' + d(p.starts_at), 'DTEND:' + d(end),
+                'SUMMARY:' + clean(p.title), 'LOCATION:' + clean(p.venue), 'DESCRIPTION:' + clean(url),
+                'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:' + clean(p.title), 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+            return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+        }
+        function brand(p) {
+            if (p.org_name) document.getElementById('org-name').textContent = p.org_name;
+            if (Utils.safeImageUrl(p.logo_url)) document.getElementById('org-logo').src = Utils.safeImageUrl(p.logo_url);
+        }
+        function countdown(el, target) {
+            clearInterval(countdownTimer);
+            const tick = () => {
+                const ms = new Date(target).getTime() - Date.now();
+                if (ms <= 0) { el.textContent = 'Starting now'; clearInterval(countdownTimer); return; }
+                const dd = Math.floor(ms / 864e5), hh = Math.floor(ms % 864e5 / 36e5), mm = Math.floor(ms % 36e5 / 6e4), ss = Math.floor(ms % 6e4 / 1e3);
+                el.textContent = (dd ? dd + 'd ' : '') + String(hh).padStart(2, '0') + 'h ' + String(mm).padStart(2, '0') + 'm ' + String(ss).padStart(2, '0') + 's';
+            };
+            tick(); countdownTimer = setInterval(tick, 1000);
+        }
+
+        /* ------------------------------ Register ------------------------------ */
+        function field(mode, html) { return mode === 'hidden' ? '' : html.replace('%REQ%', mode === 'required' ? 'required' : '').replace('%STAR%', mode === 'required' ? ' *' : ''); }
+        function questionInput(q) {
+            const req = q.required ? 'required' : '', label = `${esc(q.label)}${q.required ? ' *' : ''}`, name = 'q_' + esc(q.id);
+            if (q.type === 'select') return `<label class="block text-sm font-semibold text-slate-700">${label}<select name="${name}" class="dc-input mt-1" ${req}><option value="">Choose…</option>${(q.options || []).map(o => `<option>${esc(o)}</option>`).join('')}</select></label>`;
+            if (q.type === 'yesno') return `<fieldset class="text-sm"><legend class="font-semibold text-slate-700">${label}</legend><div class="flex gap-4 mt-1">
+                <label><input type="radio" name="${name}" value="yes" ${req}> Yes</label><label><input type="radio" name="${name}" value="no"> No</label></div></fieldset>`;
+            return `<label class="block text-sm font-semibold text-slate-700">${label}<input name="${name}" class="dc-input mt-1" maxlength="300" ${req}></label>`;
+        }
+        async function showProgram(slug) {
+            const { data, error } = await sb.rpc('dc_public_program', { p_slug: slug });
+            if (error) return fail('Registration is temporarily unavailable', 'Please try again in a few minutes.', 'fa-plug-circle-exclamation');
+            if (!data || !data.found) return fail('Programme not found', 'Check the link you were given — it may have a typo, or the programme was removed.', 'fa-magnifying-glass');
+            program = data; brand(data);
+            document.title = data.title + ' | Register';
+            const cover = Utils.safeImageUrl(data.cover_url, false);
+            const seats = data.seats_left == null ? '' : data.seats_left > 0
+                ? `<span class="pill inline-block px-2 py-0.5 rounded-full text-xs font-bold ${data.seats_left <= 10 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}">${esc(data.seats_left)} seat(s) left</span>`
+                : `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">${data.allow_waitlist ? 'Full — join the waitlist' : 'Fully booked'}</span>`;
+            let html = `${data.is_draft_preview ? '<p class="mb-4 text-sm bg-amber-50 text-amber-900 rounded-lg p-3"><i class="fas fa-eye mr-1"></i>Admin preview of a <b>draft</b>. The public cannot see this page until it is published.</p>' : ''}
+                ${cover ? `<img src="${esc(cover)}" alt="" class="w-full h-48 object-cover rounded-2xl mb-4" referrerpolicy="no-referrer">` : ''}
+                <p class="text-xs uppercase font-bold tracking-wider text-slate-400">${esc(data.category)}</p>
+                <h1 class="text-2xl font-black text-slate-800 leading-tight">${esc(data.title)}</h1>
+                ${data.subtitle ? `<p class="text-slate-500 mt-1">${esc(data.subtitle)}</p>` : ''}
+                <div class="mt-4 space-y-1 text-sm text-slate-700">
+                    <p><i class="fas fa-calendar w-5 text-slate-400"></i>${esc(fmtDT(data.starts_at))}</p>
+                    ${data.venue ? `<p><i class="fas fa-location-dot w-5 text-slate-400"></i>${esc(data.venue)} <a class="underline text-xs" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.venue)}">map</a></p>` : ''}
+                    ${data.contact_phone ? `<p><i class="fas fa-phone w-5 text-slate-400"></i><a class="underline" href="tel:${esc(data.contact_phone)}">${esc(data.contact_phone)}</a></p>` : ''}
+                    <p><i class="fas fa-hourglass-half w-5 text-slate-400"></i><span id="cd"></span></p>
+                    <p>${seats}</p>
+                </div>
+                ${data.description ? `<div class="mt-4 text-sm text-slate-600 whitespace-pre-line">${esc(data.description)}</div>` : ''}`;
+            if (data.phase !== 'open') {
+                const m = PHASE_MSG[data.phase] || PHASE_MSG.closed;
+                const note = data.phase === 'not_yet_open' && data.registration_opens_at ? `Registration opens ${fmtDT(data.registration_opens_at)}.` : m[2];
+                html += `<div class="mt-6 bg-slate-50 rounded-2xl p-5 text-center"><i class="fas ${m[0]} text-3xl text-slate-400"></i><p class="font-bold mt-2">${m[1]}</p><p class="text-sm text-slate-500">${esc(note)}</p></div>`;
+                view.innerHTML = html + ticketsList();
+            } else if (data.seats_left === 0 && !data.allow_waitlist) {
+                view.innerHTML = html + `<div class="mt-6 bg-slate-50 rounded-2xl p-5 text-center"><i class="fas fa-users-slash text-3xl text-slate-400"></i><p class="font-bold mt-2">Fully booked</p></div>` + ticketsList();
+            } else {
+                const party = data.max_party_size > 1 ? `<label class="block text-sm font-semibold text-slate-700">How many people (including you)?<select name="party_size" class="dc-input mt-1">${Array.from({ length: data.max_party_size }, (_, i) => `<option>${i + 1}</option>`).join('')}</select></label>` : '';
+                html += `<form id="reg-form" class="mt-6 space-y-3 border-t border-slate-100 pt-5" novalidate>
+                    <h2 class="font-extrabold text-slate-800">Register — it's free</h2>
+                    <label class="block text-sm font-semibold text-slate-700">Full name *<input name="full_name" class="dc-input mt-1" required minlength="2" maxlength="120" autocomplete="name"></label>
+                    ${field(data.phone_mode, `<label class="block text-sm font-semibold text-slate-700">Phone (WhatsApp)%STAR%<input name="phone" class="dc-input mt-1" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="e.g. 0803 123 4567" %REQ%></label>`)}
+                    ${field(data.email_mode, `<label class="block text-sm font-semibold text-slate-700">E-mail%STAR%<input name="email" type="email" class="dc-input mt-1" autocomplete="email" maxlength="160" %REQ%></label>`)}
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="block text-sm font-semibold text-slate-700">Gender<select name="gender" class="dc-input mt-1"><option value="">Prefer not to say</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
+                        <label class="block text-sm font-semibold text-slate-700">Age group<select name="age_group" class="dc-input mt-1"><option value="">Prefer not to say</option><option>under-13</option><option>13-17</option><option>18-25</option><option>26-35</option><option>36-50</option><option>51+</option></select></label>
+                    </div>
+                    <label class="block text-sm font-semibold text-slate-700">Church / school / organisation<input name="organisation" class="dc-input mt-1" maxlength="160"></label>
+                    <label class="block text-sm font-semibold text-slate-700">How did you hear about this?<select name="how_heard" class="dc-input mt-1"><option value="">Choose…</option>${HOW_HEARD.map(h => `<option>${h}</option>`).join('')}</select></label>
+                    ${party}
+                    ${(data.custom_questions || []).map(questionInput).join('')}
+                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_first_timer"> This is my first time attending</label>
+                    <div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+                    <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="consent" required class="mt-1"> <span>I agree that my details may be used to organise this programme and contact me about it. *</span></label>
+                    <p id="form-error" class="text-sm text-red-600 hidden" role="alert"></p>
+                    <button class="dc-btn dc-btn-primary w-full py-3 text-base" type="submit" id="reg-submit">${data.seats_left === 0 ? 'Join the waitlist' : 'Register now'}</button>
+                </form>` + ticketsList();
+                view.innerHTML = html;
+                document.getElementById('reg-form').addEventListener('submit', submitRegistration);
+            }
+            countdown(document.getElementById('cd'), data.starts_at);
+        }
+        async function submitRegistration(ev) {
+            ev.preventDefault();
+            const form = ev.target, errBox = document.getElementById('form-error'), btn = document.getElementById('reg-submit');
+            errBox.classList.add('hidden');
+            if (!form.checkValidity()) { const bad = form.querySelector(':invalid'); errBox.textContent = bad && bad.name === 'consent' ? 'Please tick the privacy agreement to continue.' : 'Please complete the highlighted fields.'; errBox.classList.remove('hidden'); if (bad) bad.focus(); return; }
+            const f = form.elements, answers = {};
+            (program.custom_questions || []).forEach(q => { const el = f['q_' + q.id]; const v = el && (el.value || ''); if (v) answers[q.id] = v; });
+            const payload = {
+                full_name: f.full_name.value, phone: f.phone ? f.phone.value : '', email: f.email ? f.email.value : '',
+                gender: f.gender.value, age_group: f.age_group.value, organisation: f.organisation.value, how_heard: f.how_heard.value,
+                party_size: f.party_size ? f.party_size.value : 1, is_first_timer: f.is_first_timer.checked, consent: f.consent.checked,
+                website: f.website.value, source: params.get('src') || 'direct', answers
+            };
+            const label = btn.textContent;
+            btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-1"></i> Registering…';
+            const { data, error } = await sb.rpc('dc_register_for_program', { p_slug: program.slug, p_payload: payload });
+            btn.disabled = false; btn.textContent = label;
+            if (error) {
+                const offline = /fetch|network|timeout/i.test(String(error.message || ''));
+                errBox.textContent = offline ? 'Connection problem — your registration was not sent. Please try again.' : String(error.message || 'Registration failed');
+                errBox.classList.remove('hidden'); return;
+            }
+            saveTicket(data);
+            history.replaceState(null, '', '?t=' + encodeURIComponent(data.ticket_token));
+            showTicket(data.ticket_token, data.result === 'duplicate' ? 'You were already registered — here is your ticket again.' : null);
+        }
+
+        /* ------------------------------- Ticket ------------------------------- */
+        async function showTicket(token, notice) {
+            const { data, error } = await sb.rpc('dc_program_ticket', { p_token: token });
+            if (error) return fail('Ticket temporarily unavailable', 'Please try again in a few minutes.', 'fa-plug-circle-exclamation');
+            if (!data || !data.found) return fail('Ticket not found', 'This ticket link is not valid.', 'fa-ticket');
+            saveTicket(data);
+            document.title = data.title + ' | Ticket';
+            const url = DCCodes.ticketUrl(data.ticket_token);
+            const pill = data.status === 'cancelled' ? ['bg-red-600', 'CANCELLED'] : data.checked_in ? ['bg-emerald-600', 'CHECKED IN'] : data.status === 'waitlisted' ? ['bg-amber-500', 'WAITLIST'] : ['bg-slate-800', 'ADMIT ' + data.party_size];
+            view.innerHTML = `${notice ? `<p class="mb-4 text-sm bg-sky-50 text-sky-900 rounded-lg p-3">${esc(notice)}</p>` : ''}
+                ${data.status === 'registered' && !data.checked_in && !notice ? '<p class="mb-4 text-sm bg-emerald-50 text-emerald-800 rounded-lg p-3"><i class="fas fa-circle-check mr-1"></i>You are registered! Show this QR code at the entrance.</p>' : ''}
+                ${data.status === 'waitlisted' ? '<p class="mb-4 text-sm bg-amber-50 text-amber-900 rounded-lg p-3">The programme is full, so you are on the <b>waitlist</b>. We will contact you if a seat frees up; you may also be admitted at the door if space allows.</p>' : ''}
+                <div class="border-2 border-dashed border-slate-200 rounded-2xl p-5 text-center">
+                    <p class="text-xs uppercase font-bold tracking-wider text-slate-400">Ticket</p>
+                    <h1 class="text-xl font-black text-slate-800 leading-tight">${esc(data.title)}</h1>
+                    <p class="text-sm text-slate-500 mt-1">${esc(fmtDT(data.starts_at))}${data.venue ? '<br>' + esc(data.venue) : ''}</p>
+                    <div class="qr-box w-56 mx-auto my-4">${DCCodes.qrSvg(url, { size: 240, ecl: 'Q', label: 'Ticket QR code' })}</div>
+                    <p class="font-mono text-2xl font-black tracking-[.3em] text-slate-800">${esc(data.ticket_code)}</p>
+                    <p class="text-sm font-semibold mt-1">${esc(data.full_name)}</p>
+                    <span class="inline-block mt-2 px-3 py-1 rounded-full text-white text-xs font-black ${pill[0]}">${pill[1]}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mt-4 no-print">
+                    <a class="dc-btn bg-slate-100 text-slate-700 text-center" download="${esc(data.slug)}.ics" href="${icsFor(data, url)}"><i class="fas fa-calendar-plus mr-1"></i>Add to calendar</a>
+                    <button class="dc-btn bg-slate-100 text-slate-700" onclick="window.print()"><i class="fas fa-print mr-1"></i>Print / save PDF</button>
+                    <a class="dc-btn bg-emerald-600 text-white text-center" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('My ticket for ' + data.title + ': ' + url)}"><i class="fab fa-whatsapp mr-1"></i>Send to my WhatsApp</a>
+                    <a class="dc-btn bg-slate-800 text-white text-center" href="?p=${encodeURIComponent(data.slug)}&src=referral"><i class="fas fa-user-plus mr-1"></i>Invite a friend</a>
+                </div>
+                <p class="text-xs text-slate-400 mt-3 no-print">Bookmark this page — it is your ticket. It is also saved on this device.</p>
+                <div id="fb"></div>`;
+            if (data.feedback_open) renderFeedback(data);
+        }
+        function renderFeedback(t) {
+            const box = document.getElementById('fb');
+            let rating = t.feedback_rating || 0;
+            box.innerHTML = `<form id="fb-form" class="mt-6 bg-slate-50 rounded-2xl p-5 no-print">
+                <h2 class="font-extrabold text-slate-800">${t.feedback_rating ? 'Thanks for your feedback — you can update it' : 'How was it?'}</h2>
+                <div class="flex gap-1 my-2" role="radiogroup" aria-label="Rating">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star" data-n="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
+                <textarea name="comment" class="dc-input" rows="3" maxlength="1000" placeholder="What did you enjoy? What should we improve? (optional)"></textarea>
+                <button class="dc-btn dc-btn-primary mt-2" type="submit">Send feedback</button></form>`;
+            const paint = () => box.querySelectorAll('.star').forEach(s => s.classList.toggle('on', Number(s.dataset.n) <= rating));
+            paint();
+            box.querySelectorAll('.star').forEach(s => s.addEventListener('click', () => { rating = Number(s.dataset.n); paint(); }));
+            box.querySelector('#fb-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!rating) return UI.toast('Tap a star to rate.', 'error');
+                const { error } = await sb.rpc('dc_submit_program_feedback', { p_token: t.ticket_token, p_rating: rating, p_comment: e.target.elements.comment.value || null });
+                if (error) return UI.toast(error.message, 'error');
+                box.innerHTML = '<p class="mt-6 bg-emerald-50 text-emerald-800 rounded-2xl p-5 text-center font-semibold"><i class="fas fa-heart mr-1"></i>Thank you! Your feedback helps us plan better programmes.</p>';
+            });
+        }
+
+        (async () => {
+            if (!window.sb) return fail('Registration is temporarily unavailable', 'The site could not reach its database. Check your connection and try again.', 'fa-plug-circle-exclamation');
+            try {
+                const { data } = await sb.from('tenant_settings').select('org_name,logo_url,primary_color').eq('id', 1).maybeSingle();
+                if (data && data.primary_color && Utils.isHexColor(data.primary_color)) {
+                    const style = document.createElement('style'); style.textContent = `.rccg-blue{background-color:${data.primary_color} !important}`; document.head.appendChild(style);
+                }
+                if (data) brand(data);
+            } catch (e) { /* branding is cosmetic */ }
+            const token = (params.get('t') || '').trim().toLowerCase();
+            const slug = (params.get('p') || '').trim().toLowerCase();
+            if (/^[a-f0-9]{32}$/.test(token)) return showTicket(token);
+            if (slug) return showProgram(slug);
+            fail('Which programme?', 'Open the registration link you were given, or scan the QR code on the poster.', 'fa-link');
+        })();
+    </script>
+</body>
+</html>

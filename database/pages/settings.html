@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="app-version" content="14.2">
+<title>Settings — DramaConnect</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="stylesheet" href="../assets/css/fallback.css">
+<script src="../assets/js/boot.js"></script>
+<style>
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .set-nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}
+  .set-nav a{font-size:.76rem;font-weight:700;padding:.35rem .8rem;border-radius:9999px;background:#e0e7ff;color:#3730a3;text-decoration:none;white-space:nowrap}
+  .set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+  .set-row{display:flex;align-items:flex-start;gap:.6rem;padding:.5rem;border-radius:.75rem}
+  .set-row:hover{background:#f8fafc}
+  .dark .set-row:hover{background:#1e293b}
+  .set-row small{display:block;color:#64748b;font-size:.75rem}
+  .set-status{display:grid;grid-template-columns:minmax(120px,22%) 1fr auto;gap:.6rem;align-items:center;font-size:.82rem;padding:.35rem 0;border-bottom:1px solid #f1f5f9}
+  .set-badge{font-size:.68rem;font-weight:800;border-radius:9999px;padding:.15rem .6rem}
+  .set-badge.ok{background:#dcfce7;color:#166534}.set-badge.warn{background:#fef3c7;color:#92400e}
+  .set-badge.bad{background:#fee2e2;color:#991b1b}.set-badge.mut{background:#e2e8f0;color:#334155}
+  .qr{background:#fff;padding:8px;border-radius:.75rem;display:inline-block;border:1px solid #e2e8f0}
+  .qr svg{width:180px;height:180px;display:block}
+  @media print{.no-print,#app-sidebar,.set-nav{display:none!important}.app-main{margin:0!important}}
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+<div id="app-sidebar"></div>
+<main class="app-main p-4 md:p-8">
+<div id="page-header"></div>
+
+<div id="migration-warning" class="hidden mb-4 rounded-2xl bg-amber-50 border border-amber-300 p-4 text-sm text-amber-900">
+  <b>Database pack out of date.</b> Some panels below need the latest SQL: open Supabase → SQL Editor and run <span class="mono">database/complete-schema.sql</span> once (safe to re-run), then reload. Check <a href="platform-health.html#sec-doctor" class="font-bold underline">Platform Health → Schema Doctor</a> for details.
+</div>
+
+<nav class="set-nav no-print" aria-label="Settings sections">
+  <a href="#sec-branding">🎨 Branding</a><a href="#sec-org">🏢 Organisation</a><a href="#sec-appearance">♿ Appearance &amp; accessibility</a>
+  <a href="#sec-attendance">📍 Attendance &amp; venue</a><a href="#sec-security">🔐 Security (2-step)</a><a href="#sec-modules">🧩 Module access</a>
+  <a href="#sec-assistant">🤖 Assistant &amp; help</a><a href="#sec-license">🔑 Licence</a><a href="#sec-system">🖥️ System &amp; control plane</a>
+</nav>
+
+<!-- ============ Branding ============ -->
+<section id="sec-branding" class="dc-section">
+  <h2>🎨 Global App Branding</h2>
+  <p class="lead">The name, organisation, logo and theme colour every member sees in the sidebar, the ID card and the public pages.</p>
+  <div class="set-grid">
+    <label class="dc-field">Application Name<input id="saas-app" class="dc-input" maxlength="60" placeholder="DramaConnect"></label>
+    <label class="dc-field">Organization / Province<input id="saas-org" class="dc-input" maxlength="80" placeholder="RCCG LP 25 Drama Department"></label>
+    <label class="dc-field">Logo URL<input id="saas-logo" class="dc-input" placeholder="https://… or ../assets/img/rccg_logo.png"></label>
+    <label class="dc-field">Primary Theme Color<input id="saas-color" class="dc-input" type="color" value="#1e40af"></label>
+  </div>
+  <div class="flex gap-2 mt-3">
+    <button id="saas-save" class="btn btn-primary">Apply Branding</button>
+    <button id="saas-preview" class="btn btn-secondary">Preview logo</button>
+  </div>
+  <p class="dc-muted mt-2">Branding is stored in the database (<span class="mono">tenant_settings</span>), so every device sees it. Leave the logo empty to keep the built-in RCCG logo.</p>
+</section>
+
+<!-- ============ Organisation ============ -->
+<section id="sec-org" class="dc-section">
+  <h2>🏢 Organisation &amp; device profile</h2>
+  <p class="lead">Department details for this deployment. The device profile is stored on this device only (it labels printed documents and the dashboard greeting).</p>
+  <div class="set-grid">
+    <label class="dc-field">Department Name<input id="d-name" class="dc-input"></label>
+    <label class="dc-field">Province<input id="d-prov" class="dc-input"></label>
+    <label class="dc-field">Leader / Coordinator<input id="d-leader" class="dc-input"></label>
+    <label class="dc-field">Contact<input id="d-contact" class="dc-input"></label>
+  </div>
+  <div class="set-grid mt-3">
+    <label class="dc-field">Default language<select id="org-language" class="dc-input"></select></label>
+    <label class="dc-field">Time zone<select id="org-timezone" class="dc-input"></select></label>
+  </div>
+  <div class="flex gap-2 mt-3">
+    <button id="d-save" class="btn btn-secondary">Save Device Profile</button>
+    <button id="org-save" class="btn btn-primary">Save organisation settings</button>
+  </div>
+  <p class="dc-muted mt-2">The language and time zone are organisation-wide defaults; each member can still override the language from the sidebar.</p>
+</section>
+
+<!-- ============ Appearance & accessibility ============ -->
+<section id="sec-appearance" class="dc-section">
+  <h2>♿ Appearance &amp; accessibility</h2>
+  <p class="lead">Per-device display preferences. Nothing here changes what other people see. High contrast can also be switched on for everyone by default below.</p>
+  <div class="set-grid">
+    <div>
+      <div class="set-row"><input type="checkbox" id="a11y-highContrast"><label for="a11y-highContrast"><b>High contrast</b><small>Stronger borders and darker text.</small></label></div>
+      <div class="set-row"><input type="checkbox" id="a11y-largeText"><label for="a11y-largeText"><b>Larger text</b><small>Bigger base font and roomier lines.</small></label></div>
+      <div class="set-row"><input type="checkbox" id="a11y-reduceMotion"><label for="a11y-reduceMotion"><b>Reduce motion</b><small>Turn animations and fades off.</small></label></div>
+      <div class="set-row"><input type="checkbox" id="a11y-dyslexia"><label for="a11y-dyslexia"><b>Dyslexia-friendly font</b><small>Wider, simpler letterforms.</small></label></div>
+      <div class="set-row"><input type="checkbox" id="a11y-underlineLinks"><label for="a11y-underlineLinks"><b>Always underline links</b><small>Links are not distinguished by colour alone.</small></label></div>
+      <div class="set-row"><input type="checkbox" id="a11y-focusRing"><label for="a11y-focusRing"><b>Strong focus outline</b><small>Thicker highlight for keyboard users.</small></label></div>
+    </div>
+    <div>
+      <label class="dc-field">Text scale <span id="scale-value" class="mono">100%</span></label>
+      <input id="a11y-textScale" type="range" min="1" max="1.4" step="0.05" value="1" class="w-full">
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button id="theme-toggle" class="btn btn-secondary"><i class="fas fa-circle-half-stroke"></i> Toggle Theme</button>
+        <button id="a11y-reset" class="btn btn-secondary">Reset these preferences</button>
+        <button id="a11y-save-default" class="btn btn-primary">Make high contrast the organisation default</button>
+      </div>
+      <p class="dc-muted mt-3">Keyboard users: every control here is reachable with Tab, and the strong focus outline makes the current control obvious. Screen readers announce section headings and status pills.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Attendance & venue ============ -->
+<section id="sec-attendance" class="dc-section">
+  <h2>📍 Attendance &amp; venue</h2>
+  <p class="lead">The call time and grace period used by Analytics to tell "on time" from "late", and the optional venue fence that proves a member was physically present when they checked themselves in.</p>
+  <div class="set-grid">
+    <label class="dc-field">Call time (24-hour)<input id="org-call-time" type="time" class="dc-input"></label>
+    <label class="dc-field">Late after (minutes)<input id="org-late" type="number" min="0" max="240" class="dc-input"></label>
+    <label class="dc-field">Venue name<input id="org-venue" class="dc-input" maxlength="120" placeholder="Main hall, LP 25"></label>
+  </div>
+  <div class="set-grid mt-3">
+    <label class="dc-field">Venue latitude<input id="org-lat" class="dc-input mono" type="number" step="0.000001" min="-90" max="90"></label>
+    <label class="dc-field">Venue longitude<input id="org-lng" class="dc-input mono" type="number" step="0.000001" min="-180" max="180"></label>
+    <label class="dc-field">Allowed radius (metres)<input id="org-radius" type="number" min="20" max="5000" class="dc-input"></label>
+    <label class="dc-field">Maximum GPS error accepted (metres)<input id="org-accuracy" type="number" min="10" max="5000" class="dc-input"></label>
+  </div>
+  <div class="set-row mt-2"><input type="checkbox" id="org-geofence"><label for="org-geofence"><b>Require members to be at the venue to self check-in</b><small>Members must allow location access. If their location cannot be read, or they are outside the radius, check-in is refused — an admin can always mark attendance manually on the Attendance page.</small></label></div>
+  <div class="flex flex-wrap gap-2 mt-3">
+    <button id="org-locate" class="btn btn-secondary"><i class="fas fa-location-crosshairs"></i> Use this device's location</button>
+    <button id="org-save-attendance" class="btn btn-primary">Save attendance settings</button>
+    <a href="attendance.html" class="btn btn-secondary">Open Attendance</a>
+  </div>
+  <p id="geo-preview" class="dc-muted mt-2"></p>
+</section>
+
+<!-- ============ Security ============ -->
+<section id="sec-security" class="dc-section">
+  <h2>🔐 Security (two-step verification) &amp; session</h2>
+  <p class="lead">Two-step verification uses an authenticator app (Google Authenticator, Microsoft Authenticator, Authy, 2FAS…). It is free and needs no SMS provider. If your organisation requires it for administrators, you will be reminded until it is on.</p>
+  <div id="mfa-status" class="mb-3"></div>
+  <div id="mfa-setup" class="hidden mb-3 p-3 rounded-xl border border-blue-200 bg-blue-50">
+    <p class="text-sm text-blue-900 mb-2"><b>1.</b> Open your authenticator app and scan this code — or type the secret by hand.</p>
+    <div class="flex flex-wrap gap-4 items-start">
+      <div id="mfa-qr" class="qr"></div>
+      <div>
+        <p class="dc-field">Secret (case-sensitive)</p>
+        <code class="dc-code" id="mfa-secret"></code>
+        <p class="dc-field mt-3">2. Enter the 6-digit code the app shows</p>
+        <input id="mfa-code" inputmode="numeric" maxlength="6" class="dc-input mono" placeholder="123456" style="max-width:160px">
+        <div class="flex gap-2 mt-2"><button id="mfa-verify" class="btn btn-primary">Turn on two-step verification</button><button id="mfa-cancel" class="btn btn-secondary">Cancel</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <button id="mfa-enable" class="btn btn-primary"><i class="fas fa-shield-halved"></i> Set up two-step verification</button>
+    <a href="platform-health.html#sec-security" class="btn btn-secondary">Idle sign-out &amp; emergency lockdown</a>
+  </div>
+  <div class="set-row mt-4"><input type="checkbox" id="org-mfa-required"><label for="org-mfa-required"><b>Ask administrators to turn on two-step verification</b><small>Advisory: the app reminds administrators at sign-in until they enrol. It never blocks access, so you can never lock yourself out.</small></label></div>
+  <button id="org-save-security" class="btn btn-primary mt-2">Save security policy</button>
+  <p class="dc-muted mt-3">Idle auto sign-out and the emergency lockdown live on <a href="platform-health.html#sec-security" class="font-semibold text-blue-700 underline">Platform Health → Security state</a> because they change what happens to <em>other</em> people, and that page shows the live enforcement state.</p>
+</section>
+
+<!-- ============ Module access ============ -->
+<section id="sec-modules" class="dc-section">
+  <h2>🧩 Module access (hide sections from members)</h2>
+  <p class="lead">Untick a section to hide it from members and unit leaders. Administrators always keep every section, and the core administration pages can never be hidden — a mistake here cannot lock you out of Settings.</p>
+  <div class="flex flex-wrap gap-2 mb-3">
+    <button id="mod-all" class="btn btn-secondary">Show everything</button>
+    <button id="mod-none" class="btn btn-secondary">Hide everything optional</button>
+    <button id="mod-save" class="btn btn-primary">Save module access</button>
+  </div>
+  <div id="module-list" class="set-grid"></div>
+  <p class="dc-muted mt-2">Members who open a hidden section are returned to their dashboard with an explanation. Hidden sections are marked "off" in the admin sidebar.</p>
+</section>
+
+<!-- ============ Assistant ============ -->
+<section id="sec-assistant" class="dc-section">
+  <h2>🤖 Assistant &amp; help</h2>
+  <p class="lead">The built-in helper explains every page and answers questions about the data on screen. It is rule-based — it runs entirely in the browser with no AI service, no API key and no data leaving the device.</p>
+  <div class="set-row"><input type="checkbox" id="org-assistant"><label for="org-assistant"><b>Show the assistant bubble</b><small>Turning this off hides the bubble for everyone; the Help page and every page description stay available.</small></label></div>
+  <div class="flex flex-wrap gap-2 mt-2">
+    <button id="org-save-assistant" class="btn btn-primary">Save assistant setting</button>
+    <a href="help.html" class="btn btn-secondary">Open Help &amp; FAQ</a>
+  </div>
+</section>
+
+<!-- ============ Licence ============ -->
+<section id="sec-license" class="dc-section">
+  <h2>🔑 Site licence</h2>
+  <p class="lead">Lifetime ownership by default; a generated site can also run on a subscription with a grace period. The public verdict is what HMG Fleet Console reads.</p>
+  <div id="license-summary" class="set-grid"></div>
+  <a href="site-license.html" class="btn btn-primary mt-3">Open the licence control panel</a>
+</section>
+
+<!-- ============ System ============ -->
+<section id="sec-system" class="dc-section">
+  <h2>🖥️ System information &amp; control plane</h2>
+  <p class="lead">Read-only fingerprint of this installation, plus the live status of every administration surface. Each capability has exactly one owner page; this table is the map.</p>
+  <div class="set-grid mb-4">
+    <div><p class="dc-field">Application</p><p id="sys-app" class="font-bold">—</p></div>
+    <div><p class="dc-field">App version</p><p id="sys-ver" class="font-bold">—</p></div>
+    <div><p class="dc-field">Schema version</p><p id="sys-schema" class="font-bold">—</p></div>
+    <div><p class="dc-field">Your role</p><p id="sys-role" class="font-bold">—</p></div>
+    <div><p class="dc-field">Installed as app (PWA)</p><p id="sys-pwa" class="font-bold">—</p></div>
+    <div><p class="dc-field">Release cache</p><p id="sys-cache" class="font-bold mono">—</p></div>
+    <div><p class="dc-field">Supabase project</p><p id="sys-project" class="font-bold mono" style="word-break:break-all">—</p></div>
+    <div><p class="dc-field">Timezone / language</p><p id="sys-locale" class="font-bold">—</p></div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-2 text-left">Capability</th><th class="p-2 text-left">Owner page</th><th class="p-2 text-left">Live status</th></tr></thead>
+      <tbody id="control-plane"></tbody>
+    </table>
+  </div>
+  <div class="flex flex-wrap gap-2 mt-3">
+    <button id="cp-refresh" class="btn btn-secondary"><i class="fas fa-rotate"></i> Refresh status</button>
+    <a href="platform-health.html" class="btn btn-secondary">Platform Health</a>
+    <a href="platform-health.html#sec-doctor" class="btn btn-secondary">Schema Doctor</a>
+  </div>
+</section>
+
+</main>
+<script src="../assets/js/config.js"></script><script src="../assets/js/resilience.js"></script><script src="../assets/js/platform-management.js"></script><script src="../assets/js/data-portability.js"></script><script src="../assets/js/drive-sync.js"></script><script src="../assets/js/i18n.js"></script><script src="../assets/js/ui.js"></script><script src="../assets/js/auth.js"></script><script src="../assets/js/db.js"></script><script src="../assets/js/utils.js"></script><script src="../assets/js/layout.js"></script><script src="../assets/js/install.js"></script>
+<script src="../assets/js/page-guide.js"></script>
+<script src="../assets/js/assistant.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id) || { textContent: '', innerHTML: '', classList: { add() {}, remove() {} }, style: {}, value: '', checked: false };
+  const esc = v => UI.esc(v ?? '');
+  const msg = e => PlatformManagement.clean(e);
+  const ago = value => { if (!value) return 'never'; const h = (Date.now() - new Date(value).getTime()) / 3.6e6; if (h < 0) return 'just now'; if (h < 1) return 'moments ago'; if (h < 48) return `${Math.round(h)}h ago`; return `${Math.round(h / 24)}d ago`; };
+  const TIMEZONES = ['Africa/Lagos', 'Africa/Accra', 'Africa/Johannesburg', 'Africa/Nairobi', 'Africa/Cairo', 'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'Asia/Dubai', 'Asia/Kolkata', 'UTC'];
+  let me = null, org = null, factors = [];
+
+  const PROTECTED = ['home', 'profile', 'help', 'settings', 'admin-data', 'storage-manager', 'platform-health', 'roles-status', 'site-license', 'activity'];
+  const securityEvent = reason => { if (window.PlatformManagement) PlatformManagement.recordLoginEvent('security_changed', { reason }).catch(() => {}); };
+
+  function migrationFailed(error) {
+    const m = String(error?.message || error || '');
+    if (/dc_(keep_alive|heartbeat|backup|org_settings|analytics)|resilience_and_backup|schema cache|could not find/i.test(m)) $('migration-warning').classList.remove('hidden');
+  }
+  async function action(label, task, successMessage) {
+    UI.showLoader(label);
+    try { const r = await task(); UI.hideLoader(); if (successMessage) UI.toast(successMessage, 'success', 6000); return r; }
+    catch (e) { UI.hideLoader(); migrationFailed(e); UI.toast(e.message || String(e), 'error', 9000); throw e; }
+  }
+
+  /* ---------------- accessibility ---------------- */
+  function paintA11y(prefs) {
+    ['highContrast', 'largeText', 'reduceMotion', 'dyslexia', 'underlineLinks', 'focusRing'].forEach(k => { const el = $('a11y-' + k); if (el) el.checked = !!prefs[k]; });
+    const scale = Number(prefs.textScale || 1);
+    $('a11y-textScale').value = String(scale);
+    $('scale-value').textContent = `${Math.round(scale * 100)}%`;
+  }
+  function readA11y() {
+    const prefs = {};
+    ['highContrast', 'largeText', 'reduceMotion', 'dyslexia', 'underlineLinks', 'focusRing'].forEach(k => { prefs[k] = $('a11y-' + k).checked; });
+    prefs.textScale = Number($('a11y-textScale').value || 1);
+    return prefs;
+  }
+  function saveA11y(toast) {
+    const prefs = readA11y();
+    if (window.DCA11y) DCA11y.save(prefs);
+    paintA11y(prefs);
+    if (toast) UI.toast('Display preferences saved on this device.', 'success', 4000);
+  }
+
+  /* ---------------- organisation settings ---------------- */
+  function fillOrg(o) {
+    org = o || null;
+    const s = o || { default_language: 'en', timezone: 'Africa/Lagos', call_time: '16:00', late_after_minutes: 15,
+      geofence_enabled: false, geofence_radius_m: 150, geofence_max_accuracy_m: 200, venue_name: '',
+      require_admin_mfa: false, assistant_enabled: true, high_contrast_default: false, disabled_modules: [] };
+    $('org-language').innerHTML = ((window.I18n && I18n.LANGS) || [['en', 'English'], ['yo', 'Yorùbá']]).map(([c, n]) => `<option value="${esc(c)}">${esc(n)}</option>`).join('');
+    $('org-language').value = s.default_language || 'en';
+    $('org-timezone').innerHTML = TIMEZONES.concat([s.timezone].filter(t => t && !TIMEZONES.includes(t))).map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+    $('org-timezone').value = s.timezone || 'Africa/Lagos';
+    $('org-call-time').value = String(s.call_time || '16:00').slice(0, 5);
+    $('org-late').value = s.late_after_minutes ?? 15;
+    $('org-venue').value = s.venue_name || '';
+    $('org-lat').value = s.geofence_lat ?? '';
+    $('org-lng').value = s.geofence_lng ?? '';
+    $('org-radius').value = s.geofence_radius_m ?? 150;
+    $('org-accuracy').value = s.geofence_max_accuracy_m ?? 200;
+    $('org-geofence').checked = !!s.geofence_enabled;
+    $('org-mfa-required').checked = !!s.require_admin_mfa;
+    $('org-assistant').checked = s.assistant_enabled !== false;
+    renderModules(s.disabled_modules || []);
+    geoPreview();
+    if (o) {
+      if (window.I18n && o.default_language) { I18n.lang = o.default_language; }
+    }
+  }
+  function geoPreview() {
+    const on = $('org-geofence').checked;
+    const lat = $('org-lat').value, lng = $('org-lng').value, r = $('org-radius').value;
+    $('geo-preview').textContent = !on ? 'Venue fence is off: members can check in from anywhere (the code still has to be right).'
+      : (lat && lng) ? `Fence on: check-in is accepted within ${r} m of ${$('org-venue').value || 'the venue'} (${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}), ignoring reported GPS error up to ${Math.min(Number(r), Number($('org-accuracy').value || 0))} m.`
+      : '⚠ Fence is on but the venue coordinates are empty — set them with "Use this device\u2019s location".';
+  }
+  async function saveOrg(payload, message, reason) {
+    return action('Saving settings…', async () => {
+      const saved = await PlatformManagement.updateOrgSettings(payload);
+      fillOrg(saved);
+      if (reason) securityEvent(reason);
+      return saved;
+    }, message);
+  }
+
+  /* ---------------- module access ---------------- */
+  function renderModules(disabled) {
+    const off = new Set(disabled || []);
+    const items = (Layout.nav || []).flatMap(g => g.items.map(i => ({ ...i, group: g.group })));
+    $('module-list').innerHTML = items.map(i => {
+      const locked = PROTECTED.includes(i.id);
+      return `<div class="set-row"><input type="checkbox" data-module="${esc(i.id)}" ${locked || !off.has(i.id) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+        <label for=""><b>${esc(i.label)}</b><small>${esc(i.group)}${locked ? ' · core administration (always visible to admins)' : ''}</small></label></div>`;
+    }).join('');
+    $('module-list').querySelectorAll('input[data-module]').forEach(el => {
+      el.id = 'mod-' + el.dataset.module;
+      const label = el.parentElement.querySelector('label');
+      if (label) label.setAttribute('for', el.id);
+    });
+  }
+  function collectModules() {
+    return [...$('module-list').querySelectorAll('input[data-module]')]
+      .filter(el => !el.disabled && !el.checked).map(el => el.dataset.module);
+  }
+
+  /* ---------------- two-step verification ---------------- */
+  async function renderMfa() {
+    const host = $('mfa-status');
+    if (!Auth.mfaSupported()) { host.innerHTML = '<p class="text-sm text-slate-500">This browser build cannot manage authenticator apps. Use the current Supabase JS client to enable two-step verification.</p>'; return; }
+    try {
+      factors = await Auth.mfaListFactors();
+      const verified = factors.filter(f => f.status === 'verified');
+      host.innerHTML = verified.length
+        ? verified.map(f => `<div class="set-status"><span><b>${esc(f.friendly_name || 'Authenticator app')}</b><small class="block text-slate-500">added ${esc(f.created_at ? new Date(f.created_at).toLocaleDateString() : '')}</small></span><span class="set-badge ok">ON</span><button class="dc-btn danger btn-sm" data-unenroll="${esc(f.id)}">Turn off</button></div>`).join('')
+        : '<p class="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded-xl p-3">Two-step verification is <b>off</b> for your account. Turn it on below — it takes a minute and protects the department data if your password leaks.</p>';
+      host.querySelectorAll('[data-unenroll]').forEach(b => {
+        b.onclick = async () => {
+          if (!confirm('Turn off two-step verification for this account? Anyone with your password will be able to sign in again.')) return;
+          try { await Auth.mfaUnenroll(b.dataset.unenroll); UI.toast('Two-step verification turned off.', 'success'); securityEvent('mfa_disabled'); renderMfa(); }
+          catch (e) { UI.toast(msg(e), 'error', 8000); }
+        };
+      });
+      $('mfa-enable').style.display = verified.length ? 'none' : '';
+    } catch (e) { host.innerHTML = `<p class="text-sm text-slate-500">Two-step verification status unavailable: ${esc(msg(e))}</p>`; }
+  }
+  async function startEnrollment() {
+    try {
+      const data = await Auth.mfaEnroll(`${(window.CONFIG && CONFIG.APP_NAME) || 'DramaConnect'} — ${new Date().toLocaleDateString()}`);
+      const totp = data.totp || {};
+      $('mfa-qr').innerHTML = totp.qr_code || '';
+      $('mfa-secret').textContent = totp.secret || '—';
+      $('mfa-code').value = '';
+      $('mfa-setup').classList.remove('hidden');
+      $('mfa-setup').dataset.factor = data.id;
+      $('mfa-code').focus();
+    } catch (e) { UI.toast(msg(e), 'error', 9000); }
+  }
+  async function verifyEnrollment() {
+    const id = $('mfa-setup').dataset.factor;
+    const code = $('mfa-code').value.replace(/\D/g, '');
+    if (!id) return;
+    if (code.length !== 6) { UI.toast('Enter the 6-digit code from the app.', 'warning'); return; }
+    try {
+      await Auth.mfaVerifyEnrollment(id, code);
+      UI.toast('Two-step verification is on. You will be asked for a code at your next sign-in.', 'success', 9000);
+      $('mfa-setup').classList.add('hidden');
+      renderMfa();
+    } catch (e) { UI.toast(/invalid|expired|mismatch/i.test(e.message || '') ? 'That code is wrong or expired — wait for the next one and try again.' : msg(e), 'error', 9000); }
+  }
+
+  /* ---------------- licence + control plane ---------------- */
+  async function loadLicense() {
+    try {
+      const [lic, probe] = await Promise.all([PlatformManagement.getLicense(), PlatformManagement.licenseProbe().catch(() => null)]);
+      const l = lic || {};
+      $('license-summary').innerHTML = [
+        ['Model', l.license_model === 'lifetime' ? 'Lifetime (no renewal)' : (l.license_model || '—')],
+        ['Status', l.license_status || '—'],
+        ['Licensed to', l.licensed_to || '—'],
+        ['Expires', l.expires_on || (l.license_model === 'lifetime' ? 'Never' : '—')],
+        ['Grace period', `${l.grace_days ?? '—'} day(s)`],
+        ['Public verdict', probe ? (probe.state || probe.status || '—') : 'unavailable']
+      ].map(([k, v]) => `<div><p class="dc-field">${esc(k)}</p><p class="font-bold">${esc(v)}</p></div>`).join('');
+    } catch (e) { $('license-summary').innerHTML = `<p class="text-sm text-slate-500">${esc(msg(e))}</p>`; }
+  }
+
+  const setStatus = (key, text, tone) => { const el = document.querySelector(`[data-cp="${key}"]`); if (el) el.innerHTML = `<span class="set-badge ${tone}">${esc(text)}</span>`; };
+  function paintControlPlane() {
+    const rows = [
+      ['admin-data', 'Admin Data', 'Backups, Google Drive, restore', 'admin-data.html'],
+      ['platform-health', 'Platform Health', 'Anti-pause layers, Schema Doctor, sign-in audit', 'platform-health.html'],
+      ['storage-manager', 'Storage Manager', 'Space, quotas, retention, Archive Vault', 'storage-manager.html'],
+      ['roles-status', 'Roles &amp; Status', 'Approvals, roles, unit leaders', 'roles-status.html'],
+      ['site-license', 'Site Licence', 'Lifetime / subscription terms', 'site-license.html'],
+      ['activity', 'Audit / Activity Log', 'Operational trail and purge', 'activity.html']
+    ];
+    $('control-plane').innerHTML = rows.map(([key, name, what, href]) => `<tr class="border-t"><td class="p-2 font-bold">${name}<div class="text-xs text-slate-500">${what}</div></td><td class="p-2"><a class="underline text-blue-700" href="${href}">${href}</a></td><td class="p-2" data-cp="${key}"><span class="set-badge mut">checking…</span></td></tr>`).join('');
+  }
+  async function refreshControlPlane() {
+    $('migration-warning').classList.add('hidden');
+    try {
+      const health = await Resilience.getHealth();
+      const lastBackup = health.settings?.last_success_at || (health.runs || []).find(r => r.status === 'succeeded')?.completed_at;
+      setStatus('admin-data', lastBackup ? `Verified backup ${ago(lastBackup)}` : 'No verified backup yet', lastBackup ? 'ok' : 'warn');
+      const fresh = (health.heartbeats || []).filter(r => Date.now() - new Date(r.last_ping_at).getTime() < 72 * 3.6e6).length;
+      setStatus('platform-health', fresh === 0 ? 'No heartbeat in 72h' : fresh === 1 ? '1 source — single point of failure' : `${fresh} sources fresh`, fresh >= 2 ? 'ok' : fresh === 1 ? 'warn' : 'bad');
+      const q = health.quorum || {};
+      if (q.lastSource) setStatus('platform-health', fresh >= 2 ? `${fresh} sources fresh · last ${q.lastSource}` : `${fresh} source(s) fresh`, fresh >= 2 ? 'ok' : 'warn');
+    } catch (e) { migrationFailed(e); setStatus('admin-data', 'Status unavailable', 'mut'); setStatus('platform-health', 'Status unavailable', 'mut'); }
+    try {
+      const o = await PlatformManagement.storageOverview();
+      const pct = Math.max(Number(o.databasePercent || 0), Number(o.storagePercent || 0));
+      setStatus('storage-manager', `${pct}% of quota used`, pct >= (o.criticalPercent || 90) ? 'bad' : pct >= (o.warningPercent || 70) ? 'warn' : 'ok');
+    } catch (e) { migrationFailed(e); setStatus('storage-manager', 'Status unavailable', 'mut'); }
+    try {
+      const rows = await PlatformManagement.listMemberAccess();
+      const pending = (rows || []).filter(r => String(r.status || '').toLowerCase() === 'pending').length;
+      setStatus('roles-status', pending ? `${pending} awaiting approval` : 'No pending approvals', pending ? 'warn' : 'ok');
+    } catch (e) { migrationFailed(e); setStatus('roles-status', 'Status unavailable', 'mut'); }
+    try {
+      const lic = await PlatformManagement.getLicense();
+      const st = lic?.license_status || 'unknown';
+      setStatus('site-license', lic?.license_model === 'lifetime' ? 'Lifetime ownership' : st, /active|past_due/.test(st) ? 'ok' : 'bad');
+    } catch (e) { setStatus('site-license', 'Status unavailable', 'mut'); }
+    try {
+      const feed = await PlatformManagement.activityFeed({ days: 1, limit: 100 });
+      setStatus('activity', `${feed.summary?.today ?? 0} entr${feed.summary?.today === 1 ? 'y' : 'ies'} today`, 'ok');
+    } catch (e) { setStatus('activity', 'Status unavailable', 'mut'); }
+  }
+
+  /* ---------------- device profile + branding ---------------- */
+  function fillDeviceProfile() {
+    let dp = {};
+    try { dp = JSON.parse(localStorage.getItem('dc-dept') || '{}'); } catch (_) {}
+    $('d-name').value = dp.name || `RCCG ${CONFIG.PROVINCE} Drama Department`;
+    $('d-prov').value = dp.prov || CONFIG.PROVINCE || '';
+    $('d-leader').value = dp.leader || '';
+    $('d-contact').value = dp.contact || '';
+  }
+  function fillSystem() {
+    $('sys-app').textContent = CONFIG.APP_NAME;
+    $('sys-ver').textContent = CONFIG.APP_VERSION;
+    $('sys-schema').textContent = DataPortability.SCHEMA_VERSION;
+    $('sys-role').textContent = me ? `${me.role}${me.is_unit_leader ? ' · unit leader' : ''}` : '—';
+    $('sys-pwa').textContent = (matchMedia('(display-mode: standalone)').matches || navigator.standalone) ? 'Yes' : 'No';
+    $('sys-locale').textContent = `${(org && org.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone} · ${(window.I18n && I18n.lang) || 'en'}`;
+    $('sys-project').textContent = CONFIG.SUPABASE_URL.replace(/^https:\/\//, '');
+    fetch('../sw.js', { cache: 'no-store' }).then(r => r.text()).then(t => {
+      const m = t.match(/const CACHE = '([^']+)'/); $('sys-cache').textContent = m ? m[1] : '—';
+    }).catch(() => {});
+  }
+  async function loadBranding() {
+    try {
+      const ts = await DB.getTenantSettings();
+      if (!ts) return;
+      $('saas-app').value = ts.app_name || '';
+      $('saas-org').value = ts.org_name || '';
+      $('saas-logo').value = ts.logo_url || '';
+      $('saas-color').value = Utils.safeColor(ts.primary_color);
+    } catch (e) { console.warn('Branding settings unavailable:', e); }
+  }
+  async function saveBranding() {
+    try {
+      await action('Updating app branding…', async () => {
+        const logoUrl = Utils.safeImageUrl($('saas-logo').value.trim() || '../assets/img/rccg_logo.png');
+        const primaryColor = $('saas-color').value.trim();
+        if (!logoUrl) throw new Error('Use a valid HTTP(S) or same-origin relative logo URL.');
+        if (!Utils.isHexColor(primaryColor)) throw new Error('Choose a valid six-digit theme colour.');
+        await DB.updateTenantSettings({ app_name: $('saas-app').value.trim() || 'DramaConnect', org_name: $('saas-org').value.trim() || 'Church Dept', logo_url: logoUrl, primary_color: primaryColor });
+      }, 'Branding updated. Reloading…');
+      setTimeout(() => location.reload(), 1200);
+    } catch (_) {}
+  }
+
+  /* ---------------- wiring ---------------- */
+  function bind() {
+    // Accessibility
+    ['highContrast', 'largeText', 'reduceMotion', 'dyslexia', 'underlineLinks', 'focusRing'].forEach(k => { $('a11y-' + k).onchange = () => saveA11y(false); });
+    $('a11y-textScale').oninput = () => { $('scale-value').textContent = `${Math.round(Number($('a11y-textScale').value) * 100)}%`; saveA11y(false); };
+    $('a11y-reset').onclick = () => { if (window.DCA11y) DCA11y.reset(); paintA11y((window.DCA11y && DCA11y.read()) || {}); UI.toast('Display preferences reset.', 'success'); };
+    $('a11y-save-default').onclick = () => saveOrg({ high_contrast_default: true }, 'High contrast is now the default for everyone on first visit.').catch(() => {});
+    $('theme-toggle').onclick = () => UI.toggleTheme();
+
+    // Organisation
+    $('d-save').onclick = () => {
+      const profile = { name: $('d-name').value.trim(), prov: $('d-prov').value.trim(), leader: $('d-leader').value.trim(), contact: $('d-contact').value.trim() };
+      try { localStorage.setItem('dc-dept', JSON.stringify(profile)); UI.toast('Device profile saved.', 'success'); }
+      catch (_) { UI.toast('Could not save: this browser is blocking site data. The profile is applied for this session only.', 'warning', 8000); }
+    };
+    $('org-save').onclick = () => saveOrg({ default_language: $('org-language').value, timezone: $('org-timezone').value }, 'Organisation settings saved.').catch(() => {});
+
+    // Attendance
+    $('org-locate').onclick = () => {
+      if (!('geolocation' in navigator)) { UI.toast('This device cannot share its location.', 'warning'); return; }
+      UI.showLoader('Reading location…');
+      navigator.geolocation.getCurrentPosition(pos => {
+        UI.hideLoader();
+        $('org-lat').value = pos.coords.latitude.toFixed(6);
+        $('org-lng').value = pos.coords.longitude.toFixed(6);
+        geoPreview();
+        UI.toast(`Venue coordinates captured (±${Math.round(pos.coords.accuracy)} m). Press Save.`, 'success', 8000);
+      }, err => { UI.hideLoader(); UI.toast(err.code === 1 ? 'Location permission denied.' : 'Could not read the location.', 'error', 8000); }, { enableHighAccuracy: true, timeout: 15000 });
+    };
+    ['org-lat', 'org-lng', 'org-radius', 'org-accuracy', 'org-venue', 'org-geofence'].forEach(id => { const el = $(id); el.oninput = geoPreview; el.onchange = geoPreview; });
+    $('org-save-attendance').onclick = () => saveOrg({
+      call_time: $('org-call-time').value || '16:00', late_after_minutes: Number($('org-late').value || 15),
+      venue_name: $('org-venue').value.trim(),
+      geofence_enabled: $('org-geofence').checked,
+      geofence_lat: $('org-lat').value === '' ? null : Number($('org-lat').value),
+      geofence_lng: $('org-lng').value === '' ? null : Number($('org-lng').value),
+      geofence_radius_m: Number($('org-radius').value || 150),
+      geofence_max_accuracy_m: Number($('org-accuracy').value || 200)
+    }, 'Attendance settings saved.').catch(() => {});
+
+    // Security
+    $('mfa-enable').onclick = startEnrollment;
+    $('mfa-verify').onclick = verifyEnrollment;
+    $('mfa-code').addEventListener('keydown', e => { if (e.key === 'Enter') verifyEnrollment(); });
+    $('mfa-cancel').onclick = async () => {
+      const id = $('mfa-setup').dataset.factor;
+      $('mfa-setup').classList.add('hidden');
+      if (id) { try { await Auth.mfaUnenroll(id); } catch (_) {} }
+      renderMfa();
+    };
+    $('org-save-security').onclick = () => saveOrg({ require_admin_mfa: $('org-mfa-required').checked }, 'Security policy saved.', 'mfa_policy_changed').catch(() => {});
+
+    // Modules
+    $('mod-save').onclick = () => saveOrg({ disabled_modules: collectModules() }, 'Module access saved.').catch(() => {});
+    $('mod-all').onclick = () => { $('module-list').querySelectorAll('input[data-module]').forEach(el => { el.checked = true; }); };
+    $('mod-none').onclick = () => { $('module-list').querySelectorAll('input[data-module]').forEach(el => { el.checked = el.disabled; }); };
+
+    // Assistant
+    $('org-save-assistant').onclick = () => saveOrg({ assistant_enabled: $('org-assistant').checked }, 'Assistant setting saved.').catch(() => {});
+
+    // Branding + system
+    $('saas-save').onclick = saveBranding;
+    $('saas-preview').onclick = () => {
+      const url = Utils.safeImageUrl($('saas-logo').value.trim());
+      if (!url) { UI.toast('Enter a valid logo URL first.', 'warning'); return; }
+      const w = window.open('', '_blank');
+      if (!w) { UI.toast('Allow pop-ups to preview.', 'warning'); return; }
+      w.document.write(`<body style="font-family:system-ui;padding:24px"><h3>Logo preview</h3><img src="${UI.esc(url)}" style="max-width:220px;max-height:220px;border:1px solid #ddd;border-radius:12px;padding:8px"></body>`);
+      w.document.close();
+    };
+    $('cp-refresh').onclick = refreshControlPlane;
+    window.addEventListener('dc:backup-run-finished', () => refreshControlPlane().catch(() => {}));
+  }
+
+  async function init() {
+    me = await Auth.requireAdmin();
+    if (!me) return;
+    document.querySelectorAll('.admin-only').forEach(el => { el.style.display = 'block'; });
+    Layout.renderSidebar('settings', me);
+    $('page-header').innerHTML = Layout.renderHeader('Settings', 'Branding, organisation, accessibility, attendance, security, module access and system information');
+    Layout.setDate();
+    if (Layout.loadNotifications) Layout.loadNotifications(me);
+    paintControlPlane();
+    fillDeviceProfile();
+    paintA11y((window.DCA11y && DCA11y.read()) || {});
+    bind();
+    fillSystem();
+    try {
+      const o = await PlatformManagement.orgSettings(true);
+      fillOrg(o);
+      if (!o) $('migration-warning').classList.remove('hidden');
+    } catch (e) { migrationFailed(e); fillOrg(null); }
+    fillSystem();
+    await Promise.allSettled([loadBranding(), refreshControlPlane(), renderMfa(), loadLicense()]);
+  }
+  init();
+})();
+</script>
+</body>
+</html>

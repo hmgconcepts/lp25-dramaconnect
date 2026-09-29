@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <div class="glass-card p-6 mb-6">
+            <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Select Rehearsal</label>
+            <div class="flex flex-wrap gap-4 items-center">
+                <select id="reh-select" class="dc-input flex-1 max-w-md"><option value="">— Choose —</option></select>
+                <button id="qr-scan-btn" class="dc-btn bg-indigo-600 text-white hidden whitespace-nowrap" type="button"><i class="fas fa-qrcode mr-2"></i> Scan ID Cards</button>
+            </div>
+        </div>
+        
+        <!-- Card scanning desk (administrators + unit leaders). Resolved server-side by dc_scan_attendance. -->
+        <div id="qr-reader-container" class="hidden glass-card p-6 mb-6 border-l-4 border-indigo-600" aria-live="polite">
+            <div class="flex justify-between items-center mb-4 gap-3">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-id-card text-indigo-600 mr-2"></i> ID Card Scanning Desk</h3>
+                <button id="qr-close-btn" type="button" class="text-slate-400 hover:text-slate-700" aria-label="Close scanner"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="grid md:grid-cols-2 gap-5 items-start">
+                <div>
+                    <div class="relative mx-auto overflow-hidden rounded-xl border border-slate-200 bg-slate-900" style="max-width:420px;aspect-ratio:4/3">
+                        <video id="qr-video" class="w-full h-full object-cover" playsinline muted></video>
+                        <div class="absolute inset-[18%] border-2 border-white/70 rounded-lg pointer-events-none"></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 justify-center mt-3">
+                        <button id="cam-toggle" type="button" class="dc-btn bg-indigo-600 text-white text-sm py-2"><i class="fas fa-camera mr-1"></i> Start camera</button>
+                        <button id="torch-btn" type="button" class="dc-btn bg-slate-100 text-slate-700 text-sm py-2 hidden"><i class="fas fa-lightbulb mr-1"></i> Torch</button>
+                    </div>
+                    <p id="scan-status" class="text-xs text-slate-500 mt-2 text-center">Reads the QR code on the back and the barcode on the front of every DramaConnect ID card.</p>
+                </div>
+                <div>
+                    <label for="scan-manual" class="block text-xs font-bold text-gray-400 uppercase mb-1">USB scanner or typed member number</label>
+                    <div class="flex gap-2">
+                        <input id="scan-manual" class="dc-input flex-1" placeholder="e.g. DC-000123" autocomplete="off" spellcheck="false">
+                        <button id="scan-manual-btn" type="button" class="dc-btn bg-slate-800 text-white text-sm">Check in</button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">A keyboard-style barcode scanner works anywhere on this page while the desk is open.</p>
+                    <div id="scan-result" class="mt-4 rounded-xl border border-slate-200 p-4 text-sm text-slate-500">Waiting for the first card…</div>
+                    <div class="flex justify-between items-center mt-3 text-xs text-slate-500">
+                        <span>Checked in this session: <b id="scan-count">0</b></span>
+                        <button id="scan-undo" type="button" class="underline hidden">Undo last (admin)</button>
+                    </div>
+                    <ol id="scan-log" class="mt-2 space-y-1 text-xs max-h-40 overflow-auto"></ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Member self check-in -->
+        <div id="selfcheck-card" class="glass-card p-6 mb-6 border-l-4 border-green-600 hidden">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-location-check text-green-600 mr-2"></i> Self Check‑In</h3>
+            <p class="text-xs text-slate-500 mb-3">Enter the code the admin announces at rehearsal to mark yourself present.</p>
+            <div class="flex flex-wrap gap-2 items-center">
+                <input id="checkin-code" class="dc-input max-w-[200px]" placeholder="Enter code">
+                <button id="checkin-btn" class="dc-btn bg-green-600 text-white"><i class="fas fa-check mr-1"></i> Check In</button>
+                <span id="checkin-status" class="text-sm font-bold"></span>
+            </div>
+        </div>
+
+        <!-- Admin check-in code control -->
+        <div id="code-card" class="glass-card p-6 mb-6 admin-only border-l-4 border-blue-600">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-key text-blue-600 mr-2"></i> Self Check‑In Code (admin)</h3>
+            <p class="text-xs text-slate-500 mb-3">Set a code and open check‑in so members can mark their own attendance for the selected rehearsal. Any code of 3 or more characters works, and matching is case‑insensitive, so <b>SEP12</b> and <b>sep12</b> are the same.</p>
+            <div class="flex flex-wrap gap-2 items-center">
+                <input id="set-code" class="dc-input max-w-[200px]" placeholder="e.g. DRAMA25">
+                <button id="open-code" class="dc-btn bg-green-600 text-white text-sm py-2">Open check‑in</button>
+                <button id="close-code" class="dc-btn bg-red-600 text-white text-sm py-2">Close check‑in</button>
+                <button id="gen-code" class="dc-btn bg-slate-100 text-slate-700 text-sm py-2">Generate</button>
+                <span id="code-state" class="text-sm font-bold"></span>
+            </div>
+        </div>
+
+        <div class="glass-card p-6 md:p-8">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-user-check text-blue-600 mr-2"></i> Checklist</h3>
+                <div id="admin-tools" class="admin-only flex gap-2">
+                    <button id="all-present" class="dc-btn bg-green-600 text-white text-sm py-2">Mark All Present</button>
+                </div>
+            </div>
+            <div id="att-list"><p class="text-slate-400 text-sm">Select a rehearsal to mark attendance.</p></div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+<script src="../assets/js/page-guide.js"></script>
+<script src="../assets/js/assistant.js"></script>
+    <script src="../assets/js/dc-codes.js"></script>
+    <script>
+        let me = null, members = [], current = null, rehearsalsCache = [];
+        let scanner = null, unwireWedge = null, scanBusy = false, scanCount = 0, lastScan = null;
+        const recentScans = new Map();
+
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('attendance', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Attendance', 'Mark and review rehearsal attendance');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            const isAdmin = Auth.isAdmin(me);
+            if (Auth.canManage(me)) {
+                // Administrators and unit leaders run the card-scanning desk.
+                const btn = document.getElementById('qr-scan-btn');
+                btn.classList.remove('hidden');
+                btn.onclick = startScanner;
+                document.getElementById('qr-close-btn').onclick = stopScanner;
+                document.getElementById('cam-toggle').onclick = toggleCamera;
+                document.getElementById('torch-btn').onclick = () => scanner && scanner.toggleTorch().catch(() => false);
+                document.getElementById('scan-manual-btn').onclick = () => {
+                    const input = document.getElementById('scan-manual');
+                    const value = input.value.trim(); input.value = '';
+                    if (value) handleScan(value, 'keyboard');
+                };
+                document.getElementById('scan-undo').onclick = undoLast;
+                window.addEventListener('pagehide', () => scanner && scanner.stop());
+                document.addEventListener('visibilitychange', () => { if (document.hidden && scanner && scanner.running) { scanner.stop(); setCamButton(false); } });
+            }
+            if (isAdmin) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.classList.contains('flex') ? 'flex' : 'block');
+                document.getElementById('all-present').onclick = markAll;
+                document.getElementById('open-code').onclick = () => setCode(true);
+                document.getElementById('close-code').onclick = () => setCode(false);
+                document.getElementById('gen-code').onclick = () => {
+                    document.getElementById('set-code').value = 'DC' + Math.floor(1000 + Math.random() * 9000);
+                };
+            } else {
+                // Members see the self check-in card.
+                document.getElementById('selfcheck-card').classList.remove('hidden');
+                document.getElementById('checkin-btn').onclick = selfCheckIn;
+            }
+            try {
+                const [rehearsals, mem] = await Promise.all([DB.getRehearsals(), DB.getMembers()]);
+                rehearsalsCache = rehearsals;
+                members = mem;
+                const sel = document.getElementById('reh-select');
+                sel.innerHTML = '<option value="">— Choose —</option>' +
+                    rehearsals.map(r => `<option value="${r.id}">${Utils.formatDate(r.rehearsal_date)} — ${UI.esc(r.notes || 'Session')}</option>`).join('');
+                sel.onchange = () => loadAtt(sel.value);
+                const param = new URLSearchParams(location.search).get('rehearsal');
+                if (param) { sel.value = param; loadAtt(param); }
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        function currentRehearsal() { return rehearsalsCache.find(r => r.id === current); }
+
+        function refreshCodeState() {
+            const r = currentRehearsal();
+            const el = document.getElementById('code-state');
+            const cs = document.getElementById('checkin-status');
+            if (r && Auth.isAdmin(me) && el) {
+                el.textContent = r.checkin_open ? ('OPEN • code: ' + (r.checkin_code || '—')) : 'closed';
+                el.className = 'text-sm font-bold ' + (r.checkin_open ? 'text-green-600' : 'text-slate-400');
+                if (r.checkin_code) document.getElementById('set-code').value = r.checkin_code;
+            }
+            if (r && !Auth.isAdmin(me) && cs) {
+                cs.textContent = r.checkin_open ? 'Check‑in is OPEN' : 'Check‑in is closed';
+                cs.className = 'text-sm font-bold ' + (r.checkin_open ? 'text-green-600' : 'text-slate-400');
+            }
+        }
+
+        async function setCode(open) {
+            if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
+            const code = document.getElementById('set-code').value.trim();
+            if (open && !code) { UI.toast('Enter a code to open check‑in.', 'warning'); return; }
+            if (open && code.length < 3) {
+                UI.toast('Use a check‑in code of at least 3 characters.', 'warning'); return;
+            }
+            try {
+                await DB.setCheckinCode(current, code || null, open);
+                const r = currentRehearsal(); if (r) { r.checkin_code = code; r.checkin_open = open; }
+                refreshCodeState();
+                UI.toast(open ? 'Check‑in opened.' : 'Check‑in closed.', 'success');
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        async function selfCheckIn() {
+            if (!current) { UI.toast('Select the rehearsal first.', 'warning'); return; }
+            const code = document.getElementById('checkin-code').value.trim();
+            if (!code) { UI.toast('Enter the check‑in code.', 'warning'); return; }
+            try {
+                const res = await DB.selfCheckIn(current, me.id, code);
+                const where = res && res.geofence && res.distanceM != null ? ` Location verified (~${res.distanceM} m from the venue).` : '';
+                UI.toast('You are checked in. ✅' + where, 'success');
+                document.getElementById('checkin-code').value = '';
+                loadAtt(current);
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        async function loadAtt(id) {
+            current = id;
+            refreshCodeState();
+            const host = document.getElementById('att-list');
+            if (!id) { host.innerHTML = '<p class="text-slate-400 text-sm">Select a rehearsal.</p>'; return; }
+            try {
+                const existing = await DB.getAttendance(id);
+                const map = {}; existing.forEach(a => map[a.member_id] = a.status);
+                const isAdmin = Auth.isAdmin(me);
+                host.innerHTML = `<div class="space-y-2">` + members.map(m => {
+                    const storedStatus = map[m.id];
+                    const st = ['present', 'absent', 'excused'].includes(storedStatus) ? storedStatus : 'absent';
+                    return `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <div class="h-8 w-8 rounded-full rccg-blue text-white flex items-center justify-center text-xs font-bold">${UI.esc(Utils.initials(m.full_name))}</div>
+                            <span class="font-semibold text-slate-800 text-sm">${UI.esc(m.full_name || m.email)}</span>
+                        </div>
+                        ${isAdmin
+                            ? `<select data-mid="${m.id}" class="dc-input py-1 max-w-[130px] text-sm" onchange="mark('${m.id}', this.value)">
+                                 <option value="present" ${st === 'present' ? 'selected' : ''}>Present</option>
+                                 <option value="absent" ${st === 'absent' ? 'selected' : ''}>Absent</option>
+                                 <option value="excused" ${st === 'excused' ? 'selected' : ''}>Excused</option>
+                               </select>`
+                            : `<span data-mid="${m.id}" class="badge ${st === 'present' ? 'badge-green' : st === 'excused' ? 'badge-yellow' : 'badge-red'}">${st}</span>`}
+                    </div>`;
+                }).join('') + `</div>`;
+            } catch (e) { host.innerHTML = `<p class="text-red-500">${UI.esc(e.message)}</p>`; }
+        }
+        async function mark(mid, status) {
+            try { await DB.markAttendance(current, mid, status); UI.toast('Saved.', 'success', 1500); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function markAll() {
+            if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
+            UI.showLoader('Marking all present…');
+            try {
+                for (const m of members) await DB.markAttendance(current, m.id, 'present');
+                UI.hideLoader(); UI.toast('All marked present.', 'success'); loadAtt(current);
+            } catch (e) { UI.hideLoader(); UI.toast(e.message, 'error'); }
+        }
+
+        // ---------------------------------------------------------------
+        // ID card scanning desk. All decoding lives in dc-codes.js; the
+        // server (dc_scan_attendance) resolves QR tokens, Code 128 member
+        // numbers and pre-v14.1 cards, refuses revoked/suspended cards and
+        // writes attendance + the activity log atomically.
+        // ---------------------------------------------------------------
+        const SCAN_VIEW = {
+            checked_in:     ['bg-green-50 border-green-300 text-green-800', 'fa-circle-check', 'Checked in — present'],
+            already:        ['bg-blue-50 border-blue-300 text-blue-800', 'fa-circle-info', 'Already marked present'],
+            card_revoked:   ['bg-red-50 border-red-300 text-red-800', 'fa-ban', 'Card REVOKED — do not admit on this card'],
+            card_suspended: ['bg-amber-50 border-amber-300 text-amber-800', 'fa-user-lock', 'Member is not approved/active'],
+            not_found:      ['bg-red-50 border-red-300 text-red-800', 'fa-circle-question', 'No member has this card'],
+            invalid:        ['bg-slate-50 border-slate-300 text-slate-700', 'fa-triangle-exclamation', 'Not a DramaConnect ID card code']
+        };
+
+        function setCamButton(on) {
+            const b = document.getElementById('cam-toggle');
+            b.innerHTML = on ? '<i class="fas fa-stop mr-1"></i> Stop camera' : '<i class="fas fa-camera mr-1"></i> Start camera';
+        }
+
+        function startScanner() {
+            if (!current) { UI.toast('Please select a rehearsal first.', 'warning'); return; }
+            if (!window.DCCodes) { UI.toast('The scanner library did not load. Refresh the page.', 'error'); return; }
+            document.getElementById('qr-reader-container').classList.remove('hidden');
+            if (!unwireWedge) unwireWedge = DCCodes.wireWedge(document.getElementById('scan-manual'), (code) => handleScan(code, 'keyboard'));
+            if (DCCodes.cameraSupported()) toggleCamera();
+            else document.getElementById('scan-status').textContent = 'No camera available here — use a USB barcode scanner or type the member number.';
+            document.getElementById('qr-reader-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        async function toggleCamera() {
+            const status = document.getElementById('scan-status');
+            if (scanner && scanner.running) { scanner.stop(); setCamButton(false); status.textContent = 'Camera stopped.'; return; }
+            scanner = scanner || DCCodes.createScanner({
+                video: document.getElementById('qr-video'),
+                cooldownMs: 4000,
+                onStatus: (t) => { status.textContent = t; },
+                onResult: (text, format) => handleScan(text, format)
+            });
+            try {
+                await scanner.start();
+                setCamButton(true);
+                status.textContent = 'Scanning with ' + scanner.engine + ' — hold the card steady inside the frame.';
+                document.getElementById('torch-btn').classList.remove('hidden');
+            } catch (e) { status.textContent = e.message; setCamButton(false); }
+        }
+
+        async function handleScan(code, format) {
+            if (!current) { UI.toast('Select a rehearsal first.', 'warning'); return; }
+            const key = current + '|' + String(code).trim().toUpperCase();
+            const seen = recentScans.get(key);
+            if (seen && Date.now() - seen < 4000) return;           // duplicate-read guard
+            if (scanBusy) return;
+            scanBusy = true; recentScans.set(key, Date.now());
+            const box = document.getElementById('scan-result');
+            box.className = 'mt-4 rounded-xl border border-slate-200 p-4 text-sm text-slate-500';
+            box.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Checking card…';
+            try {
+                const { data, error } = await sb.rpc('dc_scan_attendance', { p_rehearsal_id: current, p_code: String(code).trim() });
+                if (error) throw error;
+                renderScan(data || { result: 'invalid' }, format, String(code).trim());
+            } catch (e) {
+                const missing = e && (e.code === 'PGRST202' || e.code === '42883' || /dc_scan_attendance/.test(e.message || ''));
+                box.className = 'mt-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800';
+                box.textContent = missing
+                    ? 'The scanning function is not installed yet. An administrator must run database/complete-schema.sql once in the Supabase SQL Editor.'
+                    : ('Could not check in: ' + (e.message || e));
+                recentScans.delete(key);
+            } finally { scanBusy = false; }
+        }
+
+        function renderScan(res, format, code) {
+            const view = SCAN_VIEW[res.result] || SCAN_VIEW.invalid;
+            const box = document.getElementById('scan-result');
+            box.className = 'mt-4 rounded-xl border-2 p-4 text-sm ' + view[0];
+            // Photo with the shared Drive fallback chain (utils.js) → initials if unviewable.
+            const photo = (res.avatar_url || res.full_name)
+                ? Utils.photoImg(res.avatar_url, { name: res.full_name || '?', alt: 'Card holder photo',
+                    className: 'h-16 w-16 rounded-xl object-cover border rccg-blue text-white flex-shrink-0',
+                    initialsStyle: 'display:flex;align-items:center;justify-content:center;font-size:1.125rem;font-weight:700;' })
+                : '';
+            box.innerHTML = `<div class="flex gap-3 items-center">${photo}<div>
+                <div class="font-extrabold"><i class="fas ${view[1]} mr-1"></i>${view[2]}</div>
+                ${res.full_name ? `<div class="text-base font-bold text-slate-900">${UI.esc(res.full_name)}</div>` : ''}
+                ${res.member_no ? `<div class="text-xs">${UI.esc(res.member_no)}${res.unit ? ' · ' + UI.esc(res.unit) : ''}${res.role ? ' · ' + UI.esc(res.role) : ''}</div>` : ''}
+                ${res.expired_warning || res.status === 'expired' ? '<div class="text-xs font-bold text-amber-700 mt-1"><i class="fas fa-clock mr-1"></i>Card has expired — admitted, but ask an administrator to extend it on the ID Card page.</div>' : ''}
+                </div></div>
+                ${res.full_name ? '<p class="text-[11px] mt-2 opacity-80">Compare the photo with the person in front of you.</p>' : ''}`;
+            if (res.result === 'checked_in' || res.result === 'already') {
+                reflectPresent(res.member_id);
+                if (res.result === 'checked_in') {
+                    scanCount += 1;
+                    lastScan = { member_id: res.member_id, previous: res.previous || null, name: res.full_name };
+                    document.getElementById('scan-count').textContent = scanCount;
+                    document.getElementById('scan-undo').classList.toggle('hidden', !Auth.isAdmin(me));
+                }
+            }
+            const li = document.createElement('li');
+            li.className = 'flex justify-between gap-2 border-b border-slate-100 pb-1';
+            li.innerHTML = `<span>${UI.esc(res.full_name || String(code || '').slice(0, 40) || res.result)}</span><span class="text-slate-400">${UI.esc(view[2].split(' — ')[0])} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+            const log = document.getElementById('scan-log');
+            log.prepend(li);
+            while (log.children.length > 50) log.lastChild.remove();
+        }
+
+        function reflectPresent(memberId) {
+            if (!memberId) return;
+            document.querySelectorAll(`[data-mid="${CSS.escape(memberId)}"]`).forEach((el) => {
+                if (el.tagName === 'SELECT') el.value = 'present';
+                else { el.textContent = 'present'; el.className = 'badge badge-green'; }
+            });
+        }
+
+        async function undoLast() {
+            if (!lastScan || !Auth.isAdmin(me)) return;
+            const ok = await UI.confirm(`Undo the check-in for ${lastScan.name}?`);
+            if (!ok) return;
+            try {
+                await DB.markAttendance(current, lastScan.member_id, lastScan.previous || 'absent');
+                UI.toast('Check-in undone.', 'success');
+                lastScan = null; document.getElementById('scan-undo').classList.add('hidden');
+                loadAtt(current);
+            } catch (e) { UI.toast(e.message, 'error'); }
+        }
+
+        function stopScanner() {
+            if (scanner) scanner.stop();
+            setCamButton(false);
+            if (unwireWedge) { unwireWedge(); unwireWedge = null; }
+            document.getElementById('qr-reader-container').classList.add('hidden');
+        }
+
+        window.mark = mark;
+        init();
+    </script>
+</body>
+</html>

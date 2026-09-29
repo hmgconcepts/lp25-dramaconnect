@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Members | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+
+        <!-- Add member with login (admin only) -->
+        <div id="add-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-blue-600">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-user-plus text-blue-600 mr-2"></i> Add Member &amp; Create Login</h3>
+            <p class="text-xs text-slate-500 mb-4">Create an account for a member who hasn't signed up. Leave password blank to auto‑generate one. You'll get credentials to hand over (and can send them via WhatsApp/Email).</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input id="nm-name" placeholder="Full name" class="dc-input">
+                <input id="nm-email" type="email" placeholder="Email (login)" class="dc-input">
+                <input id="nm-password" placeholder="Password (blank = auto)" class="dc-input">
+                <input id="nm-phone" placeholder="Phone (for WhatsApp)" class="dc-input">
+                <input id="nm-parish" placeholder="Parish" class="dc-input">
+                <label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" id="nm-admin"> Make this member an admin</label>
+            </div>
+            <button id="nm-create" class="dc-btn dc-btn-primary mt-4"><i class="fas fa-user-plus mr-1"></i> Create Account</button>
+        </div>
+
+        <!-- Bulk create from CSV (admin only) -->
+        <div id="bulk-card" class="glass-card p-6 md:p-8 mb-8 admin-only border-l-4 border-green-600">
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fas fa-users-rectangle text-green-600 mr-2"></i> Bulk Create Logins (CSV or Excel)</h3>
+            <p class="text-xs text-slate-500 mb-3">Columns: <code>full_name,email,phone,parish</code> — accepts <strong>.csv, .xlsx, .xls</strong> (password auto‑generated for each). Creates many accounts at once, then downloads a credential sheet.</p>
+            <input type="file" id="bulk-file" accept=".csv,.xlsx,.xls" class="dc-input mb-3">
+            <button id="bulk-go" class="dc-btn bg-green-600 text-white"><i class="fas fa-upload mr-1"></i> Create Accounts</button>
+            <div id="bulk-progress" class="text-sm text-slate-500 mt-3"></div>
+        </div>
+
+        <!-- Pending approvals (admin only).
+             Approving is owned solely by Roles & Status, so this page never duplicates the
+             approve/reject controls: it surfaces the count and routes there in one click. -->
+        <div id="pending-card" class="glass-card p-5 md:p-6 mb-8 admin-only border-l-4 border-yellow-500">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <span class="h-10 w-10 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center flex-none"><i class="fas fa-user-clock"></i></span>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800">Pending Approvals <span id="pending-count" class="badge badge-yellow ml-1">0</span></h3>
+                        <p id="pending-note" class="text-xs text-slate-500 mt-0.5">Checking…</p>
+                    </div>
+                </div>
+                <a href="roles-status.html" class="dc-btn bg-amber-600 text-white">
+                    <i class="fas fa-user-shield mr-1"></i> Approve on Roles &amp; Status
+                </a>
+            </div>
+        </div>
+
+        <div class="glass-card p-6 md:p-8 animate-fade-in">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-6">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-users text-blue-600 mr-2"></i> Personnel Directory</h3>
+                <div class="flex gap-2">
+                    <input id="search" class="dc-input max-w-xs" placeholder="🔍 Search name, email, parish…">
+                    <button class="dc-btn bg-green-600 text-white admin-only" onclick="exportMembers()"><i class="fas fa-file-excel"></i></button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="enterprise-table" id="members-table">
+                    <thead><tr><th>Member</th><th>Email</th><th>Phone</th><th>Parish</th><th>Status</th><th>Role</th><th class="admin-only">Actions</th></tr></thead>
+                    <tbody id="members-body"><tr><td colspan="7" class="text-center text-slate-400 py-8">Loading members…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+<script src="../assets/js/page-guide.js"></script>
+<script src="../assets/js/assistant.js"></script>
+    <script>
+        let me = null, all = [];
+        async function init() {
+            me = await Auth.checkSession();
+            if (!me) return;
+            Layout.renderSidebar('members', me);
+            document.getElementById('page-header').innerHTML = Layout.renderHeader('Members', 'Personnel directory & access control');
+            Layout.setDate();
+            if (Layout.loadNotifications) Layout.loadNotifications(me);
+            if (Auth.isAdmin(me)) {
+                document.querySelectorAll('.admin-only').forEach(el => el.style.display = el.tagName === 'TH' ? 'table-cell' : 'block');
+                document.getElementById('nm-create').onclick = createMember;
+                document.getElementById('bulk-go').onclick = bulkCreate;
+            }
+            document.getElementById('search').oninput = e => render(filter(e.target.value));
+            await load();
+        }
+        function filter(q) {
+            q = (q || '').toLowerCase();
+            return all.filter(m => [m.full_name, m.email, m.parish].some(v => (v || '').toLowerCase().includes(q)));
+        }
+        async function load() {
+            try { all = await DB.getMembers(); render(all); renderPending(); }
+            catch (e) { document.getElementById('members-body').innerHTML = `<tr><td colspan="7" class="text-center text-red-500 py-8">${UI.esc(e.message)}</td></tr>`; }
+        }
+        /**
+         * Approving, rejecting and role/unit management are owned solely by Roles & Status.
+         * This page keeps only the count, so an administrator still spots pending people
+         * here without a second set of controls existing in two places.
+         */
+        function renderPending() {
+            if (!Auth.isAdmin(me)) return;
+            const pending = all.filter(m => !m.status || m.status === 'pending');
+            document.getElementById('pending-count').textContent = pending.length;
+            document.getElementById('pending-note').textContent = pending.length
+                ? `${pending.length} ${pending.length === 1 ? 'person is' : 'people are'} waiting for access. Approvals are made on Roles & Status.`
+                : 'No pending requests. 🎉';
+        }
+        function render(list) {
+            const isAdmin = Auth.isAdmin(me);
+            const body = document.getElementById('members-body');
+            if (!list.length) { body.innerHTML = '<tr><td colspan="7" class="text-center text-slate-400 py-8">No members found.</td></tr>'; return; }
+            body.innerHTML = list.map(m => {
+                const memberStatus = ['pending', 'approved', 'rejected'].includes(m.status) ? m.status : 'pending';
+                const statusBadge = memberStatus === 'approved' ? 'badge-green' : memberStatus === 'rejected' ? 'badge-red' : 'badge-yellow';
+                return `
+                <tr>
+                    <td><div class="flex items-center gap-3">${Utils.avatar(m, 36)}<span class="font-semibold text-slate-800">${UI.esc(m.full_name || '—')}</span></div></td>
+                    <td>${UI.esc(m.email || '—')}</td>
+                    <td>${UI.esc(m.phone || '—')}</td>
+                    <td>${UI.esc(m.parish || '—')}</td>
+                    <td><span class="badge ${statusBadge}">${memberStatus}</span></td>
+                    <td><span class="badge ${m.role === 'admin' ? 'badge-admin' : 'badge-member'}">${UI.esc(m.role || 'member')}</span>${m.is_unit_leader ? ' <span class="badge badge-yellow">unit lead</span>' : ''}</td>
+                    ${isAdmin ? `<td>
+                        <div class="flex gap-3 items-center flex-wrap">
+                            <button class="text-indigo-600 hover:underline text-xs font-bold" onclick="viewFullProfile('${m.id}')"><i class="fas fa-id-card"></i> View Profile</button>
+                            ${m.phone ? `<a href="${Utils.whatsappLink(m.phone, '')}" target="_blank" rel="noopener" title="WhatsApp" class="text-green-600 hover:opacity-70"><i class="fab fa-whatsapp"></i></a>` : ''}
+                            ${m.email ? `<a href="${Utils.mailtoLink(m.email, '', '', false)}" title="Email" class="text-blue-600 hover:opacity-70"><i class="fas fa-envelope"></i></a>` : ''}
+                            <a href="roles-status.html" class="text-blue-600 hover:underline text-xs font-bold" title="Role, status, unit and unit-leader are managed on Roles & Status"><i class="fas fa-user-shield"></i> Manage access</a>
+                            ${m.id !== me.id ? `<button class="text-red-600 hover:underline text-xs font-bold" onclick="removeMember('${m.id}')">Remove</button>` : '<span class="text-xs text-slate-300">You</span>'}
+                        </div>
+                    </td>` : ''}
+                </tr>`;
+            }).join('');
+        }
+        async function removeMember(id) {
+            const member = all.find(m => m.id === id);
+            const name = member && (member.full_name || member.email);
+            if (!await UI.confirm(`Permanently remove ${name || 'this member'}? This deletes their login account, profile, and dependent records and cannot be undone.`)) return;
+            try { await DB.deleteMember(id); UI.toast('Member account removed.', 'success'); await load(); }
+            catch (e) { UI.toast(e.message, 'error'); }
+        }
+        async function createMember() {
+            const full_name = document.getElementById('nm-name').value.trim();
+            const email = document.getElementById('nm-email').value.trim();
+            const password = document.getElementById('nm-password').value.trim();
+            const phone = document.getElementById('nm-phone').value.trim();
+            const parish = document.getElementById('nm-parish').value.trim();
+            const makeAdmin = document.getElementById('nm-admin').checked;
+            if (!email || !full_name) { UI.toast('Full name and email are required.', 'warning'); return; }
+            UI.showLoader('Creating account…');
+            try {
+                const res = await DB.adminCreateMember({ full_name, email, password, phone, parish, makeAdmin });
+                await DB.logActivity('member_create', email);
+                UI.hideLoader();
+                showCredentials(res, full_name, phone);
+                ['nm-name','nm-email','nm-password','nm-phone','nm-parish'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('nm-admin').checked = false;
+                await load();
+            } catch (e) {
+                UI.hideLoader();
+                if (e.status === 404 || /Failed to fetch|function error|not configured/i.test(e.message)) {
+                    UI.toast('The admin-create-member function is not deployed yet. See docs/ADMIN_CREATE_MEMBER.md. Falling back to invite by email.', 'warning', 9000);
+                } else {
+                    UI.toast(e.message, 'error', 7000);
+                }
+            }
+        }
+
+        function showCredentials(res, name, phone) {
+            const loginUrl = location.origin + location.pathname.replace(/pages\/.*$/, 'index.html');
+            const msg = `Hello ${name||''}, your DramaConnect account is ready.\nLogin: ${loginUrl}\nEmail: ${res.email}\nPassword: ${res.password}\nPlease change your password after first login. God bless you.`;
+            const overlay = UI.modal(`
+                <div class="p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-2"><i class="fas fa-circle-check text-green-600 mr-1"></i> Account Created</h3>
+                    <p class="text-sm text-slate-500 mb-3">Hand these credentials to the member (they can change the password later):</p>
+                    <div class="bg-slate-50 rounded-xl p-4 text-sm mb-4">
+                        <p><strong>Email:</strong> ${UI.esc(res.email)}</p>
+                        <p><strong>Password:</strong> <span class="font-mono">${UI.esc(res.password)}</span></p>
+                        <p><strong>Role:</strong> ${UI.esc(res.role)}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" data-copy-credentials class="dc-btn dc-btn-primary"><i class="fas fa-copy mr-1"></i> Copy</button>
+                        ${phone ? `<a class="dc-btn text-white" style="background:#25D366" target="_blank" rel="noopener" href="${Utils.whatsappLink(phone, msg)}"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</a>` : ''}
+                        <a class="dc-btn bg-blue-600 text-white" href="${Utils.mailtoLink(res.email, 'Your DramaConnect login', msg, false)}"><i class="fas fa-envelope mr-1"></i> Email</a>
+                        <button type="button" data-close-credentials class="dc-btn bg-slate-100 text-slate-700">Close</button>
+                    </div>
+                </div>`, 'max-w-md');
+            overlay.querySelector('[data-copy-credentials]').addEventListener('click', async () => {
+                try { await navigator.clipboard.writeText(msg); UI.toast('Copied.', 'success'); }
+                catch (_error) { UI.toast('Could not copy automatically. Select the credentials manually.', 'warning'); }
+            });
+            overlay.querySelector('[data-close-credentials]').addEventListener('click', () => overlay.remove());
+        }
+
+        async function bulkCreate() {
+            const file = document.getElementById('bulk-file').files[0];
+            if (!file) { UI.toast('Choose a CSV file first.', 'warning'); return; }
+            const prog = document.getElementById('bulk-progress');
+            let rows;
+            try {
+                const name = (file.name || '').toLowerCase();
+                if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+                    if (typeof XLSX === 'undefined') { UI.toast('Excel library not loaded.', 'error'); return; }
+                    const buf = await file.arrayBuffer();
+                    const wb = XLSX.read(buf, { type: 'array' });
+                    const sheet = wb.Sheets[wb.SheetNames[0]];
+                    rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+                        .map(r => { const o = {}; for (const k in r) o[String(k).trim().toLowerCase().replace(/\s+/g, '_')] = r[k]; return o; })
+                        .filter(r => r.email);
+                } else {
+                    const text = await Utils.readFileText(file);
+                    rows = Utils.parseCSV(text).filter(r => r.email);
+                }
+            } catch (e) { UI.toast('Could not read file: ' + e.message, 'error'); return; }
+            if (!rows.length) { UI.toast('No valid rows (need an email column).', 'warning'); return; }
+            if (!await UI.confirm(`Create ${rows.length} login account(s)? Each gets an auto‑generated password.`)) return;
+
+            const results = [];
+            let ok = 0, fail = 0;
+            for (let i = 0; i < rows.length; i++) {
+                const r = rows[i];
+                prog.innerText = `Processing ${i + 1} / ${rows.length}…`;
+                try {
+                    const res = await DB.adminCreateMember({
+                        full_name: r.full_name || '', email: r.email,
+                        password: '', phone: r.phone || '', parish: r.parish || '', makeAdmin: false
+                    });
+                    results.push({ full_name: r.full_name || '', email: res.email, password: res.password, status: 'created' });
+                    ok++;
+                } catch (e) {
+                    results.push({ full_name: r.full_name || '', email: r.email, password: '', status: 'FAILED: ' + e.message });
+                    fail++;
+                }
+            }
+            prog.innerText = `Done. ${ok} created, ${fail} failed.`;
+            await DB.logActivity('bulk_create', `${ok} created, ${fail} failed`);
+            // Download a credential sheet (CSV) for the admin to distribute.
+            Utils.exportToCSV(results, 'new-member-credentials.csv');
+            UI.toast(`${ok} account(s) created. Credential sheet downloaded.`, ok ? 'success' : 'warning', 8000);
+            await load();
+        }
+
+        window.bulkCreate = bulkCreate;
+        window.createMember = createMember;
+        window.removeMember = removeMember;
+        function viewFullProfile(id) {
+            const m = all.find(x => x.id === id);
+            if (!m) return;
+            
+            const fields = [
+                { label: 'Full Name', value: m.full_name },
+                { label: 'Email', value: m.email },
+                { label: 'Phone', value: m.phone },
+                { label: 'Parish', value: m.parish },
+                { label: 'Gender', value: m.gender },
+                { label: 'Birthday', value: m.birth_month ? `${Utils.monthName(m.birth_month)} ${m.birth_day || ''}` : null },
+                { label: 'Drama Unit', value: m.unit },
+                { label: 'Address', value: m.address },
+                { label: 'Occupation', value: m.occupation },
+                { label: 'Height', value: m.height },
+                { label: 'Shoe Size', value: m.shoe_size },
+                { label: 'Chest/Bust', value: m.chest },
+                { label: 'Waist', value: m.waist },
+                { label: 'Emergency Contact', value: m.emergency_name },
+                { label: 'Emergency Phone', value: m.emergency_phone },
+                { label: 'Emergency Relationship', value: m.emergency_relation }
+            ];
+
+            const html = `
+                <div class="flex items-center gap-4 mb-6 border-b pb-4">
+                    ${Utils.avatar(m, 64)}
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800">${UI.esc(m.full_name || 'Unknown')}</h2>
+                        <p class="text-sm text-slate-500">${UI.esc(m.role || 'Member')} &bull; ${UI.esc(m.status || 'Pending')}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${fields.map(f => `
+                        <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                            <p class="text-xs text-slate-400 uppercase font-bold mb-1">${UI.esc(f.label)}</p>
+                            <p class="text-sm font-medium text-slate-700">${UI.esc(f.value || '—')}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            document.getElementById('profile-modal-content').innerHTML = html;
+            document.getElementById('profile-modal').classList.remove('hidden');
+        }
+        window.viewFullProfile = viewFullProfile;
+        
+        function exportMembers() {
+            const data = all.map(m => ({
+                FullName: m.full_name, Email: m.email, Phone: m.phone, 
+                Parish: m.parish, Role: m.role, Status: m.status,
+                Unit: m.unit || '', UnitLeader: m.is_unit_leader ? 'Yes' : 'No', Gender: m.gender || '',
+                Occupation: m.occupation || '', BirthMonth: m.birth_month || '', BirthDay: m.birth_day || '',
+                Height: m.height || '', ShoeSize: m.shoe_size || '', ChestBust: m.chest || '', Waist: m.waist || '',
+                EmergencyContact: m.emergency_name || '', EmergencyPhone: m.emergency_phone || '',
+                EmergencyRelationship: m.emergency_relation || ''
+            }));
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Members");
+            XLSX.writeFile(wb, "DramaConnect_Members.xlsx");
+        }
+        window.exportMembers = exportMembers;
+        
+        init();
+    </script>
+    
+    <!-- Full Profile Modal -->
+    <div id="profile-modal" class="hidden fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
+            <button onclick="document.getElementById('profile-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-slate-800"><i class="fas fa-times text-xl"></i></button>
+            <div class="p-6 md:p-8" id="profile-modal-content"></div>
+        </div>
+    </div>
+</body>
+</html>

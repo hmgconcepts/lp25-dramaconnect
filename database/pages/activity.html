@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-version" content="14.2">
+    <title>Audit / Activity Log | DramaConnect Enterprise</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/fallback.css">
+    <script src="../assets/js/boot.js"></script>
+    <style>
+      .al-table{width:100%;border-collapse:collapse;font-size:.82rem}
+      .al-table th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;padding:.5rem;border-bottom:1px solid #e2e8f0}
+      .al-table td{padding:.5rem;border-bottom:1px solid #f1f5f9;vertical-align:top}
+      .al-kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.75rem}
+      .al-kpi div{border-radius:1rem;padding:.8rem 1rem;background:#fff;border:1px solid #e2e8f0}
+      .al-kpi .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:700}
+      .al-kpi .v{font-size:1.4rem;font-weight:900}
+      .al-meter{display:grid;grid-template-columns:minmax(90px,32%) 1fr auto;gap:.5rem;align-items:center;font-size:.8rem;margin:.3rem 0}
+      .al-meter .t{height:10px;background:#e2e8f0;border-radius:9999px;overflow:hidden}
+      .al-meter .t i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#7c3aed);border-radius:9999px}
+      @media print{.no-print,#app-sidebar{display:none!important}.app-main{margin:0!important}}
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen app-shell">
+    <div id="app-sidebar"></div>
+    <main class="app-main">
+        <div id="page-header"></div>
+        <div id="al-error" class="hidden mb-4 rounded-2xl bg-red-50 border border-red-200 p-4 text-sm text-red-700"></div>
+
+        <!-- Retention & purge (owner) -->
+        <div class="glass-card p-6 md:p-8 mb-6" style="border:2px solid #fcd34d">
+            <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-broom text-amber-600 mr-2"></i>Audit Log Retention &amp; Purge (administrator only)</h3>
+            <p class="text-slate-700 text-sm mt-1">Audit trails grow forever if never pruned and quietly eat the free 500&nbsp;MB database. Purge old entries here — by days, weeks, months or years — <b>after exporting them</b>. <b>Safe workflow:</b> ① Export (portable JSON — restorable any time) → ② Purge older than the chosen period. The purge itself is written into the log, and the log keeps every entry until you do this.</p>
+            <div class="grid sm:grid-cols-3 gap-3 mt-4">
+                <label class="text-sm font-bold">Log<select id="alp-table" class="form-input mt-1 w-full"><option value="activity_log">Activity log (audit trail)</option><option value="login_audit">Login audit (sign-in history)</option></select></label>
+                <label class="text-sm font-bold">Delete entries older than<select id="alp-days" class="form-input mt-1 w-full"><option value="7">1 week (7 days)</option><option value="14">2 weeks (14 days)</option><option value="30">1 month (30 days)</option><option value="90">3 months (90 days)</option><option value="180" selected>6 months (180 days)</option><option value="365">1 year (365 days)</option><option value="730">2 years (730 days)</option></select></label>
+                <label class="text-sm font-bold">Or custom days<input id="alp-custom" type="number" min="1" class="form-input mt-1 w-full" placeholder="e.g. 45"></label>
+            </div>
+            <div class="flex flex-wrap gap-2 mt-4">
+                <button id="alp-export" class="btn btn-primary"><i class="fas fa-download"></i> ① Export this log first (portable JSON)</button>
+                <button id="alp-purge" class="btn btn-secondary" style="color:#dc2626;border-color:#dc2626"><i class="fas fa-trash"></i> ② Purge old entries</button>
+                <a class="btn btn-secondary" href="storage-manager.html"><i class="fas fa-box-archive"></i> Archive to the File Storage vault instead</a>
+                <a class="btn btn-secondary" href="admin-data.html"><i class="fas fa-database"></i> Verified backup (required for Storage Manager purges)</a>
+            </div>
+            <p id="alp-result" class="text-sm text-slate-600 mt-3"></p>
+            <p class="text-xs text-slate-500 mt-2">Retention horizons are configured on the <a href="storage-manager.html" class="font-semibold text-blue-700 underline">Storage Manager</a> (activity log <span id="alp-horizon">—</span>). Rows younger than that are never touched by the guarded purge on that page; the purges here are the same SQL path and are also recorded in the trail.</p>
+        </div>
+
+        <!-- Summary -->
+        <div class="glass-card p-6 md:p-8 mb-6">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <div><h3 class="text-lg font-bold text-slate-800"><i class="fas fa-chart-simple text-blue-600 mr-2"></i>What has been happening</h3>
+                <p class="text-xs text-slate-500">Every create, update, delete, import, login and security change is recorded automatically. You cannot add rows here — the system writes them.</p></div>
+                <button id="refresh" class="btn btn-secondary no-print"><i class="fas fa-rotate"></i> Refresh</button>
+            </div>
+            <div class="al-kpi mb-4" id="al-kpis"></div>
+            <div class="grid lg:grid-cols-2 gap-5">
+                <div><p class="text-xs font-bold uppercase text-slate-400 mb-2">Busiest actions</p><div id="al-actions"></div></div>
+                <div><p class="text-xs font-bold uppercase text-slate-400 mb-2">Most active people</p><div id="al-actors"></div></div>
+            </div>
+        </div>
+
+        <!-- Trail -->
+        <div class="glass-card p-6 md:p-8">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-clock-rotate-left text-blue-600 mr-2"></i> Audit trail</h3>
+                <div class="flex flex-wrap gap-2 items-end no-print">
+                    <label class="text-xs font-bold">Period<select id="al-days" class="form-input mt-1"><option value="1">24 hours</option><option value="7">7 days</option><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option><option value="3650">All time</option></select></label>
+                    <label class="text-xs font-bold">Action<select id="al-action" class="form-input mt-1"><option value="">All actions</option></select></label>
+                    <label class="text-xs font-bold">Person<select id="al-actor" class="form-input mt-1"><option value="">Everyone</option></select></label>
+                    <label class="text-xs font-bold">Search<input id="al-search" class="form-input mt-1" placeholder="Action, detail or name"></label>
+                    <label class="text-xs font-bold">Rows<select id="al-limit" class="form-input mt-1"><option value="100">100</option><option value="300" selected>300</option><option value="600">600</option><option value="1000">1000</option></select></label>
+                    <button id="al-csv" class="btn btn-secondary"><i class="fas fa-file-csv"></i> CSV</button>
+                    <button id="al-pdf" class="btn btn-secondary"><i class="fas fa-file-pdf"></i> PDF</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="al-table">
+                    <thead><tr><th style="width:150px">When</th><th style="width:150px">Actor</th><th style="width:190px">Action</th><th>Detail</th></tr></thead>
+                    <tbody id="log-body"><tr><td colspan="4" class="text-center text-slate-400 py-8">Loading…</td></tr></tbody>
+                </table>
+            </div>
+            <p id="al-meta" class="text-xs text-slate-500 mt-2"></p>
+        </div>
+
+        <div class="mt-5 rounded-2xl bg-blue-50 border border-blue-200 p-4 text-sm text-blue-900">
+            <strong>Two trails, one page each:</strong> this page is the <em>operational</em> trail (who changed what, across every module). Sign-ins, sign-outs, idle lock-outs and denied access are the <em>security</em> trail — they live on <a href="platform-health.html#sec-audit" class="font-bold underline">Platform Health → Recent sign-in activity</a>.
+        </div>
+    </main>
+
+    <script src="../assets/js/config.js"></script>
+    <script src="../assets/js/resilience.js"></script>
+    <script src="../assets/js/platform-management.js"></script>
+    <script src="../assets/js/data-portability.js"></script>
+    <script src="../assets/js/drive-sync.js"></script>
+    <script src="../assets/js/i18n.js"></script>
+    <script src="../assets/js/ui.js"></script>
+    <script src="../assets/js/auth.js"></script>
+    <script src="../assets/js/db.js"></script>
+    <script src="../assets/js/utils.js"></script>
+    <script src="../assets/js/layout.js"></script>
+    <script src="../assets/js/install.js"></script>
+<script src="../assets/js/page-guide.js"></script>
+<script src="../assets/js/assistant.js"></script>
+    <script>
+    (() => {
+      'use strict';
+      const $ = id => document.getElementById(id) || { textContent: '', innerHTML: '', classList: { add() {}, remove() {} }, style: {}, value: '', add() {} };
+      const esc = v => UI.esc(v ?? '');
+      const n = v => Number(v || 0).toLocaleString();
+      const err = e => PlatformManagement.clean(e);
+      const dt = v => v ? new Date(v).toLocaleString() : '—';
+      const ago = v => { if (!v) return ''; const s = Math.max(0, (Date.now() - new Date(v).getTime()) / 1000); if (s < 90) return 'just now'; if (s < 5400) return `${Math.round(s / 60)}m ago`; if (s < 172800) return `${Math.round(s / 3600)}h ago`; return `${Math.round(s / 86400)}d ago`; };
+      const meter = (label, value, max, text) => `<div class="al-meter"><span class="mono">${esc(label)}</span><span class="t"><i style="width:${max ? Math.min(100, (Number(value) / max) * 100) : 0}%"></i></span><span>${text}</span></div>`;
+      const friendly = a => String(a || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      let feed = null, rows = [];
+
+      function showError(e) { $('al-error').textContent = err(e); $('al-error').classList.remove('hidden'); }
+
+      function renderSummary() {
+        const s = (feed && feed.summary) || {};
+        $('al-kpis').innerHTML = [
+          ['Entries (period)', n(s.total)], ['Today', n(s.today)], ['Last 7 days', n(s.week)],
+          ['Purges recorded', n(s.purges)], ['Oldest entry', s.oldest ? new Date(s.oldest).toLocaleDateString() : '—']
+        ].map(([l, v]) => `<div><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div></div>`).join('');
+        const byAction = s.byAction || {};
+        const maxA = Math.max(1, ...Object.values(byAction).map(Number));
+        $('al-actions').innerHTML = Object.keys(byAction).length
+          ? Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, v]) => meter(friendly(k), v, maxA, n(v))).join('')
+          : '<p class="text-slate-400 text-sm">No entries in this period.</p>';
+        const top = s.topActors || [];
+        $('al-actors').innerHTML = top.length
+          ? top.map(t => meter(t.actor, t.entries, Math.max(...top.map(x => x.entries)), n(t.entries))).join('')
+          : '<p class="text-slate-400 text-sm">No entries in this period.</p>';
+      }
+
+      function fillSelects() {
+        const act = $('al-action');
+        if (act.options.length <= 1 && feed) {
+          (feed.actions || []).forEach(a => act.add(new Option(friendly(a), a)));
+          const who = $('al-actor');
+          (feed.actors || []).forEach(a => who.add(new Option(a, a)));
+        }
+      }
+
+      function renderRows() {
+        const body = $('log-body');
+        if (!rows.length) { body.innerHTML = '<tr><td colspan="4" class="text-center text-slate-400 py-8">No activity matches this filter.</td></tr>'; $('al-meta').textContent = ''; return; }
+        body.innerHTML = rows.map(l => `<tr>
+            <td class="text-xs text-slate-500">${esc(dt(l.createdAt))}<div class="text-slate-400">${esc(ago(l.createdAt))}</div></td>
+            <td class="font-semibold text-slate-800">${esc(l.actor || 'system')}</td>
+            <td><span class="badge badge-member">${esc(friendly(l.action))}</span><div class="text-[10px] text-slate-400 mono">${esc(l.action)}</div></td>
+            <td class="text-slate-700">${esc(l.detail || '—')}</td>
+          </tr>`).join('');
+        $('al-meta').textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'} shown${feed && feed.since ? ` since ${new Date(feed.since).toLocaleDateString()}` : ''}.`;
+      }
+
+      async function load() {
+        const opts = { days: Number($('al-days').value), limit: Number($('al-limit').value),
+          action: $('al-action').value, actor: $('al-actor').value, search: $('al-search').value.trim() };
+        try {
+          $('al-error').classList.add('hidden');
+          try {
+            feed = await PlatformManagement.activityFeed(opts);
+            rows = feed.rows || [];
+          } catch (e) {
+            // Older database: use the plain activity list and filter in the browser.
+            const all = await DB.getActivityLog(opts.limit);
+            const q = opts.search.toLowerCase();
+            rows = all.map(l => ({ createdAt: l.created_at, actor: l.actor_name || 'system', action: l.action, detail: l.detail }))
+              .filter(l => (!opts.action || l.action === opts.action) && (!opts.actor || l.actor === opts.actor) &&
+                (!q || `${l.action} ${l.detail} ${l.actor}`.toLowerCase().includes(q)));
+            feed = { summary: { total: rows.length, today: 0, week: 0, purges: 0, oldest: rows.length ? rows[rows.length - 1].createdAt : null, byAction: {}, topActors: [] }, actions: [...new Set(all.map(l => l.action))].filter(Boolean), actors: [...new Set(all.map(l => l.actor_name || 'system'))], rows };
+          }
+          fillSelects(); renderSummary(); renderRows();
+        } catch (e) { showError(e); }
+      }
+
+      function csv() {
+        if (!rows.length) { UI.toast('Nothing to export.', 'warning'); return; }
+        Utils.exportToCSV(rows.map(l => ({ Time: l.createdAt, Actor: l.actor, Action: l.action, Detail: l.detail })), `activity-log-${new Date().toISOString().slice(0, 10)}.csv`);
+      }
+      function pdf() {
+        if (!rows.length) { UI.toast('Nothing to print.', 'warning'); return; }
+        const head = `<tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr>`;
+        const body = rows.map(l => `<tr><td>${esc(dt(l.createdAt))}</td><td>${esc(l.actor)}</td><td>${esc(friendly(l.action))}</td><td>${esc(l.detail || '')}</td></tr>`).join('');
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>DramaConnect — Audit trail</title>
+          <style>body{font-family:Arial,Helvetica,sans-serif;padding:18px;color:#111}h1{font-size:18px;margin:0 0 4px}p.m{font-size:11px;color:#555;margin:0 0 12px}
+          table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:left;border-bottom:1px solid #999;padding:5px}td{border-bottom:1px solid #eee;padding:5px;vertical-align:top}</style></head>
+          <body><h1>DramaConnect — Audit / Activity trail</h1><p class="m">Generated ${esc(dt(new Date()))} · ${rows.length} entr${rows.length === 1 ? 'y' : 'ies'} · ${esc($('al-days').selectedOptions[0].textContent)}</p>
+          <table><thead>${head}</thead><tbody>${body}</tbody></table>
+          <script>window.onload=()=>setTimeout(()=>window.print(),300);<\/script></body></html>`;
+        const w = window.open('', '_blank');
+        if (!w) { UI.toast('Allow pop-ups to export the PDF.', 'warning'); return; }
+        w.document.write(html); w.document.close();
+      }
+
+      /* -------- Retention & purge (the ref's two-step safe workflow) -------- */
+      const alpDays = () => { const c = Number($('alp-custom').value); return c > 0 ? c : Number($('alp-days').value) || 180; };
+      const alpTable = () => $('alp-table').value;
+      const alpName = () => (alpTable() === 'activity_log' ? 'activity log' : 'login audit');
+      async function alpExport() {
+        const t = alpTable();
+        const before = new Date(Date.now() - alpDays() * 864e5).toISOString();
+        const btn = $('alp-export'); btn.disabled = true; btn.textContent = 'Exporting…';
+        try {
+          const result = t === 'activity_log'
+            ? await PlatformManagement.activityFeed({ days: alpDays(), limit: 1000 })
+            : await PlatformManagement.loginAuditReport(alpDays(), 1000, null);
+          const payload = t === 'activity_log'
+            ? { kind: 'activity_log', exportedAt: new Date().toISOString(), cutoff: before, columns: ['id', 'created_at', 'actor_name', 'action', 'detail'], rows: (result.rows || []).map(r => ({ id: r.id, created_at: r.createdAt, actor_name: r.actor, action: r.action, detail: r.detail })) }
+            : { kind: 'login_audit', exportedAt: new Date().toISOString(), cutoff: before, columns: ['id', 'created_at', 'user_id', 'email', 'event_type', 'user_agent', 'metadata'], rows: (result.rows || []).map(r => ({ id: r.id, created_at: r.createdAt, user_id: r.userId || null, email: r.email, event_type: r.event, user_agent: r.userAgent, metadata: r.metadata })) };
+          const name = `${t}-export-${new Date().toISOString().slice(0, 10)}.json`;
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+          setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+          $('alp-result').textContent = `✅ Exported ${payload.rows.length} row(s) of the ${alpName()} to ${name}. Keep it — it can be re-imported from Admin Data or inspected any time. It is now safe to purge.`;
+          UI.toast('Log exported. You may now purge.', 'success');
+        } catch (e) { UI.toast(err(e), 'error', 9000); }
+        finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download"></i> ① Export this log first (portable JSON)'; }
+      }
+      async function alpPurge() {
+        const t = alpTable(), d = alpDays();
+        if (!confirm(`Permanently delete ${alpName()} entries older than ${d} day(s)?\n\nDid you export them first? Purged rows cannot be recovered without an export.`)) return;
+        const before = new Date(Date.now() - d * 864e5).toISOString();
+        const btn = $('alp-purge'); btn.disabled = true;
+        try {
+          let out = null;
+          try {
+            out = await PlatformManagement.applyRetention({ table: t, before, confirmation: `PURGE ${t}`, sha256: ($('alp-sha') && $('alp-sha').value.trim()) || await window.__lastVerifiedSha() });
+          } catch (e) { throw e; }
+          $('alp-result').textContent = `🧹 Purged ${n(out.deletedRows)} entr${Number(out.deletedRows) === 1 ? 'y' : 'ies'} older than ${d} day(s) from the ${alpName()}. The purge itself is recorded in the trail.`;
+          UI.toast('Purge complete.', 'success');
+          load();
+        } catch (e) {
+          UI.toast(err(e), 'error', 11000);
+          $('alp-result').textContent = `⚠ ${err(e)} — the guarded purge needs a verified backup from Admin Data (its SHA-256, created within 30 days). Nothing was deleted.`;
+        } finally { btn.disabled = false; }
+      }
+
+      async function init() {
+        const me = await Auth.requireAdmin();
+        if (!me) return;
+        Layout.renderSidebar('activity', me);
+        $('page-header').innerHTML = Layout.renderHeader('Audit / Activity Log', 'A tamper-evident trail of every administrative action');
+        Layout.setDate();
+        if (Layout.loadNotifications) Layout.loadNotifications(me);
+        // Latest verified backup digest, so the guarded purge can proceed without
+        // making the admin paste a 64-character hash by hand.
+        window.__lastVerifiedSha = async () => {
+          const h = await Resilience.getHealth().catch(() => null);
+          const run = (h && (h.runs || []).find(r => r.status === 'succeeded' && r.archive_sha256)) ||
+                      (h && h.settings && h.settings.last_archive_sha256 ? { archive_sha256: h.settings.last_archive_sha256 } : null);
+          return run ? run.archive_sha256 : '';
+        };
+        PlatformManagement.getRetentionSettings().then(r => { if (r) $('alp-horizon').textContent = `${r.activity_log_days} days`; }).catch(() => {});
+        $('refresh').onclick = load;
+        ['al-days', 'al-action', 'al-actor', 'al-limit'].forEach(id => { $(id).onchange = load; });
+        let timer = null;
+        $('al-search').oninput = () => { clearTimeout(timer); timer = setTimeout(load, 350); };
+        $('al-csv').onclick = csv; $('al-pdf').onclick = pdf;
+        $('alp-export').onclick = alpExport; $('alp-purge').onclick = alpPurge;
+        load();
+      }
+      init();
+    })();
+    </script>
+</body>
+</html>
